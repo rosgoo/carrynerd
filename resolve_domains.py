@@ -98,13 +98,28 @@ def candidates(name, aliases):
     return out
 
 
-def dns_ok(domain):
-    """Free filter. Most invented domains simply do not exist."""
-    try:
-        socket.getaddrinfo(domain, 443, proto=socket.IPPROTO_TCP)
-        return True
-    except (socket.gaierror, UnicodeError, OSError):
-        return False
+def dns_ok(domain, retries=1):
+    """
+    Free filter. Most invented domains simply do not exist.
+
+    Retries once with a pause, because a local resolver will start refusing
+    after a few hundred rapid queries — and a throttled lookup is
+    indistinguishable from NXDOMAIN unless you ask twice. Without this the tail
+    of a long run comes back "nothing resolves" for brands like Yeti and Vertx,
+    which plainly do.
+    """
+    for attempt in range(retries + 1):
+        try:
+            socket.getaddrinfo(domain, 443, proto=socket.IPPROTO_TCP)
+            return True
+        except UnicodeError:
+            return False                    # not a resolvable name at all
+        except (socket.gaierror, OSError):
+            if attempt < retries:
+                time.sleep(0.4)
+                continue
+            return False
+    return False
 
 
 def probe(url, timeout=15, retries=2):
@@ -352,6 +367,9 @@ def main():
                     help="write verified domains into brands-master.json")
     ap.add_argument("--import", dest="do_import", action="store_true",
                     help="read the filled-in domains-todo.csv back in")
+    ap.add_argument("--dns-only", action="store_true",
+                    help="build the review list from DNS alone, no HTTP — "
+                         "safe to run while a crawl is going")
     args = ap.parse_args()
 
     if args.do_import:
@@ -367,6 +385,31 @@ def main():
         targets = [b for b in rows if b["name"].lower() in wanted]
     if args.limit:
         targets = targets[:args.limit]
+
+    if args.dns_only:
+        # DNS answers "does this name exist" without sending anything to the
+        # brand's server, so this is safe to run beside a crawl and gives a
+        # person a real starting point instead of a bare list of names.
+        socket.setdefaulttimeout(3)
+        unresolved = []
+        for i, brand in enumerate(targets, 1):
+            live = []
+            for domain in candidates(brand["name"], brand.get("aliases"))[:8]:
+                if dns_ok(domain):
+                    live.append(domain)
+                time.sleep(0.05)            # keep the local resolver friendly
+                if len(live) >= 3:
+                    break
+            print(f"[{i}/{len(targets)}] {brand['name']:26} "
+                  f"{', '.join(live) or '(nothing resolves)'}", flush=True)
+            unresolved.append((brand, {
+                "confidence": "unresolved",
+                "candidates": [
+                    {"domain": d, "why": "DNS resolves — not yet verified"}
+                    for d in live],
+            }))
+        write_todo(unresolved)
+        return 0
 
     print(f"{len(targets)} brands to resolve\n", flush=True)
     pacer = Pacer(args.delay)
