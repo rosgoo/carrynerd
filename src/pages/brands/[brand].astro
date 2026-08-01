@@ -3,6 +3,7 @@ import Base from '../../layouts/Base.astro';
 import WatchForm from '../../components/WatchForm.astro';
 import { brands, bagHref } from '../../lib/catalog.js';
 import { catLabel } from '../../lib/labels.js';
+import { SITE_NAME } from '../../lib/brand.js';
 import { fmtPrice, fmtVolume, fmtWeight, fmtDims } from '../../lib/format.js';
 
 export function getStaticPaths() {
@@ -13,7 +14,7 @@ const { brand } = Astro.props;
 const prices = brand.bags.map((b) => b.price_min).filter((p) => p != null);
 const cats = [...new Set(brand.bags.map((b) => b.category))].map(catLabel);
 
-const title = `${brand.name} bags — every model, specs & prices | bagdex`;
+const title = `${brand.name} bags — every model, specs & prices | ${SITE_NAME}`;
 const description =
   `All ${brand.bags.length} ${brand.name} models in the index` +
   (prices.length ? `, from ${fmtPrice(Math.min(...prices))}` : '') +

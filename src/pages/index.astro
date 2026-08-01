@@ -3,8 +3,10 @@ import Base from '../layouts/Base.astro';
 import { bags, meta, bagHref } from '../lib/catalog.js';
 import { catLabel } from '../lib/labels.js';
 import { fmtPrice } from '../lib/format.js';
+import Logo from '../components/Logo.astro';
+import { SITE_NAME, SITE_NAME_DISPLAY, TAGLINE } from '../lib/brand.js';
 
-const title = 'bagdex — carry spec index';
+const title = `${SITE_NAME} — ${TAGLINE}`;
 const description =
   `Compare ${meta.bag_count ?? bags.length} bags across ${meta.brand_count ?? 0} ` +
   'brands on volume, weight, dimensions and price. Specs normalised from public ' +
@@ -20,7 +22,7 @@ const fallback = [...bags].sort(
 ---
 <Base title={title} description={description}>
   <header slot="header">
-    <a class="brand" href="/"><i></i>BAGDEX</a>
+    <a class="brand" href="/"><Logo size={17} />{SITE_NAME_DISPLAY}</a>
     <div class="stats" id="stats"></div>
     <div class="searchwrap">
       <input id="q" type="search" placeholder="search brand, model, material, feature…" autocomplete="off" spellcheck="false" />

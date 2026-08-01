@@ -1,9 +1,10 @@
 ---
 import Base from '../../layouts/Base.astro';
 import { brands, meta } from '../../lib/catalog.js';
+import { SITE_NAME } from '../../lib/brand.js';
 import { fmtPrice } from '../../lib/format.js';
 
-const title = 'Brands — bagdex';
+const title = `Brands — ${SITE_NAME}`;
 const description =
   `Every brand in the index: ${brands.length} makers, ` +
   `${meta.bag_count ?? 0} models, ${meta.sku_count ?? 0} SKUs.`;

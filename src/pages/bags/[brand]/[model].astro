@@ -2,8 +2,10 @@
 import Base from '../../../layouts/Base.astro';
 import PriceHistory from '../../../components/PriceHistory.astro';
 import WatchForm from '../../../components/WatchForm.astro';
+import Offers from '../../../components/Offers.astro';
 import { bags, bagSlug, bagHref, priceSeries, priceChanges, trackingSince } from '../../../lib/catalog.js';
 import { catLabel, featureLabel, sourceLabel } from '../../../lib/labels.js';
+import { SITE_NAME } from '../../../lib/brand.js';
 import {
   fmtPrice, fmtPriceRange, fmtWeight, fmtDims, fmtVolume, fmtLaptop,
   fmtLinear, fmtDate, gramsPerLitre, pricePerLitre,
@@ -97,7 +99,7 @@ const breadcrumbs = {
   ],
 };
 
-const title = `${bag.brand} ${bag.name} — specs, dimensions & price | bagdex`;
+const title = `${bag.brand} ${bag.name} — specs, dimensions & price | ${SITE_NAME}`;
 const facts = [
   fmtVolume(bag.volume_l),
   fmtDims(bag.dims_cm),
@@ -237,6 +239,8 @@ const description =
         </table>
       </section>
     )}
+
+    <Offers bag={bag} />
 
     <PriceHistory series={series} changes={changes} since={trackingSince} />
 

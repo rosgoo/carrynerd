@@ -1,0 +1,77 @@
+---
+import { fmtPriceRange } from '../lib/format.js';
+
+/* Where to buy.
+ *
+ * Structured as an offers *table* even though there is currently one seller
+ * per bag, because the shape is the point: when licensed affiliate feeds land
+ * (AvantLink, Sovrn, Impact) each retailer becomes another row and nothing
+ * here changes. GTIN — already extracted by enrich.py and otherwise unused —
+ * is the join key that will match a bag across sellers.
+ *
+ * What it will NOT do is invent rows. Every price shown is one we fetched from
+ * that seller ourselves. A comparison table padded with guessed retailer
+ * prices would be worse than no table at all, and it is the exact failure the
+ * rest of the index refuses.
+ */
+const { bag } = Astro.props;
+
+// Distinct purchase URLs we actually hold. `merged_urls` is real and often
+// more than one: a brand that publishes a separate storefront product per
+// fabric leaves several genuine buy pages for one model.
+const urls = [...new Set([bag.url, ...(bag.merged_urls ?? [])].filter(Boolean))];
+
+const host = (u) => {
+  try {
+    return new URL(u).hostname.replace(/^www\./, '');
+  } catch {
+    return u;
+  }
+};
+
+const offers = urls.map((url, i) => ({
+  url,
+  host: host(url),
+  // Only the canonical listing can be tied to the tracked price; the extra
+  // fabric/colourway listings share a model but not necessarily a price.
+  price: i === 0 ? fmtPriceRange(bag.price_min, bag.price_max) : null,
+  primary: i === 0,
+}));
+---
+<section class="offers">
+  <h2>Where to buy</h2>
+
+  <table class="spectable">
+    <thead>
+      <tr><th>Seller</th><th>Price</th><th>Stock</th><th></th></tr>
+    </thead>
+    <tbody>
+      {offers.map((offer) => (
+        <tr>
+          <td>
+            {offer.host}
+            {offer.primary && <i class="prov">brand direct · price tracked here</i>}
+            {!offer.primary && <i class="prov">same model, separate listing</i>}
+          </td>
+          <td class={offer.price ? '' : 'nil'}>{offer.price ?? '—'}</td>
+          <td class={offer.primary && bag.in_stock ? 'instock' : 'nil'}>
+            {offer.primary ? (bag.in_stock ? 'in stock' : 'out') : '—'}
+          </td>
+          <td>
+            <a href={offer.url} target="_blank" rel="noopener nofollow">Buy ↗</a>
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+
+  <p class="note">
+    {offers.length === 1
+      ? 'One seller tracked — the brand’s own store.'
+      : `${offers.length} listings tracked, all at the brand’s own store.`}
+    {' '}Retailer prices (REI, Huckberry, Backcountry and the like) are not here
+    yet: they need licensed affiliate datafeeds, which is also what will make
+    the comparison worth trusting. Until then this page shows the one price we
+    fetched ourselves rather than guessing at others.
+  </p>
+</section>

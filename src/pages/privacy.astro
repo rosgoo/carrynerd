@@ -1,12 +1,13 @@
 ---
 import Base from '../layouts/Base.astro';
+import { SITE_NAME, CONTACT } from '../lib/brand.js';
 
 /* Required, not decorative: the alerts plane stores email addresses, and a
    double opt-in flow without a privacy notice is an incomplete one. Kept short
    because a notice nobody reads protects nobody. */
-const title = 'Privacy — bagdex';
+const title = `Privacy — ${SITE_NAME}`;
 const description =
-  'What bagdex stores, why, and how to have it deleted. Browsing is anonymous; '
+  `What ${SITE_NAME} stores, why, and how to have it deleted. Browsing is anonymous; `
   + 'the only personal data held is the email address on a price watch.';
 ---
 <Base title={title} description={description}>
@@ -67,7 +68,7 @@ const description =
         You can ask what we hold about you, ask for it to be corrected, or ask
         for it to be deleted, and there is no charge for any of it. Unsubscribe
         already does the deletion instantly. For anything else, write to
-        <a href="mailto:privacy@bagdex.com">privacy@bagdex.com</a>.
+        <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a>.
       </p>
     </section>
 

@@ -1,5 +1,7 @@
 ---
 import '../styles/app.css';
+import Logo from '../components/Logo.astro';
+import { SITE_NAME_DISPLAY } from '../lib/brand.js';
 
 const {
   title,
@@ -29,6 +31,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
 
 <!-- Restore the saved theme before first paint. Deferring this to the island
      would flash dark-on-light for anyone who chose the light theme. -->
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <script is:inline>
   try {
     const saved = localStorage.getItem('bagdex-theme');
@@ -41,7 +44,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
 
 <slot name="header">
   <header>
-    <a class="brand" href="/"><i></i>BAGDEX</a>
+    <a class="brand" href="/"><Logo size={17} />{SITE_NAME_DISPLAY}</a>
     <div class="stats"></div>
     <div class="spacer"></div>
     <nav class="hbtns">

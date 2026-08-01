@@ -1,13 +1,14 @@
 ---
 import Base from '../layouts/Base.astro';
 import { meta, brands } from '../lib/catalog.js';
+import { SITE_NAME, CONTACT } from '../lib/brand.js';
 
 /* Every request the crawler makes carries this page's URL in its User-Agent.
    That promise is only worth anything if the page exists and a store operator
    who lands here gets a straight answer and a way to reach a human. */
-const title = 'About the bagdex crawler';
+const title = `About the ${SITE_NAME} crawler`;
 const description =
-  'What the bagdex crawler fetches, how often, and how to block it.';
+  `What the ${SITE_NAME} crawler fetches, how often, and how to block it.`;
 ---
 <Base title={title} description={description}>
   <div class="page">
@@ -23,7 +24,7 @@ const description =
     <section>
       <h2>What it is</h2>
       <p class="note">
-        bagdex is a spec index for bags. It reads published product data from
+        {SITE_NAME} is a spec index for bags. It reads published product data from
         brand storefronts and normalises it so that a volume, a weight and a
         set of dimensions can be compared across brands that all describe them
         differently. It currently covers {meta.bag_count ?? 0} models across
@@ -73,7 +74,7 @@ const description =
     <section>
       <h2>Contact</h2>
       <p class="note">
-        A real person reads this: <a href="mailto:crawler@bagdex.com">crawler@bagdex.com</a>.
+        A real person reads this: <a href={`mailto:${CONTACT.crawler}`}>{CONTACT.crawler}</a>.
         Include your domain and we will confirm what we hold and what we have
         removed.
       </p>

@@ -1,0 +1,33 @@
+---
+/* Abstract bison, built from straight edges and one curve per horn so it holds
+   together at 14px in the header and as a favicon. Geometry only — no fur, no
+   eye, nothing that turns to mush when it is small. The horns do the
+   identifying work, so they are the heaviest strokes in the mark. */
+const { size = 16, class: className = '' } = Astro.props;
+---
+<svg
+  class={className}
+  width={size}
+  height={size}
+  viewBox="0 0 32 32"
+  fill="none"
+  aria-hidden="true"
+  focusable="false"
+>
+  <!-- horns: sweep out from the skull, hook up -->
+  <path
+    d="M9 11.5C5.6 11.2 3.2 9.6 2.5 6.6c2 2.2 4 3.1 6.5 3.1"
+    fill="currentColor"
+  />
+  <path
+    d="M23 11.5c3.4-.3 5.8-1.9 6.5-4.9-2 2.2-4 3.1-6.5 3.1"
+    fill="currentColor"
+  />
+  <!-- shoulder hump and skull: one solid mass, tapering to the muzzle -->
+  <path
+    d="M9 9.8h14v6.4l-2.4 2.1v4.6l-2.1 2.4h-6.9l-2.1-2.4v-4.6L7.9 16.2V9.8H9z"
+    fill="currentColor"
+  />
+  <!-- muzzle notch, cut back out so the silhouette reads as a head -->
+  <path d="M13.4 22.1h5.2v2.3h-5.2z" fill="var(--bg)" />
+</svg>
