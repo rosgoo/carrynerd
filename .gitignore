@@ -5,3 +5,8 @@ data/*.out
 __pycache__/
 *.pyc
 .DS_Store
+
+# SQLite artifacts — rebuilt from price-history.jsonl via `db.py sync`
+data/*.db
+data/*.db-wal
+data/*.db-shm
