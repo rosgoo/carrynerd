@@ -54,6 +54,16 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
 
 <slot />
 
+<footer class="sitefoot">
+  <a href="/brands/">Brands</a>
+  <a href="/privacy/">Privacy</a>
+  <a href="/bot/">About the crawler</a>
+  <span>
+    Specs are extracted from brands' published product feeds, not hand-checked.
+    Nothing is estimated — verify against the brand before buying.
+  </span>
+</footer>
+
 <script>
   // The theme toggle is the one behaviour every page shares.
   document.getElementById('theme')?.addEventListener('click', () => {

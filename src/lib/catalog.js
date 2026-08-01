@@ -33,9 +33,14 @@ export function splitId(id) {
     : { brand: id.slice(0, at), model: id.slice(at + 2) };
 }
 
+/** The permalink. `slug` is derived from the merged model name; the id is a
+ *  storage key and can carry a colourway the page is not about. */
+export function bagSlug(bag) {
+  return bag.slug || splitId(bag.id).model;
+}
+
 export function bagHref(bag) {
-  const { brand, model } = splitId(bag.id);
-  return `/bags/${brand}/${model}/`;
+  return `/bags/${bag.brand_slug ?? splitId(bag.id).brand}/${bagSlug(bag)}/`;
 }
 
 export const brands = (() => {

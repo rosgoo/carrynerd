@@ -30,7 +30,10 @@ export const SOURCE_LABELS = {
   "product-page:axis": "per-axis spec on the product page",
   title: "parsed from the product title",
   option: "parsed from a variant option",
+  "variant-option": "parsed from a variant option",
   description: "parsed from the description",
+  tag: "matched from a product tag — the weakest signal we use",
+  collection: "the brand's own shelving",
 };
 
 export const catLabel = (c) => CAT_LABELS[c] ?? c;

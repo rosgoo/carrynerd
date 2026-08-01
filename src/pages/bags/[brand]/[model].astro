@@ -2,7 +2,7 @@
 import Base from '../../../layouts/Base.astro';
 import PriceHistory from '../../../components/PriceHistory.astro';
 import WatchForm from '../../../components/WatchForm.astro';
-import { bags, splitId, bagHref, priceSeries, priceChanges, trackingSince } from '../../../lib/catalog.js';
+import { bags, bagSlug, bagHref, priceSeries, priceChanges, trackingSince } from '../../../lib/catalog.js';
 import { catLabel, featureLabel, sourceLabel } from '../../../lib/labels.js';
 import {
   fmtPrice, fmtPriceRange, fmtWeight, fmtDims, fmtVolume, fmtLaptop,
@@ -10,10 +10,10 @@ import {
 } from '../../../lib/format.js';
 
 export function getStaticPaths() {
-  return bags.map((bag) => {
-    const { brand, model } = splitId(bag.id);
-    return { params: { brand, model }, props: { bag } };
-  });
+  return bags.map((bag) => ({
+    params: { brand: bag.brand_slug, model: bagSlug(bag) },
+    props: { bag },
+  }));
 }
 
 const { bag } = Astro.props;
@@ -29,7 +29,7 @@ const related = [
 ].slice(0, 8);
 
 const specs = [
-  ['Category', catLabel(bag.category), null],
+  ['Category', catLabel(bag.category), bag.category_source],
   ['Price', fmtPriceRange(bag.price_min, bag.price_max), null],
   ['Volume', fmtVolume(bag.volume_l), bag.volume_source],
   ['Dimensions', fmtDims(bag.dims_cm), bag.dims_source],
@@ -196,10 +196,12 @@ const description =
         </div>
         {!bag.features?.length && (
           <p class="note">
-            No features detected. Read that as unknown rather than absent —
-            detection runs over the brand’s description text, and some brands
-            write three sentences of marketing copy with no feature vocabulary
-            in them at all.
+            {bag.features_source === 'product-page'
+              ? 'No features detected on the product page. This one we did look at properly.'
+              : 'No features detected — read that as unknown rather than absent. ' +
+                'We have only seen this brand’s short description text, which for ' +
+                'some brands is three sentences of marketing copy with no feature ' +
+                'vocabulary in it at all.'}
           </p>
         )}
       </section>

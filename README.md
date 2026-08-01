@@ -13,7 +13,7 @@ current pricing and stock entirely. This pipeline gets that layer automatically.
 |---|---|---|
 | Data | crawl → normalize → JSONL ledger, committed to git | GitHub Actions, nightly |
 | Serving | static site generated from that data, one HTML page per model | Vercel |
-| Alerts | `POST /api/watch` + a matcher in the nightly + Neon | Neon + Resend |
+| Alerts | `POST /api/watch` + a matcher in the nightly | Supabase + Resend |
 
 **Flat files are the source of truth; everything else is derived.** The JSONL
 price ledger diffs cleanly, so git is the database history, the backup and the
@@ -37,19 +37,23 @@ brands.json ──> fetch.py ──> raw/*.json ──> normalize.py ──> dat
                     ┌──────────────────┴──────────────────┐
                     ▼                                     ▼
               Astro build                          alerts/match.py
-        (one page per model, static)              (Neon + Resend)
+        (one page per model, static)           (Supabase + Resend)
 ```
 
 ## Run it
 
 ```bash
 python3 fetch.py                # pull catalogues       (~3 requests/brand)
+python3 fetch.py --collections  # category ground truth (~10 requests/brand)
 python3 normalize.py            # build data/bags.json
 python3 enrich.py               # fill dimensions       (~1 request/product)
 
 npm install
 npm run dev                     # http://localhost:4321
 ```
+
+`--collections` reads the store's own shelving and only needs re-running when a
+brand restructures its site, not nightly.
 
 Order matters: `normalize.py` rebuilds `data/bags.json` from `raw/`, so run
 `enrich.py` after it. Enrichment caches every page it reads in
@@ -141,10 +145,10 @@ for that. So:
   a crawl path that does not depend on running JavaScript.
 - **The browse UI is a client-side island** loading `/bags.json` — the same
   faceted filtering, grid/table views, six-way comparison and detail drawer as
-  before. At 214 models, or 5,000, filtering one JSON file in the browser is
-  fine. Shard it per category when it passes a few MB.
-- The homepage server-renders a plain list of every model underneath the island,
-  so a crawler with no JS still finds all 214.
+  before. At a few hundred models, or 5,000, filtering one JSON file in the
+  browser is fine. Shard it per category when it passes a few MB.
+- The homepage server-renders a plain list of every model underneath the
+  island, so a crawler with no JS still finds all of them.
 
 All filter state syncs to the URL, so any view is a shareable link. Press `/`
 to search, `Esc` to close panels.
@@ -166,11 +170,11 @@ GET  /api/unsubscribe → deletes the row outright
 ```
 
 Schema in `alerts/schema.sql`, matcher in `alerts/match.py`. Needs
-`DATABASE_URL` (Neon) and `RESEND_API_KEY`; with neither set the matcher
+`DATABASE_URL` and `RESEND_API_KEY`; with neither set the matcher
 reports what it would have done and exits clean, so the nightly stays green
 before the plane is provisioned.
 
-**Addresses live in Neon and only in Neon.** Never in the repo — the data plane
+**Addresses live in Postgres and only there.** Never in the repo — the data plane
 is public and fully version-controlled, and an address committed once is in the
 history forever. Never in logs either; subscription IDs are the identifier
 everywhere. Unsubscribe deletes rather than flags, and `sent_alerts` cascades
@@ -208,17 +212,22 @@ brands that have no affiliate programme.
 ## Known gaps
 
 - Dimension coverage depends on enrichment finishing; brands that render specs
-  from JavaScript return nothing and need per-brand adapters.
-- Category classification is keyword-based. `data/bags.json` `meta.rejected`
-  counts what was dropped as unclassified so it can be audited.
-- **Feature and material detection is weak on feed-only text.** Both are
-  matched against `body_html`, which for brands like Aer is three sentences of
-  marketing copy with no feature vocabulary in it, so those bags land with
-  empty feature lists. The fix is cheap and known: `enrich.py` already has the
-  full product page in hand: run `detect()` over that text and cache the
-  result alongside dimensions. Until then, treat an empty feature list as
-  "unknown", not "absent" — and note the filters currently treat it as absent,
-  which will wrongly exclude bags.
+  from JavaScript return nothing and need per-brand adapters. `meta.enrich_gaps`
+  in `data/bags.json` splits this per brand into `js-rendered` (the page has no
+  spec text at all — only an adapter will help) and `unparsed` (the text is
+  there and the regexes missed it — much cheaper to fix). Able Carry is the
+  clearest `js-rendered` case: its product pages contain no dimension string
+  anywhere in the HTML.
+- **Enrichment caches parsed output, not the page.** So every parser
+  improvement costs a full re-crawl to apply to already-seen products. Caching
+  the compressed HTML instead would make parser iteration free and is the
+  obvious next change to `enrich.py`.
+- Category classification is keyword-first, falling back to the store's own
+  collections (`fetch.py --collections`) where the title carries no category
+  word — WANDRD's entire PRVKE line, for instance. Collections also supply the
+  negative signal that keeps zipper pullers and camera cubes out of the index.
+  `meta.rejected` breaks the drops down by reason so they can be audited, and
+  `category_source` on each bag records which path classified it.
 - Prices are whatever the feed said when fetched, USD. History is recorded from
   the first `track_prices.py` run forward and cannot be backfilled, so the
   charts stay thin for a while.

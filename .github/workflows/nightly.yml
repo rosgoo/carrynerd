@@ -140,7 +140,7 @@ jobs:
       # just worked out exactly which prices moved. A separate cron would have
       # to re-derive that from the ledger by timestamp comparison.
       # Exits cleanly when DATABASE_URL is unset, so this stays green until
-      # Neon is wired up.
+      # the database is wired up.
       - name: Match price alerts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

@@ -1,0 +1,84 @@
+---
+import Base from '../layouts/Base.astro';
+
+/* Required, not decorative: the alerts plane stores email addresses, and a
+   double opt-in flow without a privacy notice is an incomplete one. Kept short
+   because a notice nobody reads protects nobody. */
+const title = 'Privacy — bagdex';
+const description =
+  'What bagdex stores, why, and how to have it deleted. Browsing is anonymous; '
+  + 'the only personal data held is the email address on a price watch.';
+---
+<Base title={title} description={description}>
+  <div class="page">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/">Bags</a> <span>/</span> <b>Privacy</b>
+    </nav>
+    <h1>Privacy</h1>
+    <p class="note">
+      Short version: browsing is anonymous, and the only personal data held is
+      an email address you typed into a price watch.
+    </p>
+
+    <section>
+      <h2>Browsing</h2>
+      <p class="note">
+        The catalog is static files. No account, no login, no tracking pixels,
+        and no advertising cookies. Your filter selections live in the URL and
+        your theme choice in your own browser's local storage — neither reaches
+        us.
+      </p>
+    </section>
+
+    <section>
+      <h2>Price watches</h2>
+      <table class="spectable">
+        <tbody>
+          <tr><th scope="row">What we store</th><td>Your email address, what you asked to watch, and when.</td></tr>
+          <tr><th scope="row">Why</th><td>To email you when that price drops. Nothing else — no newsletter, no “related offers”.</td></tr>
+          <tr><th scope="row">Confirmation</th><td>Double opt-in. Nothing is ever sent to an address that has not clicked the confirmation link.</td></tr>
+          <tr><th scope="row">How long</th><td>Until you unsubscribe. There is no other expiry.</td></tr>
+          <tr><th scope="row">Deletion</th><td>One click in any email. It deletes the row outright — the address is gone, not flagged as inactive — and takes the record of what we sent you with it.</td></tr>
+        </tbody>
+      </table>
+      <p class="note">
+        Addresses are never written into the public repository this site is
+        built from, and never appear in application logs; those record a
+        numeric subscription id instead.
+      </p>
+    </section>
+
+    <section>
+      <h2>Who else sees it</h2>
+      <p class="note">
+        Three processors, each doing one job: <strong>Supabase</strong> hosts the
+        database the address sits in, <strong>Resend</strong> delivers the
+        email, and <strong>Vercel</strong> serves the site. Resend keeps its
+        own delivery log containing recipient addresses, as every email
+        provider does — so unsubscribing removes you from our side immediately,
+        but their log retains a record of past sends for a period we do not
+        control. No data is sold or shared with anyone else.
+      </p>
+    </section>
+
+    <section>
+      <h2>Your rights, and how to use them</h2>
+      <p class="note">
+        You can ask what we hold about you, ask for it to be corrected, or ask
+        for it to be deleted, and there is no charge for any of it. Unsubscribe
+        already does the deletion instantly. For anything else, write to
+        <a href="mailto:privacy@bagdex.com">privacy@bagdex.com</a>.
+      </p>
+    </section>
+
+    <section>
+      <h2>Product data</h2>
+      <p class="note">
+        Specifications and prices come from brands' own published product
+        feeds. Nothing on this site is estimated, and every value records where
+        it came from. If you operate a store, see
+        <a href="/bot/">about the crawler</a>.
+      </p>
+    </section>
+  </div>
+</Base>

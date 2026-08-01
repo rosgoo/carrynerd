@@ -11,8 +11,8 @@ which is a worse answer to a question we already have exactly.
     data/price-events.json  ->  matching confirmed subscriptions  ->  Resend
 
 Only `direction: down` events fire. Only rows with `confirmed_at` set are ever
-mailed. Addresses are read from Neon, used, and never written anywhere else —
-not to a file, not to a log line.
+mailed. Addresses are read from Postgres, used, and never written anywhere
+else — not to a file, not to a log line.
 
 Usage:
     python3 alerts/match.py --events data/price-events.json
@@ -171,7 +171,13 @@ def main():
     brand_slugs = sorted({e["brand_slug"] for e in drops if e.get("brand_slug")})
 
     sent_count = 0
-    with psycopg.connect(database_url, row_factory=dict_row) as conn:
+    # prepare_threshold=None disables prepared statements. psycopg3 starts
+    # preparing after the fifth execution of a statement, which breaks against
+    # a transaction-mode connection pooler (Supabase's port 6543) because the
+    # next execution can land on a different backend. Turning them off means
+    # one connection string works for both this script and the web functions.
+    with psycopg.connect(database_url, row_factory=dict_row,
+                         prepare_threshold=None) as conn:
         subs = conn.execute(
             """
             select id, email, criteria, unsub_token

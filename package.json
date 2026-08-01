@@ -12,10 +12,13 @@
   "dependencies": {
     "@astrojs/sitemap": "^3.2.1",
     "@astrojs/vercel": "^8.0.1",
-    "@neondatabase/serverless": "^0.10.4",
-    "astro": "^5.1.1"
+    "astro": "^5.1.1",
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
     "@types/node": "^26.1.2"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   }
 }

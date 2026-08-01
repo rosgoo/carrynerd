@@ -2,8 +2,11 @@
 --
 -- Email addresses are the one piece of state that cannot live in git: the data
 -- plane is public and fully version-controlled, and an address committed once
--- is in the history forever. So addresses live here, in Neon, and nowhere else.
--- Nothing in data/ ever holds one, and the crawl scripts never see one.
+-- is in the history forever. So addresses live here, in Postgres, and nowhere
+-- else. Nothing in data/ ever holds one, and the crawl scripts never see one.
+--
+-- Plain Postgres, nothing vendor-specific. Written against Supabase; runs
+-- unchanged on Neon, RDS or a local instance.
 --
 -- Apply with:
 --     psql "$DATABASE_URL" -f alerts/schema.sql

@@ -13,10 +13,14 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-// Mirrors bagHref() in src/lib/catalog.js — ids are `<brand>__<model>`.
-const bagHref = id => {
-  const at = id.indexOf("__");
-  return at < 0 ? "/" : `/bags/${id.slice(0, at)}/${id.slice(at + 2)}/`;
+// Mirrors bagHref() in src/lib/catalog.js. `slug` is the permalink, derived
+// from the merged model name; the id is a storage key and may still carry a
+// colourway. Fall back to the id only for data written before slugs existed.
+const bagHref = b => {
+  const at = b.id.indexOf("__");
+  const brand = b.brand_slug || (at < 0 ? "" : b.id.slice(0, at));
+  const slug = b.slug || (at < 0 ? b.id : b.id.slice(at + 2));
+  return brand ? `/bags/${brand}/${slug}/` : "/";
 };
 
 let DATA = { meta: {}, bags: [] };
@@ -70,6 +74,9 @@ function matches(b) {
   if (S.brands.size && !S.brands.has(b.brand_slug)) return false;
   if (S.feats.size && ![...S.feats].every(f => (b.features || []).includes(f))) return false;
   if (S.mats.size && ![...S.mats].some(m => (b.materials || []).includes(m))) return false;
+  // Feature and material lists are only trustworthy once enrichment has read
+  // the product page. Before that an empty list means "we never got a good
+  // look", not "it doesn't have one" — see featuresUnknown() and the count.
   if (S.stock && !b.in_stock) return false;
   if (S.sale && !b.on_sale) return false;
 
@@ -181,12 +188,29 @@ function tableRows(list) {
     <tbody>${rows}</tbody></table></div>`;
 }
 
+// A bag whose feature list was only ever built from the brand's marketing copy
+// cannot be said to lack a feature. Excluding it is still the right call — a
+// filter that returns maybes is useless — but it has to be admitted to, not
+// done silently, which is what was happening before.
+function featuresUnknown(b) {
+  return b.features_source !== "product-page";
+}
+
 function render() {
   const list = DATA.bags.filter(matches).sort(SORTS[S.sort] || SORTS.brand);
 
+  let caveat = "";
+  if (S.feats.size || S.mats.size) {
+    const unsure = DATA.bags.filter(b => featuresUnknown(b) && !matches(b)).length;
+    if (unsure) {
+      caveat = ` · <em class="warnnote">${unsure} excluded — features not yet` +
+        ` detected on those, not known to be absent</em>`;
+    }
+  }
+
   $("#count").innerHTML = `<b>${list.length}</b> of ${DATA.bags.length} bags` +
     ` · ${new Set(list.map(b => b.brand_slug)).size} brands` +
-    ` · ${list.reduce((n, b) => n + (b.variant_count || 0), 0)} SKUs`;
+    ` · ${list.reduce((n, b) => n + (b.variant_count || 0), 0)} SKUs` + caveat;
 
   const out = $("#results");
   if (!list.length) {
@@ -357,7 +381,7 @@ function openDetail(id) {
       Source: ${esc(b.source || "—")} · fetched ${esc((b.fetched_at || "").slice(0, 10))}<br>
       <a href="${esc(b.url)}" target="_blank" rel="noopener nofollow">Open on ${esc(b.brand)} ↗</a>
     </div>
-    <a class="btn detfull" href="${esc(bagHref(b.id))}">Full specs &amp; price history →</a>`;
+    <a class="btn detfull" href="${esc(bagHref(b))}">Full specs &amp; price history →</a>`;
   $("#detoverlay").classList.add("on");
 }
 

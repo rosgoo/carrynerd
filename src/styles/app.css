@@ -580,3 +580,18 @@ td.instock { color: var(--ok); }
   .spectable tbody th { width: auto; }
   .page { border-left: none; border-right: none; }
 }
+
+/* Honest-uncertainty note in the result count: a filter that silently drops
+   bags we simply have not inspected is worse than one that says so. */
+.warnnote { font-style: normal; color: var(--warn); }
+
+/* Site footer. The crawler and privacy links are not decoration: the crawler's
+   User-Agent points at /bot, and the alerts plane collects addresses. */
+.sitefoot {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+  padding: 16px 14px; border-top: 1px solid var(--line);
+  font-size: 10px; color: var(--ink-mute); max-width: 940px; margin: 0 auto;
+}
+.sitefoot a { color: var(--ink-dim); text-decoration: none; letter-spacing: .06em; text-transform: uppercase; }
+.sitefoot a:hover { color: var(--accent); }
+.sitefoot span { flex: 1 1 320px; line-height: 1.6; }

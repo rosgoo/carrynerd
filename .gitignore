@@ -23,3 +23,9 @@ dist/
 
 # Grove project metadata — local tooling config, not part of the build.
 .grove/
+
+# Development page cache — raw brand pages kept so parser changes can be
+# re-applied without re-crawling. Local working files, never published: they
+# contain brands' full marketing copy, which the index deliberately does not
+# reproduce.
+data/page-cache/

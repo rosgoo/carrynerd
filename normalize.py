@@ -24,6 +24,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RAW = os.path.join(HERE, "raw")
+COLLECTIONS = os.path.join(HERE, "data", "collections")
 OUT = os.path.join(HERE, "data", "bags.json")
 
 CM_PER_IN = 2.54
@@ -33,30 +34,40 @@ G_PER_OZ = 28.3495
 # --- classification ---------------------------------------------------------
 
 # Ordered: first match wins, so specific beats generic.
+#
+# Every noun here takes an optional plural. That is not fussiness: `\bbackpack\b`
+# does not match "backpacks", and brands tag products with the plural far more
+# often than the singular, so the singular-only forms silently dropped real
+# bags — WANDRD's whole PRVKE line among them.
 CATEGORIES = [
-    ("sling",            r"\bsling\b|\bcrossbody\b|\bchest (?:pack|bag)\b"),
-    ("hip-pack",         r"\b(?:hip pack|fanny pack|waist pack|bum bag|belt bag)\b"),
-    ("duffel",           r"\bduff?le\b|\bduffel\b|\bgym bag\b"),
-    ("luggage",          r"\b(?:suitcase|carry[- ]on(?: luggage)?|spinner|roller|check[- ]in)\b"),
-    ("tote",             r"\btote\b|\bshopper\b"),
-    ("messenger",        r"\bmessenger\b|\bcourier\b|\bsatchel\b"),
-    ("briefcase",        r"\b(?:briefcase|attach[eé]|portfolio)\b"),
-    ("camera-bag",       r"\bcamera (?:bag|backpack|cube)\b|\bphoto (?:bag|pack)\b"),
+    ("sling",            r"\bslings?\b|\bcrossbody\b|\bchest (?:packs?|bags?)\b"),
+    ("hip-pack",         r"\b(?:hip packs?|fanny packs?|waist packs?|bum bags?|belt bags?)\b"),
+    ("duffel",           r"\bduff?les?\b|\bduffels?\b|\bgym bags?\b"),
+    ("luggage",          r"\b(?:suitcases?|carry[- ]ons?(?: luggage)?|spinners?|rollers?|check[- ]in)\b"),
+    ("tote",             r"\btotes?\b|\bshoppers?\b"),
+    ("messenger",        r"\bmessengers?\b|\bcouriers?\b|\bsatchels?\b"),
+    ("briefcase",        r"\b(?:briefcases?|attach[eé]s?|portfolios?)\b"),
+    ("camera-bag",       r"\bcamera (?:bags?|backpacks?)\b|\bphoto (?:bags?|packs?)\b"),
     ("hiking-pack",      r"\b(?:hiking|backpacking|trekking|mountaineering|thru[- ]hik)\w*\b"),
-    ("travel-backpack",  r"\btravel (?:pack|backpack)\b|\bcarry[- ]on backpack\b"),
-    ("daypack",          r"\b(?:daypack|day pack|rucksack|backpack|\bpack\b)\b"),
-    ("pouch",            r"\b(?:pouch|dopp|kit bag|toiletry|organi[sz]er case)\b"),
+    ("travel-backpack",  r"\btravel (?:packs?|backpacks?)\b|\bcarry[- ]on backpacks?\b"),
+    ("daypack",          r"\b(?:daypacks?|day packs?|rucksacks?|backpacks?|packs?)\b"),
+    ("pouch",            r"\b(?:pouch(?:es)?|dopp|kit bags?|toiletry|organi[sz]er cases?)\b"),
 ]
 
-# Things a bag catalogue should not contain.
+# Things a bag catalogue should not contain. Same plural rule, same reason —
+# `\bstrap\b` never matched "Accessory Straps", so a pile of accessories were
+# classified as bags and then showed up with no specs and no features.
 NOT_A_BAG = re.compile(
-    r"\b(gift card|t-?shirt|tee\b|hoodie|jacket|cap\b|hat\b|beanie|sock|glove|"
-    r"pant|short|sweatshirt|wallet|cardholder|card case|keychain|key ?ring|"
-    r"patch|sticker|pin\b|lanyard|strap\b|harness|tripod|lens|filter\b|"
-    r"battery|charger|cable|adapter|power bank|bottle\b|mug\b|tumbler|"
-    r"notebook|journal|pen\b|sunglass|watch\b|towel|blanket|pillow|"
-    r"tent\b|sleeping bag|stove|trekking pole|insert\b|packing cube|"
-    r"rain ?(?:cover|fly)|repair|warranty|spare|replacement|sample)\b",
+    r"\b(gift cards?|t-?shirts?|tee\b|hoodies?|jackets?|caps?\b|hats?\b|beanies?|"
+    r"socks?|gloves?|pants?|shorts?|sweatshirts?|wallets?|cardholders?|"
+    r"card cases?|keychains?|key ?rings?|patch(?:es)?|stickers?|pins?\b|"
+    r"lanyards?|straps?\b|harness(?:es)?|tripods?|lens(?:es)?|filters?\b|"
+    r"batteries|battery|chargers?|cables?|adapters?|power banks?|bottles?\b|"
+    r"mugs?\b|tumblers?|notebooks?|journals?|pens?\b|sunglass(?:es)?|"
+    r"watch(?:es)?\b|towels?|blankets?|pillows?|tents?\b|sleeping bags?|stoves?|"
+    r"trekking poles?|inserts?\b|packing cubes?|camera cubes?|dividers?|"
+    r"zip(?:per)? pull(?:er)?s?|playing cards?|rain ?(?:covers?|fly|flies)|repairs?|"
+    r"warranty|spares?|replacements?|samples?)\b",
     re.I,
 )
 
@@ -230,11 +241,21 @@ def find_laptop_in(text):
 
 
 def classify(title, product_type, tags):
-    blob = " ".join([title or "", product_type or "", " ".join(tags or [])])
+    """
+    Returns (category, source). The title is the strongest signal available —
+    "Travel Pack 45L" says exactly what it is. product_type and tags are much
+    weaker: WANDRD tags its camera daypacks for "backpacking", which read as a
+    hiking pack when the two were pooled into one blob. Separating them lets a
+    store's own shelving outrank a stray tag while still losing to a title.
+    """
+    for name, pattern in CATEGORIES:
+        if re.search(pattern, title or "", re.I):
+            return name, "title"
+    blob = " ".join([product_type or "", " ".join(tags or [])])
     for name, pattern in CATEGORIES:
         if re.search(pattern, blob, re.I):
-            return name
-    return None
+            return name, "tag"
+    return None, None
 
 
 def detect(text, table):
@@ -254,18 +275,40 @@ def option_index(options, pattern):
     return None
 
 
-def build(product, brand):
+def build(product, brand, hint=None):
     title = product.get("title") or ""
     tags = product.get("tags") or []
     ptype = product.get("product_type") or ""
     body = strip_html(product.get("body_html"))
     blob = f"{title}\n{ptype}\n{' '.join(tags)}\n{body}"
 
+    # `hint` is the store's own shelving, from fetch.py --collections. It is
+    # not a guess the way a keyword match is: a brand filing something under
+    # /accessories is telling us plainly, and it catches products whose title
+    # carries no category word at all (WANDRD's entire PRVKE line).
+    if hint is not None and hint.get("is_bag") is False:
+        return None, "not-a-bag:collection"
     if NOT_A_BAG.search(title) or NOT_A_BAG.search(ptype):
         return None, "not-a-bag"
-    category = classify(title, ptype, tags)
+
+    # Precedence: the product's own title, then the store's shelving, then
+    # tags. A title is specific and deliberate; a shelf is deliberate but
+    # broad; a tag is neither, and letting tags win put WANDRD's whole camera
+    # line under hiking-pack.
+    keyword, keyword_src = classify(title, ptype, tags)
+    if keyword_src == "title":
+        category, cat_src = keyword, "title"
+    elif hint and hint.get("category"):
+        category, cat_src = hint["category"], "collection"
+    elif keyword:
+        category, cat_src = keyword, "tag"
+    else:
+        category, cat_src = None, None
     if not category:
-        return None, "unclassified"
+        # Knowing it is a bag but not what kind is still not knowing. Counted
+        # separately so the gap is visible rather than lost in one number.
+        return None, ("unclassified:known-bag" if hint and hint.get("is_bag")
+                      else "unclassified")
 
     options = product.get("options") or []
     color_idx = option_index(options, r"colou?r|finish|colorway")
@@ -335,6 +378,7 @@ def build(product, brand):
         "brand_slug": brand["slug"],
         "name": title,
         "category": category,
+        "category_source": cat_src,
         "url": f"https://{brand['domain']}/products/{handle}",
         "image": (images[0].get("src") if images else None),
         "volume_l": volume,
@@ -376,10 +420,49 @@ COLOUR_WORD = (
     r"(?:jet\s+)?black|navy|blue|olive|green|gr[ae]y|charcoal|white|cream|tan|"
     r"brown|red|orange|yellow|purple|pink|sand|khaki|coyote(?:\s+brown)?|"
     r"silver|clear|multicam|natural|stone|slate|midnight|graphite|mustard|"
-    r"burgundy|teal|ranger\s+green|bone|ash|sage|rust|wine|forest"
+    r"burgundy|teal|ranger\s+green|bone|ash|sage|rust|wine|forest|clay"
 )
+
+# Fabrics that must survive stripping, because a Travel Pack in X-Pac really is
+# a different bag from the nylon one — different weight, different price.
+FABRIC_WORD = (
+    r"cordura|x-?pac|pac|vx\d{2}|dyneema|dcf|ultra\d*|ecopak|epx\d{2}|"
+    r"ballistic|ripstop|robic|sailcloth|halcyon|canvas|leather|tarpaulin|"
+    r"polyester|nylon|waxed|cotton|eco"
+)
+
+# Two separator shapes, because brands split the colour off differently:
+# Able Carry writes "Stash Pouch - Black", WANDRD writes "PRVKE 15L in Wasatch
+# Green". The optional word before the colour catches brand-invented names
+# ("Wasatch" Green, "Sedona" Orange) but refuses to eat a fabric.
+#
+# Whitespace is required *before* a punctuation separator so the hyphen inside
+# "X-Pac" is never mistaken for one — without that, "Travel Pack 3 in X-Pac
+# Black" strips down to "Travel Pack 3 in X".
 TRAILING_COLOUR = re.compile(
-    r"\s*[-–—|,:/]\s*(?:" + COLOUR_WORD + r")\s*$", re.I)
+    r"(?:\s+in\s+|\s+[-–—|,:/]\s*)"
+    # The modifier may be hyphenated — WANDRD ships a "High-Gloss Black".
+    r"(?:(?!(?:" + FABRIC_WORD + r")\b)[A-Za-z]+(?:-[A-Za-z]+)?\s+)?"
+    r"(?:" + COLOUR_WORD + r")\s*$", re.I)
+
+
+def strip_colour_from_name(name, colors):
+    """
+    A merged model should not be called "PRVKE 15L in Black" when it has
+    fourteen colourways. Take the colour out of the display name and make sure
+    it survives in `colors`, where it belongs.
+    """
+    match = TRAILING_COLOUR.search(name or "")
+    if not match:
+        return name, colors
+    stripped = TRAILING_COLOUR.sub("", name).strip()
+    if not stripped:
+        return name, colors            # the colour was the whole name
+    colour = re.sub(r"^(?:in\s+|[-–—|,:/]\s*)", "", match.group(0).strip(),
+                    flags=re.I).strip()
+    if colour and colour not in colors:
+        colors = colors + [colour]
+    return stripped, colors
 
 
 def model_key(name):
@@ -397,8 +480,13 @@ def merge_models(bags):
     merged = []
     for (_, key), group in groups.items():
         if len(group) == 1:
-            group[0]["merged_from"] = 1
-            merged.append(group[0])
+            only = group[0]
+            only["merged_from"] = 1
+            # Applies to single products too: a lone "PRVKE 41L in Black" is
+            # still the PRVKE 41L, and the colour is data, not part of a name.
+            only["name"], only["colors"] = strip_colour_from_name(
+                only["name"], only.get("colors") or [])
+            merged.append(only)
             continue
 
         # Canonical record = the one with the most populated spec fields.
@@ -426,6 +514,8 @@ def merge_models(bags):
             # title, so recover it from the part we stripped.
             [m.group(0).strip(" -–—|,:/") for b in group
              for m in [TRAILING_COLOUR.search(b["name"])] if m]))
+        out["name"], out["colors"] = strip_colour_from_name(
+            out["name"], out["colors"])
         out["sizes"] = list(dict.fromkeys(s for b in group for s in b["sizes"]))
         out["materials"] = list(dict.fromkeys(m for b in group for m in b["materials"]))
         out["features"] = list(dict.fromkeys(f for b in group for f in b["features"]))
@@ -457,8 +547,19 @@ def main():
             "slug": payload["slug"], "name": payload["name"],
             "domain": payload["domain"], "fetched_at": payload.get("fetched_at"),
         }
+        # Optional — produced by `fetch.py --collections`. Absent for brands
+        # whose shelving has not been crawled, and the keyword path still works.
+        hints = {}
+        hint_path = os.path.join(COLLECTIONS, f"{payload['slug']}.json")
+        if os.path.exists(hint_path):
+            try:
+                with open(hint_path) as f:
+                    hints = json.load(f).get("products", {})
+            except (json.JSONDecodeError, KeyError):
+                hints = {}
+
         for product in payload.get("products", []):
-            bag, why = build(product, brand)
+            bag, why = build(product, brand, hints.get(str(product.get("id"))))
             if bag:
                 bags.append(bag)
             else:
@@ -467,6 +568,24 @@ def main():
     before = len(bags)
     bags = merge_models(bags)
     bags.sort(key=lambda b: (b["brand"].lower(), b["name"].lower()))
+
+    # URLs come from the merged model name, not from the surviving Shopify
+    # handle. Merging picks whichever product had the most specs as the base,
+    # so the handle can easily be a colourway — the PRVKE 31L was landing on
+    # /bags/wandrd/prvke-31l-in-high-gloss-black/ while the page itself was
+    # about all sixteen colourways. `id` stays put because it keys the
+    # enrichment cache and the price ledger; only the permalink is derived.
+    used = {}
+    for bag in bags:
+        slug = re.sub(r"-+", "-",
+                      re.sub(r"[^a-z0-9]+", "-", bag["name"].lower())).strip("-")
+        if not slug:
+            slug = bag["id"].split("__", 1)[-1]
+        key = (bag["brand_slug"], slug)
+        used[key] = used.get(key, 0) + 1
+        if used[key] > 1:                 # two models, one name — keep both
+            slug = f"{slug}-{used[key]}"
+        bag["slug"] = slug
 
     def coverage(field):
         n = sum(1 for b in bags if b.get(field) is not None)

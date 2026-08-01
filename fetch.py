@@ -34,6 +34,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -42,6 +43,11 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RAW = os.path.join(HERE, "raw")
+# Collection membership lives under data/, not raw/. It is small, changes
+# only when a brand restructures its site, and normalize.py needs it in CI —
+# raw/ is gitignored, so keeping it there would silently strip category ground
+# truth from every nightly run.
+COLLECTIONS = os.path.join(HERE, "data", "collections")
 LOG = os.path.join(HERE, "data", "fetch-log.json")
 # Sharded runs each write their own slice of the log; --merge-logs folds them
 # back together in the job that assembles the artifacts.
@@ -179,6 +185,146 @@ def fetch_brand(brand, pacer):
     return result
 
 
+# --- collection membership --------------------------------------------------
+#
+# Keyword classification reads the product title and guesses. A store's own
+# collections are not a guess: WANDRD shelves "PRVKE Zip 21L" under /backpacks
+# even though nothing in the title, product_type or tags says so, and it shelves
+# zipper pullers under /accessories. That is ground truth from the only party
+# who actually knows.
+#
+# Only collections whose name maps to something is worth a request, so this
+# fetches a handful per brand rather than all 116.
+
+COLLECTION_CATEGORY = [
+    ("sling",           r"sling|crossbody"),
+    ("hip-pack",        r"hip pack|fanny|waist pack|belt bag|bum bag"),
+    ("duffel",          r"duffel|duffle|gym bag"),
+    ("luggage",         r"luggage|suitcase|carry[- ]on|roller|spinner"),
+    ("tote",            r"tote|shopper"),
+    ("messenger",       r"messenger|courier|satchel"),
+    ("briefcase",       r"briefcase|portfolio"),
+    ("camera-bag",      r"camera bag|camera backpack|photo bag"),
+    ("hiking-pack",     r"hiking|backpacking|trekking"),
+    ("travel-backpack", r"travel pack|travel backpack"),
+    ("daypack",         r"backpack|daypack|rucksack"),
+    ("pouch",           r"pouch|dopp|toiletry|organi[sz]er"),
+]
+
+# Collections that mean "this is a bag" without saying which kind.
+GENERIC_BAG = re.compile(r"\bbags?\b", re.I)
+
+# Collections that mean "this is not a bag at all" — the negative signal that
+# keeps zipper pullers and camera cubes out of a bag index.
+#
+# Checked *after* GENERIC_BAG, because plenty of bag collections are named for
+# an accessory they relate to: "Carry Strap Bags" and "Camera Cube Compatible"
+# are both shelves of bags, and matching `strap` or `cube` first threw real
+# packs out of the index.
+ACCESSORY = re.compile(
+    r"accessor|apparel|strap|cube|divider|insert|sticker|gift|"
+    r"cards?$|patch|pull(?:er)?s?$|clothing|tee|hat", re.I)
+
+# Colour, sale and marketing collections carry no category signal, and "all"
+# is every product in the store — a big request for nothing.
+NOISE = re.compile(
+    r"^\d|off$|%|sale|bundle|best|new\b|featured|gift|upsell|waitlist|"
+    r"^all(?:[- ]products)?$|collection$|restock|final|clearance", re.I)
+
+
+def collection_category(name):
+    for category, pattern in COLLECTION_CATEGORY:
+        if re.search(pattern, name, re.I):
+            return category
+    return None
+
+
+def fetch_collections(brand, pacer):
+    """Map product id -> {category, is_bag} using the store's own shelving."""
+    domain = brand["domain"]
+    out = {"slug": brand["slug"], "domain": domain,
+           "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+           "collections": [], "products": {}}
+
+    pacer.wait()
+    status, _, body = get(f"https://{domain}/collections.json?limit=250")
+    if status != 200:
+        out["status"] = f"http_{status}"
+        return out
+    try:
+        listing = json.loads(body).get("collections", [])
+    except json.JSONDecodeError:
+        out["status"] = "bad_json"
+        return out
+
+    wanted = []
+    for c in listing:
+        handle = c.get("handle") or ""
+        title = c.get("title") or ""
+        name = f"{handle} {title}"
+        if NOISE.search(handle) or NOISE.search(title):
+            continue
+        category = collection_category(name)
+        if category:
+            wanted.append((handle, category, True))
+        elif GENERIC_BAG.search(name):
+            wanted.append((handle, None, True))
+        elif ACCESSORY.search(name):
+            wanted.append((handle, None, False))
+
+    print(f"    {len(listing)} collections, {len(wanted)} carry a signal",
+          flush=True)
+
+    for handle, category, is_bag in wanted:
+        page, seen = 1, 0
+        while page <= 4:
+            pacer.wait()
+            url = (f"https://{domain}/collections/{handle}/products.json"
+                   f"?limit={PAGE_LIMIT}&page={page}")
+            status, _, body = get(url)
+            if status != 200:
+                break
+            try:
+                batch = json.loads(body).get("products", [])
+            except json.JSONDecodeError:
+                break
+            if not batch:
+                break
+            for product in batch:
+                pid = str(product.get("id"))
+                entry = out["products"].setdefault(
+                    pid, {"category": None, "bag_votes": 0,
+                          "accessory_votes": 0, "in": []})
+                entry["in"].append(handle)
+                if category and not entry["category"]:
+                    entry["category"] = category
+                # Votes, not last-write-wins. Products land in several
+                # collections at once, and being shelved under /backpacks is a
+                # much stronger statement than also appearing under
+                # /camera-cube-compatible.
+                if is_bag:
+                    entry["bag_votes"] += 1
+                else:
+                    entry["accessory_votes"] += 1
+                seen += 1
+            if len(batch) < PAGE_LIMIT:
+                break
+            page += 1
+        out["collections"].append(
+            {"handle": handle, "category": category, "is_bag": is_bag,
+             "products": seen})
+
+    # Resolve the votes once, so normalize.py reads a decision rather than
+    # re-implementing the tie-break. Majority, not "any positive vote": broad
+    # shelves like /all-bags sweep in accessories too, so a zipper puller can
+    # pick up a single bag vote against seven accessory ones and win.
+    for entry in out["products"].values():
+        entry["is_bag"] = entry["bag_votes"] > entry["accessory_votes"]
+
+    out["status"] = "ok"
+    return out
+
+
 def parse_shard(spec):
     """'2/4' -> (2, 4). Returns (0, 1) — the whole list — when unset."""
     if not spec:
@@ -228,6 +374,8 @@ def main():
                     help="INDEX/COUNT — take every COUNTth brand, offset INDEX")
     ap.add_argument("--merge-logs", action="store_true",
                     help="fold shard logs into fetch-log.json and exit")
+    ap.add_argument("--collections", action="store_true",
+                    help="fetch collection membership (category ground truth)")
     args = ap.parse_args()
 
     os.makedirs(RAW, exist_ok=True)
@@ -241,6 +389,28 @@ def main():
     if args.only:
         wanted = {s.strip() for s in args.only.split(",") if s.strip()}
         brands = [b for b in brands if b["slug"] in wanted]
+
+    if args.collections:
+        os.makedirs(COLLECTIONS, exist_ok=True)
+        pacer = Pacer(args.delay)
+        for i, brand in enumerate(brands, 1):
+            out = os.path.join(COLLECTIONS, f"{brand['slug']}.json")
+            if os.path.exists(out) and not args.force:
+                print(f"[{i}/{len(brands)}] {brand['name']}: cached, skipping")
+                continue
+            # Skip brands whose catalogue we could not fetch — no products to
+            # classify means no point spending requests on their shelving.
+            if not os.path.exists(os.path.join(RAW, f"{brand['slug']}.json")):
+                print(f"[{i}/{len(brands)}] {brand['name']}: no catalogue, skipping")
+                continue
+            print(f"[{i}/{len(brands)}] {brand['name']} collections ...",
+                  flush=True)
+            res = fetch_collections(brand, pacer)
+            with open(out, "w") as f:
+                json.dump(res, f, indent=1)
+            print(f"    -> {res['status']}, {len(res['products'])} products "
+                  f"mapped", flush=True)
+        return
 
     index, count = parse_shard(args.shard)
     # Stride rather than contiguous blocks: brands are roughly ordered by how
