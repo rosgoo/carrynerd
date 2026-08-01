@@ -133,6 +133,14 @@ jobs:
       - name: Track prices
         run: python3 track_prices.py --events-out data/price-events.json
 
+      # The gate. Runs before the commit, so a parser that ate half the index
+      # fails the job instead of publishing and getting recrawled. Compares
+      # against the last committed catalogue, which is the copy currently live.
+      # A legitimate large change — a merge fix, a stricter classifier — needs
+      # a one-off --max-drop and a human deciding it is right.
+      - name: Validate
+        run: python3 validate.py
+
       - name: Install alert matcher dependencies
         run: pip install --quiet -r alerts/requirements.txt
 

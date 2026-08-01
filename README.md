@@ -47,6 +47,7 @@ python3 fetch.py                # pull catalogues       (~3 requests/brand)
 python3 fetch.py --collections  # category ground truth (~10 requests/brand)
 python3 normalize.py            # build data/bags.json
 python3 enrich.py               # fill dimensions       (~1 request/product)
+python3 validate.py             # quality gate — exits 1 on a bad parse
 
 npm install
 npm run dev                     # http://localhost:4321
@@ -63,6 +64,28 @@ costs no requests.
 The crawl scripts are stdlib-only and stay that way — they have to run
 anywhere. `npm` is for the site, and `alerts/requirements.txt` (one package) is
 for the alert matcher.
+
+## Quality gate
+
+`validate.py` runs after the pipeline and before the nightly commit, because
+the commit deploys. It checks two things:
+
+- **Structure**, absolutely: required fields, unique permalinks (a collision
+  means two models generate the same page and one silently wins), dimensions
+  that parse, values inside physically plausible bounds.
+- **Regression**, against the last committed `data/bags.json` — which is the
+  copy currently live. Bag and SKU counts must not fall more than 25%, no
+  brand may vanish, and no coverage percentage may drop more than 10 points.
+
+A single implausible value is a warning; a lot of them at once is a failure,
+because that is the difference between a brand publishing a packed-box weight
+and a parser reading millimetres as centimetres. A legitimate large change —
+a merge fix, a stricter classifier — needs `--max-drop` and a human deciding
+it is correct.
+
+Rejected products are quarantined in `data/rejected.json` with their titles,
+types and URLs rather than reduced to a count, so the classifier can be
+audited by reading a file instead of re-deriving the evidence.
 
 ## Nightly crawl
 

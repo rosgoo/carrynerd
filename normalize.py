@@ -21,11 +21,15 @@ import json
 import os
 import re
 import sys
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RAW = os.path.join(HERE, "raw")
 COLLECTIONS = os.path.join(HERE, "data", "collections")
 OUT = os.path.join(HERE, "data", "bags.json")
+# Dropped products, kept so the classifier can be audited rather than
+# guessed at — a count says 141 were dropped, this says which.
+REJECTS = os.path.join(HERE, "data", "rejected.json")
 
 CM_PER_IN = 2.54
 G_PER_LB = 453.592
@@ -66,6 +70,7 @@ NOT_A_BAG = re.compile(
     r"mugs?\b|tumblers?|notebooks?|journals?|pens?\b|sunglass(?:es)?|"
     r"watch(?:es)?\b|towels?|blankets?|pillows?|tents?\b|sleeping bags?|stoves?|"
     r"trekking poles?|inserts?\b|packing cubes?|camera cubes?|dividers?|"
+    r"luggage tags?|bag tags?|"
     r"zip(?:per)? pull(?:er)?s?|playing cards?|rain ?(?:covers?|fly|flies)|repairs?|"
     r"warranty|spares?|replacements?|samples?)\b",
     re.I,
@@ -380,6 +385,14 @@ def build(product, brand, hint=None):
     color_idx = option_index(options, r"colou?r|finish|colorway")
     size_idx = option_index(options, r"size|capacity|volume|litre|liter")
 
+    # Per-colourway photography, already in the feed — no extra requests. Most
+    # variants carry featured_image outright; the images[] array also tags
+    # entries with variant_ids, which covers the rest.
+    by_variant_image = {}
+    for img in product.get("images") or []:
+        for vid in img.get("variant_ids") or []:
+            by_variant_image.setdefault(vid, img.get("src"))
+
     variants, colors, sizes, prices = [], [], [], []
     for v in product.get("variants") or []:
         opts = [v.get("option1"), v.get("option2"), v.get("option3")]
@@ -411,6 +424,8 @@ def build(product, brand, hint=None):
             "compare_at": compare,
             "available": bool(v.get("available")),
             "grams": v.get("grams") or None,
+            "image": ((v.get("featured_image") or {}).get("src")
+                      or by_variant_image.get(v.get("id"))),
         })
 
     # volume: title > size option > body copy. Most specific wins.
@@ -621,7 +636,7 @@ def main():
     if not files:
         sys.exit("no raw catalogs — run fetch.py first")
 
-    bags, rejects = [], {}
+    bags, rejects, quarantine = [], {}, []
     for path in files:
         with open(path) as f:
             payload = json.load(f)
@@ -646,6 +661,19 @@ def main():
                 bags.append(bag)
             else:
                 rejects[why] = rejects.get(why, 0) + 1
+                # Quarantine, not just a tally. A count tells you 141 products
+                # were dropped; it does not tell you that they were all one
+                # brand whose titles use a plural the classifier could not
+                # match. Keeping the rows makes the classifier auditable.
+                quarantine.append({
+                    "brand_slug": brand["slug"],
+                    "reason": why,
+                    "title": product.get("title"),
+                    "product_type": product.get("product_type") or None,
+                    "tags": (product.get("tags") or [])[:6],
+                    "url": f"https://{brand['domain']}/products/"
+                           f"{product.get('handle') or ''}",
+                })
 
     before = len(bags)
     bags = merge_models(bags)
@@ -675,6 +703,7 @@ def main():
 
     meta = {
         "generated_from": "public Shopify /products.json feeds",
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "bag_count": len(bags),
         "brand_count": len({b["brand_slug"] for b in bags}),
         "sku_count": sum(b["variant_count"] for b in bags),
@@ -689,8 +718,14 @@ def main():
     with open(OUT, "w") as f:
         json.dump({"meta": meta, "bags": bags}, f, separators=(",", ":"))
 
+    quarantine.sort(key=lambda r: (r["reason"], r["brand_slug"], r["title"] or ""))
+    with open(REJECTS, "w") as f:
+        json.dump({"generated_at": meta["generated_at"],
+                   "counts": rejects, "rejected": quarantine}, f, indent=1)
+
     print(json.dumps(meta, indent=2))
     print(f"\nwrote {OUT}")
+    print(f"wrote {REJECTS} ({len(quarantine)} quarantined products)")
 
 
 if __name__ == "__main__":

@@ -125,8 +125,19 @@ function nullsLast(x, y, dir) {
 
 /* ---------- rendering ---------- */
 
+// Filtering for brown and being shown the black colourway is a small lie.
+// When a colour filter is on, the card leads with a variant that actually
+// matches it — the feed ships per-colourway photography, so this costs nothing.
+function shotFor(b) {
+  if (!S.colors.size) return { src: b.image, label: null };
+  const hit = (b.variants || []).find(
+    v => v.image && S.colors.has(v.color_family));
+  return hit ? { src: hit.image, label: hit.color } : { src: b.image, label: null };
+}
+
 function card(b) {
   const on = compare.has(b.id);
+  const shot = shotFor(b);
   const swatches = (b.colors || []).slice(0, 5)
     .map(c => `<i class="dot" title="${esc(c)}" style="background:${cssColor(c)}"></i>`).join("");
   const extra = (b.colors || []).length > 5 ? `<em>+${b.colors.length - 5}</em>` : "";
@@ -137,8 +148,10 @@ function card(b) {
 
   return `<article class="card${on ? " sel" : ""}" data-id="${esc(b.id)}">
     <div class="shot" data-detail>
-      ${b.image ? `<img loading="lazy" src="${esc(b.image)}" alt="${esc(b.name)}">`
+      ${shot.src ? `<img loading="lazy" src="${esc(shot.src)}" alt="${esc(b.name)}${
+          shot.label ? ` in ${esc(shot.label)}` : ""}">`
                 : '<span class="none">NO IMAGE</span>'}
+      ${shot.label ? `<div class="wayname">${esc(shot.label)}</div>` : ""}
       <div class="cat">${esc(CAT_LABELS[b.category] || b.category)}</div>
       <div class="flags">${sale}${oos}</div>
     </div>
@@ -375,7 +388,9 @@ function openDetail(id) {
     <span>${val ?? "—"}${prov ? `<i class="prov">${esc(prov)}</i>` : ""}</span></div>`;
 
   const variants = (b.variants || []).map(v => `<tr>
-      <td>${esc(v.color || v.title || "—")}</td>
+      <td class="waycell">${v.image
+          ? `<img class="waythumb" loading="lazy" src="${esc(v.image)}" alt="">` : ""}${
+        esc(v.color || v.title || "—")}</td>
       <td>${esc(v.sku || "—")}</td>
       <td>${v.price ? fmtPrice(v.price) : "—"}${
         v.compare_at && v.price && v.compare_at > v.price

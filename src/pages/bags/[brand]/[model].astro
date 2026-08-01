@@ -217,7 +217,10 @@ const description =
           <tbody>
             {bag.variants.map((v) => (
               <tr>
-                <td>{v.color || v.title || '—'}</td>
+                <td class="waycell">
+                  {v.image && <img class="waythumb" src={v.image} alt="" loading="lazy" width="26" height="26" />}
+                  {v.color || v.title || '—'}
+                </td>
                 <td class="mono">{v.sku || '—'}</td>
                 <td>
                   {fmtPrice(v.price)}

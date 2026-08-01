@@ -622,3 +622,19 @@ td.instock { color: var(--ok); }
   width: 11px; height: 11px; flex-shrink: 0; margin-right: 7px;
   border: 1px solid var(--line-2);
 }
+
+/* Colourway name badge, shown when a colour filter swapped the card photo for
+   a matching variant — otherwise you are told "brown" and shown black. */
+.wayname {
+  position: absolute; left: 0; bottom: 0;
+  background: var(--shot-chip); color: var(--shot-ink);
+  border-top: 1px solid var(--shot-line); border-right: 1px solid var(--shot-line);
+  padding: 2px 7px; font-size: 9px; letter-spacing: .06em;
+  backdrop-filter: blur(2px); max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.waycell { display: flex; align-items: center; gap: 8px; }
+.waythumb {
+  width: 26px; height: 26px; object-fit: contain; flex-shrink: 0;
+  background: var(--shot-bg); border: 1px solid var(--shot-line);
+}
