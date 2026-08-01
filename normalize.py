@@ -71,22 +71,88 @@ NOT_A_BAG = re.compile(
     re.I,
 )
 
+# Ordered, first match wins, so the specific fabric beats the generic fibre —
+# waxed canvas before canvas, recycled polyester before polyester.
 MATERIALS = [
     ("CORDURA",        r"\bcordura\b"),
     ("X-Pac",          r"\bx-?pac\b|\bvx\d{2}\b"),
-    ("Dyneema",        r"\bdyneema\b|\bdcf\b|\bultra ?200\b|\bultra ?400\b"),
+    ("Dyneema",        r"\bdyneema\b|\bdcf\b"),
+    ("UltraWeave",     r"\bultra ?(?:weave|100|200|400|800)\b|\bultra\b(?!\s*light)"),
     ("ECOPAK",         r"\becopak\b|\bepx\d{2}\b"),
     ("Ballistic nylon",r"\bballistic\b"),
     ("Ripstop nylon",  r"\bripstop\b"),
     ("Robic",          r"\brobic\b"),
     ("Sailcloth",      r"\bsailcloth\b|\bhalcyon\b"),
-    ("Canvas",         r"\bcanvas\b|\bwaxed cotton\b"),
+    ("Waxed canvas",   r"\bwaxed\s+(?:canvas|cotton)\b|\bwax(?:ed)?\s+cotton\b"),
+    ("Canvas",         r"\bcanvas\b"),
+    ("Twill",          r"\btwill\b"),
+    ("Suede",          r"\bsuede\b"),
     ("Leather",        r"\bfull[- ]grain leather\b|\bleather\b"),
-    ("Tarpaulin",      r"\btarpaulin\b|\btarpaulin\b|\bTPU[- ]coated\b"),
+    ("Tarpaulin",      r"\btarpaulin\b|\bTPU[- ]coated\b"),
     ("Recycled polyester", r"\brecycled (?:pet|polyester)\b|\brepreve\b"),
     ("Polyester",      r"\bpolyester\b"),
     ("Nylon",          r"\bnylon\b"),
 ]
+
+# --- colour families --------------------------------------------------------
+#
+# Brands name colourways for places and moods, not colours: "Wasatch Green",
+# "Atacama Clay", "Rhone Burgundy". Filtering on the raw strings is useless —
+# nobody searches for Atacama. So each name is matched to a family, and the
+# brand's own word for the colour is the evidence.
+#
+# Deliberately not derived from the product photo. The brand has already stated
+# the colour in words; a dominant-colour pass over a photo shot on white has to
+# guess which region is "the" colour, and gets confounded by lighting, shadow
+# and material sheen. It would be more expensive *and* less accurate, and it
+# would replace a published fact with an estimate — which is the one thing this
+# index does not do.
+#
+# Ordered: patterns first (a "Multicam Black" is a pattern, not a black), then
+# colours. A name that states no colour gets no family rather than a guess.
+COLOUR_FAMILIES = [
+    ("multi",  r"\b(?:multicam|camo|camouflage|print|plaid|floral|rainbow|"
+               r"tie[- ]?dye|grid|geo)\b"),
+    ("black",  r"\b(?:black|jet|midnight|onyx|obsidian|graphite|ink|noir|"
+               r"nightshade|carbon)\b"),
+    ("white",  r"\b(?:white|cream|bone|ivory|chalk|snow|alabaster|ice)\b"),
+    ("grey",   r"\b(?:gr[ae]y|charcoal|slate|ash|stone|silver|gunmetal|steel|"
+               r"granite|concrete|cobblestone|castle ?rock|chromium|fog|"
+               r"pewter|smoke)\b"),
+    ("brown",  r"\b(?:brown|tan|khaki|coyote|sand|sandstone|clay|camel|"
+               r"chestnut|walnut|mocha|espresso|rust|bronze|natural|beige|"
+               r"taupe|earth|desert|dune|saddle|cognac|whisk?ey|copper|sienna|"
+               r"elmwood|umber|tobacco|caramel|oat)\b"),
+    ("blue",   r"\b(?:blue|navy|teal|cobalt|indigo|denim|aegean|azure|"
+               r"sapphire|marine|ocean|caribbean|glacier)\b"),
+    ("green",  r"\b(?:green|olive|sage|forest|moss|hunter|ranger|fern|jade|"
+               r"emerald|pine|spruce|juniper|woodland|meadow|cypress|"
+               r"seaweed)\b"),
+    ("red",    r"\b(?:red|burgundy|wine|maroon|crimson|oxblood|cherry|"
+               r"scarlet|brick|garnet|salsa|ruby)\b"),
+    ("orange", r"\b(?:orange|amber|coral|terracotta|apricot|tangerine|"
+               r"persimmon|sunset)\b"),
+    ("yellow", r"\b(?:yellow|mustard|gold|dijon|lemon|ochre|honey)\b"),
+    ("purple", r"\b(?:purple|plum|violet|lavender|aubergine|eggplant|lilac|"
+               r"mauve|huckleberry|loganberry|peri|amethyst)\b"),
+    ("pink",   r"\b(?:pink|blush|rose|magenta|fuchsia|salmon)\b"),
+]
+
+
+def colour_family(name):
+    """
+    The family a colourway name belongs to, or None when it names no colour.
+    Material words are stripped first: plenty of brands put the fabric in the
+    colour field ("Heritage Suede", "Castlerock Twill", "X-Pac"), and those are
+    a material statement, not a colour one.
+    """
+    text = name or ""
+    for _, pattern in MATERIALS:
+        text = re.sub(pattern, " ", text, flags=re.I)
+    for family, pattern in COLOUR_FAMILIES:
+        if re.search(pattern, text, re.I):
+            return family
+    return None
 
 FEATURES = [
     ("laptop_sleeve",    r"\blaptop (?:sleeve|compartment|pocket)\b|\bpadded laptop\b"),
@@ -337,6 +403,9 @@ def build(product, brand, hint=None):
             "sku": v.get("sku") or None,
             "title": v.get("title"),
             "color": color,
+            # The family is what makes colour filterable. Nobody searches for
+            # "Atacama"; they search for brown.
+            "color_family": colour_family(color or v.get("title")),
             "size": size,
             "price": price,
             "compare_at": compare,
@@ -397,7 +466,17 @@ def build(product, brand, hint=None):
         "sizes": sizes,
         "variant_count": len(variants),
         "variants": variants,
-        "materials": detect(blob, MATERIALS),
+        "color_families": sorted({f for f in (
+            [colour_family(c) for c in colors]
+            + [v["color_family"] for v in variants]) if f}),
+        # Colourway names are a real source of material facts — brands ship a
+        # "Heritage Suede" or an "X-Pac Black" and never mention the fabric in
+        # the description at all.
+        "materials": sorted(set(detect(blob, MATERIALS))
+                            | {m for c in colors
+                               for m in detect(c, MATERIALS)}
+                            | {m for v in variants if v.get("title")
+                               for m in detect(v["title"], MATERIALS)}),
         "features": detect(blob, FEATURES),
         "tags": tags,
         "updated_at": product.get("updated_at"),
@@ -517,7 +596,10 @@ def merge_models(bags):
         out["name"], out["colors"] = strip_colour_from_name(
             out["name"], out["colors"])
         out["sizes"] = list(dict.fromkeys(s for b in group for s in b["sizes"]))
-        out["materials"] = list(dict.fromkeys(m for b in group for m in b["materials"]))
+        out["materials"] = sorted({m for b in group for m in b["materials"]})
+        out["color_families"] = sorted(
+            {f for b in group for f in (b.get("color_families") or [])}
+            | {f for f in (colour_family(c) for c in out["colors"]) if f})
         out["features"] = list(dict.fromkeys(f for b in group for f in b["features"]))
         out["tags"] = list(dict.fromkeys(t for b in group for t in b["tags"]))
 

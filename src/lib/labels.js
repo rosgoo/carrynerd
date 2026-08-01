@@ -36,6 +36,31 @@ export const SOURCE_LABELS = {
   collection: "the brand's own shelving",
 };
 
+/* Colour families. Brands name colourways for places and moods — "Wasatch
+   Green", "Atacama Clay" — so the raw names are unfilterable; nobody searches
+   for Atacama. normalize.py maps each to one of these. */
+export const COLOUR_LABELS = {
+  black: 'Black', grey: 'Grey', white: 'White / cream', brown: 'Brown / tan',
+  blue: 'Blue / navy', green: 'Green / olive', red: 'Red / burgundy',
+  orange: 'Orange', yellow: 'Yellow / gold', purple: 'Purple',
+  pink: 'Pink', multi: 'Camo / print',
+};
+
+// One representative swatch per family, legible on the light and dark themes.
+export const COLOUR_SWATCH = {
+  black: '#141514', grey: '#8a8d8a', white: '#f0ede6', brown: '#9a7550',
+  blue: '#2f5ea8', green: '#4a6b3f', red: '#a8322b', orange: '#d4601f',
+  yellow: '#d9b02c', purple: '#6b4f8f', pink: '#c98099',
+  multi: 'linear-gradient(135deg,#4a5335 0 33%,#8a6f4b 33% 66%,#3a3d3c 66%)',
+};
+
+export const COLOUR_ORDER = [
+  'black', 'grey', 'white', 'brown', 'blue', 'green', 'red', 'orange',
+  'yellow', 'purple', 'pink', 'multi',
+];
+
+export const colourLabel = (c) => COLOUR_LABELS[c] ?? c;
+
 export const catLabel = (c) => CAT_LABELS[c] ?? c;
 export const featureLabel = (f) => FEATURE_LABELS[f] ?? f;
 export const sourceLabel = (s) => (s ? SOURCE_LABELS[s] ?? s : null);

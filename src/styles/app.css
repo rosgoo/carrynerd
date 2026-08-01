@@ -19,6 +19,14 @@
           Consolas, "Liberation Mono", monospace;
   --rail: 264px;
   --head: 52px;
+
+  /* The image plate is white in both themes and is deliberately NOT
+     redefined in the light-theme block below — product photography is shot
+     on white, so anything else puts a visible box around every opaque JPEG. */
+  --shot-bg:   #ffffff;
+  --shot-ink:  #6b6f6d;
+  --shot-chip: rgba(255,255,255,.84);
+  --shot-line: #ddd9d2;
 }
 
 :root[data-theme="light"] {
@@ -229,34 +237,44 @@ main { flex: 1; min-width: 0; }
 .card:hover { border-color: var(--line-2); }
 .card.sel { border-color: var(--accent); }
 
-/* Product shots are transparent PNGs and a great many bags are black, so the
-   plate stays light in both themes — on a dark panel they vanish entirely. */
+/* Product shots sit on pure white, in both themes, with no texture.
+   Brands shoot on white and most of these images are opaque JPEGs, so any
+   plate colour or graph-paper pattern shows up as a hard white rectangle
+   floating inside it. Matching the photography exactly is the only way the
+   seam disappears — the plate has to be #fff, not a warm off-white.
+   The transparent PNGs land on white too, which is where they were designed
+   to sit anyway. */
 .shot {
   aspect-ratio: 4 / 3; border-bottom: 1px solid var(--line);
-  background-color: #eceae5;
-  background-image: linear-gradient(rgba(0,0,0,.045) 1px, transparent 1px),
-                    linear-gradient(90deg, rgba(0,0,0,.045) 1px, transparent 1px);
-  background-size: 16px 16px;
+  background-color: var(--shot-bg);
   display: flex; align-items: center; justify-content: center;
   overflow: hidden; position: relative; cursor: pointer;
 }
 .shot img { width: 100%; height: 100%; object-fit: contain; padding: 12px; }
-.shot .none { color: var(--ink-mute); font-size: 10px; letter-spacing: .1em; }
+.shot .none { color: var(--shot-ink); font-size: 10px; letter-spacing: .1em; }
 
+/* Chips sit on the white plate, so they are fixed light values rather than
+   theme variables — `--panel` is near-white in the light theme and would
+   vanish against it. */
 .cat {
   position: absolute; top: 0; left: 0;
-  background: var(--panel); border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
+  background: var(--shot-chip); border-right: 1px solid var(--shot-line);
+  border-bottom: 1px solid var(--shot-line);
   padding: 3px 7px; font-size: 9px; letter-spacing: .09em;
-  text-transform: uppercase; color: var(--ink-dim);
+  text-transform: uppercase; color: var(--shot-ink);
+  backdrop-filter: blur(2px);
 }
 .flags { position: absolute; top: 0; right: 0; display: flex; }
 .flag {
   padding: 3px 7px; font-size: 9px; letter-spacing: .08em; font-weight: 600;
-  border-left: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  border-left: 1px solid var(--shot-line);
+  border-bottom: 1px solid var(--shot-line);
 }
 .flag.sale { background: var(--accent); color: var(--accent-ink); }
-.flag.oos { background: var(--panel); color: var(--ink-mute); }
+.flag.oos {
+  background: var(--shot-chip); color: var(--shot-ink);
+  backdrop-filter: blur(2px);
+}
 
 .cbody { padding: 9px 10px 0; cursor: pointer; }
 .cbrand { font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-mute); }
@@ -365,7 +383,10 @@ td.nil, .nil { color: var(--ink-mute); }
   position: sticky; left: 0;
 }
 .cmptable tr.diff td { box-shadow: inset 0 -2px 0 var(--accent); }
-.cmphead img { width: 100%; height: 84px; object-fit: contain; display: block; margin-bottom: 6px; }
+.cmphead img {
+  width: 100%; height: 84px; object-fit: contain; display: block;
+  margin-bottom: 6px; background: var(--shot-bg); padding: 4px;
+}
 .best { color: var(--accent); font-weight: 700; }
 
 .drow { display: flex; justify-content: space-between; gap: 12px; padding: 7px 14px; border-bottom: 1px solid var(--line); }
@@ -445,12 +466,12 @@ a.brand { text-decoration: none; }
   border-bottom: 1px solid var(--line);
 }
 .modelshot {
-  aspect-ratio: 1; background: var(--panel);
+  aspect-ratio: 1; background: var(--shot-bg);
   border-right: 1px solid var(--line);
   display: flex; align-items: center; justify-content: center;
 }
 .modelshot img { width: 100%; height: 100%; object-fit: contain; padding: 24px; }
-.modelshot .none { color: var(--ink-mute); font-size: 10px; letter-spacing: .1em; }
+.modelshot .none { color: var(--shot-ink); font-size: 10px; letter-spacing: .1em; }
 .modelmeta { padding: 16px 0 0; display: flex; flex-direction: column; }
 .modelmeta .cbrand { padding: 0 14px 4px; }
 
@@ -595,3 +616,9 @@ td.instock { color: var(--ok); }
 .sitefoot a { color: var(--ink-dim); text-decoration: none; letter-spacing: .06em; text-transform: uppercase; }
 .sitefoot a:hover { color: var(--accent); }
 .sitefoot span { flex: 1 1 320px; line-height: 1.6; }
+
+/* Colour-family swatch in the filter rail, next to the checkbox. */
+.check .sw {
+  width: 11px; height: 11px; flex-shrink: 0; margin-right: 7px;
+  border: 1px solid var(--line-2);
+}

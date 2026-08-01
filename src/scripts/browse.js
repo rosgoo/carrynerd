@@ -6,7 +6,8 @@
  * HTML generated at build time; this is the one interactive surface.
  */
 
-import { CAT_LABELS, FEATURE_LABELS } from '../lib/labels.js';
+import { CAT_LABELS, FEATURE_LABELS, COLOUR_LABELS, COLOUR_SWATCH,
+         COLOUR_ORDER } from '../lib/labels.js';
 
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -23,12 +24,20 @@ const bagHref = b => {
   return brand ? `/bags/${brand}/${slug}/` : "/";
 };
 
+// Every facet's state in one place. This mapping used to be re-declared in
+// four separate functions, which meant adding a facet meant remembering all
+// four.
+const facetSets = () => ({
+  cat: S.cats, brand: S.brands, feat: S.feats, mat: S.mats, color: S.colors,
+});
+
 let DATA = { meta: {}, bags: [] };
 let VIEW = "grid";
 const compare = new Set();
 
 const S = {
   q: "", cats: new Set(), brands: new Set(), feats: new Set(), mats: new Set(),
+  colors: new Set(),
   volMin: null, volMax: null, priceMin: null, priceMax: null,
   weightMin: null, weightMax: null, linearMax: null,
   presets: new Set(), stock: false, sale: false, sort: "brand",
@@ -74,6 +83,9 @@ function matches(b) {
   if (S.brands.size && !S.brands.has(b.brand_slug)) return false;
   if (S.feats.size && ![...S.feats].every(f => (b.features || []).includes(f))) return false;
   if (S.mats.size && ![...S.mats].some(m => (b.materials || []).includes(m))) return false;
+  // Any-of, like materials: picking black and green means "comes in either".
+  if (S.colors.size
+      && ![...S.colors].some(c => (b.color_families || []).includes(c))) return false;
   // Feature and material lists are only trustworthy once enrichment has read
   // the product page. Before that an empty list means "we never got a good
   // look", not "it doesn't have one" — see featuresUnknown() and the count.
@@ -199,14 +211,22 @@ function featuresUnknown(b) {
 function render() {
   const list = DATA.bags.filter(matches).sort(SORTS[S.sort] || SORTS.brand);
 
-  let caveat = "";
+  // Say so when a filter is dropping bags we simply have not established a
+  // value for, rather than silently returning a shorter list.
+  const unknown = [];
   if (S.feats.size || S.mats.size) {
-    const unsure = DATA.bags.filter(b => featuresUnknown(b) && !matches(b)).length;
-    if (unsure) {
-      caveat = ` · <em class="warnnote">${unsure} excluded — features not yet` +
-        ` detected on those, not known to be absent</em>`;
-    }
+    const n = DATA.bags.filter(b => featuresUnknown(b) && !matches(b)).length;
+    if (n) unknown.push(`${n} with no feature detection yet`);
   }
+  if (S.colors.size) {
+    const n = DATA.bags.filter(b => !(b.color_families || []).length
+                                    && !matches(b)).length;
+    if (n) unknown.push(`${n} whose colourway names state no colour`);
+  }
+  const caveat = unknown.length
+    ? ` · <em class="warnnote">excluded: ${unknown.join(", ")} — unknown, not` +
+      ` known to be absent</em>`
+    : "";
 
   $("#count").innerHTML = `<b>${list.length}</b> of ${DATA.bags.length} bags` +
     ` · ${new Set(list.map(b => b.brand_slug)).size} brands` +
@@ -243,6 +263,13 @@ function buildFacets() {
   $("#f-feat").innerHTML = count("feat", b => b.features)
     .map(([v, n]) => `<button class="check" data-f="feat" data-v="${esc(v)}" aria-pressed="false"><i></i>${
       esc(FEATURE_LABELS[v] || v)}<b>${n}</b></button>`).join("");
+
+  const colorCounts = new Map();
+  DATA.bags.forEach(b => (b.color_families || []).forEach(f =>
+    colorCounts.set(f, (colorCounts.get(f) || 0) + 1)));
+  $("#f-color").innerHTML = COLOUR_ORDER.filter(f => colorCounts.has(f))
+    .map(f => `<button class="check" data-f="color" data-v="${esc(f)}" aria-pressed="false"><i></i><span class="sw" style="background:${
+      COLOUR_SWATCH[f]}"></span>${esc(COLOUR_LABELS[f])}<b>${colorCounts.get(f)}</b></button>`).join("");
 
   $("#f-mat").innerHTML = count("mat", b => b.materials)
     .map(([v, n]) => `<button class="check" data-f="mat" data-v="${esc(v)}" aria-pressed="false"><i></i>${
@@ -390,7 +417,7 @@ function openDetail(id) {
 function syncURL() {
   const p = new URLSearchParams();
   if (S.q) p.set("q", S.q);
-  const sets = { cat: S.cats, brand: S.brands, feat: S.feats, mat: S.mats, preset: S.presets };
+  const sets = { ...facetSets(), preset: S.presets };
   for (const k in sets) if (sets[k].size) p.set(k, [...sets[k]].join(","));
   for (const k of ["volMin", "volMax", "priceMin", "priceMax", "weightMin", "weightMax", "linearMax"])
     if (S[k] != null) p.set(k, S[k]);
@@ -405,7 +432,7 @@ function loadURL() {
   const p = new URLSearchParams(location.search);
   S.q = p.get("q") || "";
   $("#q").value = S.q;
-  const sets = { cat: S.cats, brand: S.brands, feat: S.feats, mat: S.mats, preset: S.presets };
+  const sets = { ...facetSets(), preset: S.presets };
   for (const k in sets) (p.get(k) || "").split(",").filter(Boolean).forEach(v => sets[k].add(v));
   for (const k of ["volMin", "volMax", "priceMin", "priceMax", "weightMin", "weightMax", "linearMax"])
     if (p.has(k)) S[k] = Number(p.get(k));
@@ -427,7 +454,7 @@ function loadURL() {
 }
 
 function syncFacetButtons() {
-  const sets = { cat: S.cats, brand: S.brands, feat: S.feats, mat: S.mats };
+  const sets = facetSets();
   $$("[data-f]").forEach(el =>
     el.setAttribute("aria-pressed", sets[el.dataset.f]?.has(el.dataset.v) || false));
   $$("[data-preset]").forEach(el =>
@@ -446,8 +473,7 @@ function wire() {
   document.addEventListener("click", e => {
     const facet = e.target.closest("[data-f]");
     if (facet) {
-      const sets = { cat: S.cats, brand: S.brands, feat: S.feats, mat: S.mats };
-      const set = sets[facet.dataset.f];
+      const set = facetSets()[facet.dataset.f];
       set.has(facet.dataset.v) ? set.delete(facet.dataset.v) : set.add(facet.dataset.v);
       facet.setAttribute("aria-pressed", set.has(facet.dataset.v));
       return render();
@@ -503,7 +529,7 @@ function wire() {
       weightMin: null, weightMax: null, linearMax: null, stock: false,
       sale: false, sort: "brand",
     });
-    [S.cats, S.brands, S.feats, S.mats, S.presets].forEach(s => s.clear());
+    [S.cats, S.brands, S.feats, S.mats, S.colors, S.presets].forEach(s => s.clear());
     history.replaceState(null, "", location.pathname);
     loadURL();
     render();
