@@ -1,42 +1,362 @@
 [
-  { "slug": "aer",             "name": "Aer",                  "domain": "aersf.com" },
-  { "slug": "tortuga",         "name": "Tortuga",              "domain": "tortugabackpacks.com" },
-  { "slug": "evergoods",       "name": "EVERGOODS",            "domain": "evergoods.us" },
-  { "slug": "able-carry",      "name": "Able Carry",           "domain": "ablecarry.com" },
-  { "slug": "alpaka",          "name": "Alpaka",               "domain": "alpakagear.com" },
-  { "slug": "matador",         "name": "Matador",              "domain": "matadorup.com" },
-  { "slug": "topo-designs",    "name": "Topo Designs",         "domain": "topodesigns.com" },
-  { "slug": "chrome",          "name": "Chrome Industries",    "domain": "chromeindustries.com" },
-  { "slug": "pakt",            "name": "Pakt",                 "domain": "pakt.com" },
-  { "slug": "nomatic",         "name": "Nomatic",              "domain": "nomatic.com" },
-  { "slug": "wandrd",          "name": "WANDRD",               "domain": "wandrd.com" },
-  { "slug": "boundary",        "name": "Boundary Supply",      "domain": "boundarysupply.com" },
-  { "slug": "goruck",          "name": "GORUCK",               "domain": "goruck.com" },
-  { "slug": "cotopaxi",        "name": "Cotopaxi",             "domain": "cotopaxi.com" },
-  { "slug": "north-st",        "name": "North St. Bags",       "domain": "northstbags.com" },
-  { "slug": "mission-workshop","name": "Mission Workshop",     "domain": "missionworkshop.com" },
-  { "slug": "timbuk2",         "name": "Timbuk2",              "domain": "timbuk2.com" },
-  { "slug": "waterfield",      "name": "WaterField Designs",   "domain": "sfbags.com" },
-  { "slug": "baboon",          "name": "Baboon to the Moon",   "domain": "baboontothemoon.com" },
-  { "slug": "db",              "name": "Db Journey",           "domain": "dbjourney.com" },
-  { "slug": "brevite",         "name": "Brevite",              "domain": "brevite.co" },
-  { "slug": "moment",          "name": "Moment",               "domain": "shopmoment.com" },
-  { "slug": "lo-and-sons",     "name": "Lo & Sons",            "domain": "loandsons.com" },
-  { "slug": "dagne-dover",     "name": "Dagne Dover",          "domain": "dagnedover.com" },
-  { "slug": "calpak",          "name": "CALPAK",               "domain": "calpaktravel.com" },
-  { "slug": "beis",            "name": "BÉIS",                 "domain": "beistravel.com" },
-  { "slug": "monos",           "name": "Monos",                "domain": "monos.com" },
-  { "slug": "july",            "name": "July",                 "domain": "july.com" },
-  { "slug": "hyperlite",       "name": "Hyperlite Mountain Gear", "domain": "hyperlitemountaingear.com" },
-  { "slug": "gossamer-gear",   "name": "Gossamer Gear",        "domain": "gossamergear.com" },
-  { "slug": "zpacks",          "name": "Zpacks",               "domain": "zpacks.com" },
-  { "slug": "durston",         "name": "Durston Gear",         "domain": "durstongear.com" },
-  { "slug": "six-moon",        "name": "Six Moon Designs",     "domain": "sixmoondesigns.com" },
-  { "slug": "ula",             "name": "ULA Equipment",        "domain": "ula-equipment.com" },
-  { "slug": "trakke",          "name": "Trakke",               "domain": "trakke.co.uk" },
-  { "slug": "millican",        "name": "Millican",             "domain": "homeofmillican.com" },
-  { "slug": "wotancraft",      "name": "Wotancraft",           "domain": "wotancraft.com" },
-  { "slug": "heimplanet",      "name": "Heimplanet",           "domain": "heimplanet.com" },
-  { "slug": "coteetciel",      "name": "Côte&Ciel",            "domain": "coteetciel.com" },
-  { "slug": "rickshaw",        "name": "Rickshaw Bagworks",    "domain": "rickshawbags.com" }
+  {
+    "slug": "aer",
+    "name": "Aer",
+    "domain": "aersf.com"
+  },
+  {
+    "slug": "tortuga",
+    "name": "Tortuga",
+    "domain": "tortugabackpacks.com"
+  },
+  {
+    "slug": "evergoods",
+    "name": "EVERGOODS",
+    "domain": "evergoods.us"
+  },
+  {
+    "slug": "able-carry",
+    "name": "Able Carry",
+    "domain": "ablecarry.com"
+  },
+  {
+    "slug": "alpaka",
+    "name": "Alpaka",
+    "domain": "alpakagear.com"
+  },
+  {
+    "slug": "matador",
+    "name": "Matador",
+    "domain": "matadorup.com"
+  },
+  {
+    "slug": "topo-designs",
+    "name": "Topo Designs",
+    "domain": "topodesigns.com"
+  },
+  {
+    "slug": "chrome",
+    "name": "Chrome Industries",
+    "domain": "chromeindustries.com"
+  },
+  {
+    "slug": "pakt",
+    "name": "Pakt",
+    "domain": "pakt.com"
+  },
+  {
+    "slug": "nomatic",
+    "name": "Nomatic",
+    "domain": "nomatic.com"
+  },
+  {
+    "slug": "wandrd",
+    "name": "WANDRD",
+    "domain": "wandrd.com"
+  },
+  {
+    "slug": "boundary",
+    "name": "Boundary Supply",
+    "domain": "boundarysupply.com"
+  },
+  {
+    "slug": "goruck",
+    "name": "GORUCK",
+    "domain": "goruck.com"
+  },
+  {
+    "slug": "cotopaxi",
+    "name": "Cotopaxi",
+    "domain": "cotopaxi.com"
+  },
+  {
+    "slug": "north-st",
+    "name": "North St. Bags",
+    "domain": "northstbags.com"
+  },
+  {
+    "slug": "mission-workshop",
+    "name": "Mission Workshop",
+    "domain": "missionworkshop.com"
+  },
+  {
+    "slug": "timbuk2",
+    "name": "Timbuk2",
+    "domain": "timbuk2.com"
+  },
+  {
+    "slug": "waterfield",
+    "name": "WaterField Designs",
+    "domain": "sfbags.com"
+  },
+  {
+    "slug": "baboon",
+    "name": "Baboon to the Moon",
+    "domain": "baboontothemoon.com"
+  },
+  {
+    "slug": "db",
+    "name": "Db Journey",
+    "domain": "dbjourney.com"
+  },
+  {
+    "slug": "brevite",
+    "name": "Brevite",
+    "domain": "brevite.co"
+  },
+  {
+    "slug": "moment",
+    "name": "Moment",
+    "domain": "shopmoment.com"
+  },
+  {
+    "slug": "lo-and-sons",
+    "name": "Lo & Sons",
+    "domain": "loandsons.com"
+  },
+  {
+    "slug": "dagne-dover",
+    "name": "Dagne Dover",
+    "domain": "dagnedover.com"
+  },
+  {
+    "slug": "calpak",
+    "name": "CALPAK",
+    "domain": "calpaktravel.com"
+  },
+  {
+    "slug": "beis",
+    "name": "B\u00c9IS",
+    "domain": "beistravel.com"
+  },
+  {
+    "slug": "monos",
+    "name": "Monos",
+    "domain": "monos.com"
+  },
+  {
+    "slug": "july",
+    "name": "July",
+    "domain": "july.com"
+  },
+  {
+    "slug": "hyperlite",
+    "name": "Hyperlite Mountain Gear",
+    "domain": "hyperlitemountaingear.com"
+  },
+  {
+    "slug": "gossamer-gear",
+    "name": "Gossamer Gear",
+    "domain": "gossamergear.com"
+  },
+  {
+    "slug": "zpacks",
+    "name": "Zpacks",
+    "domain": "zpacks.com"
+  },
+  {
+    "slug": "durston",
+    "name": "Durston Gear",
+    "domain": "durstongear.com"
+  },
+  {
+    "slug": "six-moon",
+    "name": "Six Moon Designs",
+    "domain": "sixmoondesigns.com"
+  },
+  {
+    "slug": "ula",
+    "name": "ULA Equipment",
+    "domain": "ula-equipment.com"
+  },
+  {
+    "slug": "trakke",
+    "name": "Trakke",
+    "domain": "trakke.co.uk"
+  },
+  {
+    "slug": "millican",
+    "name": "Millican",
+    "domain": "homeofmillican.com"
+  },
+  {
+    "slug": "wotancraft",
+    "name": "Wotancraft",
+    "domain": "wotancraft.com"
+  },
+  {
+    "slug": "heimplanet",
+    "name": "Heimplanet",
+    "domain": "heimplanet.com"
+  },
+  {
+    "slug": "coteetciel",
+    "name": "C\u00f4te&Ciel",
+    "domain": "coteetciel.com"
+  },
+  {
+    "slug": "rickshaw",
+    "name": "Rickshaw Bagworks",
+    "domain": "rickshawbags.com"
+  },
+  {
+    "slug": "bellroy",
+    "name": "Bellroy",
+    "domain": "bellroy.com"
+  },
+  {
+    "slug": "osprey",
+    "name": "Osprey",
+    "domain": "osprey.com"
+  },
+  {
+    "slug": "the-north-face",
+    "name": "The North Face",
+    "domain": "thenorthface.com"
+  },
+  {
+    "slug": "tom-bihn",
+    "name": "Tom Bihn",
+    "domain": "tombihn.com"
+  },
+  {
+    "slug": "alpha-one-niner",
+    "name": "Alpha One-Niner",
+    "domain": "alphaoneniner.com"
+  },
+  {
+    "slug": "black-ember",
+    "name": "Black Ember",
+    "domain": "blackember.com"
+  },
+  {
+    "slug": "code-of-bell",
+    "name": "Code of Bell",
+    "domain": "codeofbell.com"
+  },
+  {
+    "slug": "mystery-ranch",
+    "name": "Mystery Ranch",
+    "domain": "mysteryranch.com"
+  },
+  {
+    "slug": "peak-design",
+    "name": "Peak Design",
+    "domain": "peakdesign.com"
+  },
+  {
+    "slug": "alchemy-equipment",
+    "name": "Alchemy Equipment",
+    "domain": "alchemy-equipment.com"
+  },
+  {
+    "slug": "almond-oak",
+    "name": "Almond Oak",
+    "domain": "almondoak.com"
+  },
+  {
+    "slug": "away",
+    "name": "Away",
+    "domain": "awaytravel.com"
+  },
+  {
+    "slug": "baggu",
+    "name": "Baggu",
+    "domain": "baggu.com"
+  },
+  {
+    "slug": "bedouin-foundry",
+    "name": "Bedouin Foundry",
+    "domain": "bedouinfoundry.com"
+  },
+  {
+    "slug": "eagle-creek",
+    "name": "Eagle Creek",
+    "domain": "eaglecreek.com"
+  },
+  {
+    "slug": "eastpak",
+    "name": "Eastpak",
+    "domain": "us.eastpak.com"
+  },
+  {
+    "slug": "ebags",
+    "name": "eBags",
+    "domain": "ebagsbrand.com"
+  },
+  {
+    "slug": "ecohub",
+    "name": "Ecohub",
+    "domain": "ecohubtravel.com"
+  },
+  {
+    "slug": "greenroom",
+    "name": "Greenroom",
+    "domain": "greenroom136.com"
+  },
+  {
+    "slug": "incase",
+    "name": "Incase",
+    "domain": "incase.com"
+  },
+  {
+    "slug": "kathmandu",
+    "name": "Kathmandu",
+    "domain": "kathmanduoutdoor.com"
+  },
+  {
+    "slug": "knack-bags",
+    "name": "Knack Bags",
+    "domain": "knackbags.com"
+  },
+  {
+    "slug": "minaal",
+    "name": "Minaal",
+    "domain": "minaal.com"
+  },
+  {
+    "slug": "samsonite",
+    "name": "Samsonite",
+    "domain": "shop.samsonite.com"
+  },
+  {
+    "slug": "sherpani",
+    "name": "Sherpani",
+    "domain": "sherpani.com"
+  },
+  {
+    "slug": "the-brown-buffalo",
+    "name": "The Brown Buffalo",
+    "domain": "thebrownbuffalo.com"
+  },
+  {
+    "slug": "thule",
+    "name": "Thule",
+    "domain": "thule.com"
+  },
+  {
+    "slug": "tomtoc",
+    "name": "Tomtoc",
+    "domain": "tomtoc.com"
+  },
+  {
+    "slug": "tropicfeel",
+    "name": "Tropicfeel",
+    "domain": "shop.tropicfeel.com"
+  },
+  {
+    "slug": "troubadour",
+    "name": "Troubadour",
+    "domain": "troubadourgoods.com"
+  },
+  {
+    "slug": "united-by-blue",
+    "name": "United by Blue",
+    "domain": "unitedbyblue.com"
+  },
+  {
+    "slug": "stubble-and-co",
+    "name": "Stubble & Co",
+    "domain": "stubbleandco.com"
+  }
 ]
