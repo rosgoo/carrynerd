@@ -285,6 +285,7 @@ def main():
               f"({len(cache)} already cached)", flush=True)
 
         pacer = Pacer(args.delay)
+        transient = 0
         for i, bag in enumerate(targets, 1):
             pacer.wait()
             status, headers, body = get(bag["url"], timeout=25)
@@ -295,7 +296,16 @@ def main():
                 pacer.wait()
                 status, headers, body = get(bag["url"], timeout=25)
             if status != 200:
-                cache[bag["id"]] = {"_status": status}
+                # Only cache *permanent* answers. A 404 means the page is gone
+                # and re-asking tomorrow is rude and pointless; a 429 or a 5xx
+                # means try later. Caching those was poisoning products
+                # permanently, because the target filter skips anything already
+                # in the cache — one rate-limited moment and that bag never got
+                # enriched again.
+                if status in (404, 410, 451):
+                    cache[bag["id"]] = {"_status": status}
+                else:
+                    transient += 1
             else:
                 text = body.decode("utf-8", "replace")
                 if args.cache_pages:
@@ -309,6 +319,9 @@ def main():
 
         with open(CACHE, "w") as f:
             json.dump(cache, f)
+        if transient:
+            print(f"  {transient} transient failures (429/5xx) left uncached "
+                  f"— rerun to pick them up", flush=True)
 
     # Merge. Enrichment fills gaps and does not overwrite feed data, with one
     # exception: Shopify's `grams` is a shipping field, and plenty of stores
