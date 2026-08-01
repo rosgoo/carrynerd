@@ -1,0 +1,220 @@
+---
+import Base from '../../layouts/Base.astro';
+import { SITE_NAME } from '../../lib/brand.js';
+
+/* Domain review — the hand-off list from resolve_domains.py, editable.
+ *
+ * Sibling to the coverage audit, but the opposite mechanism: that page is a
+ * build-time snapshot that hands you lines to paste; this one talks to a
+ * dev-only API and writes data/domains-todo.csv directly, because 130 rows of
+ * "look at the site, type the domain" deserves keyboard flow, not paste.
+ *
+ * Works only under `npm run dev`. The deployed build serves the shell with a
+ * plain explanation and no data, and the API answers 404 there.
+ *
+ * The job per row is exactly the resolver's missing half: PROVE the guess.
+ * Open the candidate, check it is the brand's own storefront (not a stockist,
+ * not a parked page), then accept or correct. Platform is context from
+ * `--detect-platforms`, not proof — a Shopify robots.txt on the wrong brand's
+ * domain is still the wrong domain.
+ */
+---
+<Base
+  title={`Domain review — internal — ${SITE_NAME}`}
+  description="Internal review list for unresolved brand domains."
+  noindex={true}
+>
+  <div class="page">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/">Bags</a> <span>/</span>
+      <a href="/internal/">Internal · coverage audit</a> <span>/</span>
+      <b>Domains</b>
+    </nav>
+    <h1>Domain review</h1>
+    <p class="note">
+      Everything <code>resolve_domains.py</code> could not prove, one row per
+      brand. Confirm or correct the domain, and the platform tag says which
+      adapter it will use. Saves straight back to
+      <code>data/domains-todo.csv</code>; when a batch is done, run
+      <code>python3 resolve_domains.py --import</code> then
+      <code>python3 fetch.py</code>. <b>Enter</b> accepts a row and jumps to
+      the next unfilled one; <b>accepting an empty row copies the guess in</b>.
+      A wrong domain is worse than a blank one — if the site is a stockist or
+      parked, leave it blank and move on.
+    </p>
+
+    <div id="status" class="note">Loading… (this page only works under <code>npm run dev</code>)</div>
+
+    <div id="controls" style="display:none">
+      <div class="tagrow" id="filters"></div>
+      <p class="note"><b id="progress"></b> <span id="savestate"></span></p>
+    </div>
+
+    <table class="spectable" id="table" style="display:none">
+      <thead>
+        <tr>
+          <th>Brand</th><th>Platform</th><th>Domain</th>
+          <th>Check</th><th>Resolver's doubt</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</Base>
+
+<script>
+  const API = '/api/internal/domains';
+  let rows = [];
+  let filter = 'todo';
+  let dirty = false, saving = false, saveTimer = null;
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  const filled = (r) => (r.domain ?? '').trim() !== '';
+
+  const FILTERS = {
+    todo:   { label: 'needs a domain', test: (r) => !filled(r) },
+    filled: { label: 'filled',         test: (r) => filled(r) },
+    all:    { label: 'all',            test: () => true },
+  };
+
+  function counts() {
+    const done = rows.filter(filled).length;
+    return `${done} of ${rows.length} filled`;
+  }
+
+  function scheduleSave() {
+    dirty = true;
+    $('savestate').textContent = '· unsaved';
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(save, 600);
+  }
+
+  async function save() {
+    if (saving) { scheduleSave(); return; }
+    saving = true;
+    try {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ rows }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? res.status);
+      dirty = false;
+      $('savestate').textContent = '· saved';
+    } catch (e) {
+      $('savestate').textContent = `· SAVE FAILED: ${e.message}`;
+    } finally {
+      saving = false;
+      $('progress').textContent = counts();
+    }
+  }
+
+  function accept(i, tr) {
+    const input = tr.querySelector('input');
+    if (!input.value.trim()) input.value = rows[i].best_guess ?? '';
+    rows[i].domain = input.value
+      .trim().replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '');
+    input.value = rows[i].domain;
+    tr.classList.toggle('rowdone', filled(rows[i]));
+    scheduleSave();
+    // Jump to the next row still needing a domain, wrapping around.
+    const inputs = [...document.querySelectorAll('#rows input')];
+    const after = inputs.slice(inputs.indexOf(input) + 1)
+      .concat(inputs.slice(0, inputs.indexOf(input)));
+    const next = after.find((el) => !el.value.trim());
+    if (next) { next.focus(); next.scrollIntoView({ block: 'center' }); }
+  }
+
+  // Green means "an adapter already exists for this", red means "no door".
+  // Keep in step with the dispatch in fetch.py's main().
+  const WIRED = ['shopify', 'woocommerce', 'magento', 'bellroy', 'pages'];
+  const CLOSED = ['unreachable', 'walled', 'hostile'];
+
+  function platformTag(p) {
+    if (!p) return '<span class="tag">unprobed</span>';
+    const cls = WIRED.includes(p) ? 'tag lowest'
+      : CLOSED.includes(p) ? 'tag oos' : 'tag';
+    return `<span class="${cls}">${esc(p)}</span>`;
+  }
+
+  function render() {
+    const tbody = $('rows');
+    tbody.innerHTML = '';
+    rows.forEach((r, i) => {
+      if (!FILTERS[filter].test(r)) return;
+      const tr = document.createElement('tr');
+      if (filled(r)) tr.className = 'rowdone';
+      const site = (r.domain || r.best_guess || '').trim();
+      tr.innerHTML = `
+        <th scope="row">${esc(r.name)}</th>
+        <td>${platformTag(r.platform)}</td>
+        <td><input type="text" value="${esc(r.domain)}"
+             placeholder="${esc(r.best_guess) || '—'}" spellcheck="false"
+             style="width:16em;font:inherit"></td>
+        <td>
+          ${site ? `<a href="https://${esc(site)}" target="_blank" rel="noopener nofollow">visit ↗</a> · ` : ''}
+          <a href="${esc(r.search)}" target="_blank" rel="noopener nofollow">search ↗</a> ·
+          <button type="button" data-accept>✓</button>
+        </td>
+        <td class="nil">${esc(r.why_unsure)}</td>`;
+      const input = tr.querySelector('input');
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); accept(i, tr); }
+      });
+      input.addEventListener('input', () => {
+        rows[i].domain = input.value.trim();
+        tr.classList.toggle('rowdone', filled(rows[i]));
+        scheduleSave();
+      });
+      tr.querySelector('[data-accept]').addEventListener('click', () => accept(i, tr));
+      tbody.appendChild(tr);
+    });
+    $('progress').textContent = counts();
+  }
+
+  function renderFilters() {
+    const holder = $('filters');
+    holder.innerHTML = '';
+    for (const [key, f] of Object.entries(FILTERS)) {
+      const n = rows.filter(f.test).length;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'tag' + (filter === key ? ' lowest' : '');
+      b.textContent = `${f.label} (${n})`;
+      b.addEventListener('click', () => { filter = key; renderFilters(); render(); });
+      holder.appendChild(b);
+    }
+  }
+
+  (async () => {
+    try {
+      const res = await fetch(API);
+      if (!res.ok) throw new Error((await res.json()).error ?? `HTTP ${res.status}`);
+      rows = (await res.json()).rows;
+      $('status').style.display = 'none';
+      $('controls').style.display = '';
+      $('table').style.display = '';
+      renderFilters();
+      render();
+    } catch (e) {
+      $('status').innerHTML =
+        `Could not load the review list (<code>${esc(e.message)}</code>). ` +
+        'This page edits <code>data/domains-todo.csv</code> and therefore ' +
+        'only works on a dev checkout: <code>npm run dev</code>.';
+    }
+  })();
+</script>
+
+<style>
+  #rows input {
+    background: transparent;
+    border: 1px solid var(--line, #444);
+    color: inherit;
+    padding: 0.15em 0.4em;
+  }
+  #rows .rowdone th, #rows .rowdone td { opacity: 0.55; }
+  #rows button, #filters button { cursor: pointer; font: inherit; }
+</style>

@@ -1,4 +1,4 @@
-/* calipered — the browse/compare island.
+/* gearherd — the browse/compare island.
  *
  * Loads the whole catalog once and filters in memory. That is deliberate: at a
  * few thousand models it beats a round trip per keystroke, and it means the
@@ -724,7 +724,7 @@ function wire() {
     // Leave the server-rendered fallback list in place — it is every model on
     // the site, just without the filters. A degraded page beats a dead one.
     $("#count").textContent = "filters unavailable — showing all models";
-    console.error("calipered: could not load /bags.json", err);
+    console.error("gearherd: could not load /bags.json", err);
     return;
   }
   buildFacets();

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-calipered fetcher — pulls public Shopify product catalogs.
+gearherd fetcher — pulls public Shopify product catalogs.
 
 Only touches endpoints that stores publish for anyone: /products.json (the
 storefront JSON feed Shopify serves by default) and /robots.txt. No login, no
@@ -32,6 +32,7 @@ does not do that. Keep the shard count low and never raise it in response to a
 
 import argparse
 import glob
+import gzip
 import json
 import os
 import re
@@ -40,6 +41,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from html.parser import HTMLParser
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RAW = os.path.join(HERE, "raw")
@@ -55,23 +57,44 @@ LOG_PART = os.path.join(HERE, "data", "fetch-log.part-{}.json")
 
 # Identify the crawler honestly and give operators a way to reach you.
 # Put a real contact URL here before running this at any scale.
-CONTACT = os.environ.get("CALIPERED_CONTACT", "https://example.com/calipered-bot")
-UA = f"calipered/0.1 (product catalog indexer; +{CONTACT})"
+# No placeholder URL when the contact is unset: a UA carrying example.com is a
+# stock bot signature (Bonfus's WAF 403s exactly that and nothing else), and a
+# fake contact address is worse than none. Set GEARHERD_CONTACT to the real
+# /bot page before running at scale.
+CONTACT = os.environ.get("GEARHERD_CONTACT", "")
+UA = (f"gearherd/0.1 (product catalog indexer; +{CONTACT})" if CONTACT
+      else "gearherd/0.1 (product catalog indexer)")
 
 PAGE_LIMIT = 250
 MAX_PAGES = 12
 MAX_RETRIES = 4
 
 
-def get(url, timeout=30):
+class _Redirect308(urllib.request.HTTPRedirectHandler):
+    """
+    Python 3.9's urllib follows 301/302/303/307 but not 308, so a store that
+    normalises its URLs with a permanent 308 reads as a dead end rather than a
+    redirect — Klattermusen sends /en-eu -> /en-eu/ that way and looked like a
+    broken site for it. Same policy the handler already applies to 301; only
+    the status code is new.
+    """
+
+    def http_error_308(self, req, fp, code, msg, headers):
+        return self.http_error_301(req, fp, 301, msg, headers)
+
+
+_OPENER = urllib.request.build_opener(_Redirect308)
+
+
+def get(url, timeout=30, accept="application/json, text/plain, */*"):
     """Single GET. Returns (status, headers, body_bytes)."""
     req = urllib.request.Request(url, headers={
         "User-Agent": UA,
-        "Accept": "application/json, text/plain, */*",
+        "Accept": accept,
         "Accept-Language": "en-US,en;q=0.9",
     })
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with _OPENER.open(req, timeout=timeout) as r:
             return r.status, dict(r.headers), r.read()
     except urllib.error.HTTPError as e:
         return e.code, dict(e.headers or {}), (e.read() or b"")
@@ -79,21 +102,47 @@ def get(url, timeout=30):
         return 0, {"x-error": str(e)}, b""
 
 
-def robots_allows(domain, path="/products.json"):
+def post_json(url, payload, timeout=45):
+    """Single POST of a JSON body. Returns (status, headers, body_bytes)."""
+    req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers={
+        "User-Agent": UA,
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    })
+    try:
+        with _OPENER.open(req, timeout=timeout) as r:
+            return r.status, dict(r.headers), r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, dict(e.headers or {}), (e.read() or b"")
+    except Exception as e:
+        return 0, {"x-error": str(e)}, b""
+
+
+# One parse per domain per run. robots.txt was being refetched for every
+# adapter that consults it, and the page crawlers below want the Crawl-delay
+# out of the same file rather than paying for a second copy of it.
+_ROBOTS = {}
+
+
+def robots(domain):
     """
-    Minimal robots.txt check. A group addressed to our own UA outranks the
-    `User-agent: *` group — CampSaver blocks named product scrapers (Indix,
+    Minimal robots.txt parse, cached. A group addressed to our own UA outranks
+    the `User-agent: *` group — CampSaver blocks named product scrapers (Indix,
     TheFind) while allowing *, so a site that ever adds a group for our UA is
     speaking to us specifically and gets obeyed over the general rule.
-    Returns (allowed: bool, note: str).
+    Returns (disallows, crawl_delay_seconds, note).
     """
+    if domain in _ROBOTS:
+        return _ROBOTS[domain]
     ua_name = UA.split("/", 1)[0].lower()
     status, _, body = get(f"https://{domain}/robots.txt", timeout=20)
     if status != 200:
-        return True, f"robots.txt status {status}; proceeding"
-    lines = body.decode("utf-8", "replace").splitlines()
-    group, rules = None, {"*": [], ua_name: []}
-    for raw in lines:
+        _ROBOTS[domain] = ([], 0.0, f"robots.txt status {status}; proceeding")
+        return _ROBOTS[domain]
+    group = None
+    rules = {"*": [], ua_name: []}
+    delays = {"*": 0.0, ua_name: 0.0}
+    for raw in body.decode("utf-8", "replace").splitlines():
         line = raw.split("#", 1)[0].strip()
         if not line or ":" not in line:
             continue
@@ -104,11 +153,23 @@ def robots_allows(domain, path="/products.json"):
             group = v if v in rules else (ua_name if ua_name in v else None)
         elif field == "disallow" and group and value:
             rules[group].append(value)
-    disallows = rules[ua_name] if rules[ua_name] else rules["*"]
+        elif field == "crawl-delay" and group:
+            try:
+                delays[group] = float(value)
+            except ValueError:
+                pass
+    key = ua_name if (rules[ua_name] or delays[ua_name]) else "*"
+    _ROBOTS[domain] = (rules[key], delays[key], "allowed")
+    return _ROBOTS[domain]
+
+
+def robots_allows(domain, path="/products.json"):
+    """Returns (allowed: bool, note: str)."""
+    disallows, _, note = robots(domain)
     for rule in disallows:
         if path.startswith(rule):
             return False, f"robots.txt disallows {rule}"
-    return True, "allowed"
+    return True, note
 
 
 class Pacer:
@@ -259,6 +320,697 @@ def fetch_bellroy(brand, pacer):
     return result
 
 
+def fetch_woocommerce(brand, pacer):
+    """
+    WooCommerce's Store API — /wp-json/wc/store/v1/products — is public and
+    unauthenticated by design (it is what the shop's own frontend calls).
+    Cottage pack makers skew WordPress, so this one adapter covers ULA, LiteAF,
+    Bonfus and whatever the domain-resolution pass turns up next. No specs in
+    the payload; the description HTML carries them, and normalize.py parses it
+    with the same helpers the Shopify path uses.
+    """
+    domain = brand["domain"]
+    result = {
+        "slug": brand["slug"], "name": brand["name"], "domain": domain,
+        "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "platform": "woocommerce", "status": None, "note": "", "products": [],
+    }
+
+    pacer.wait()
+    allowed, note = robots_allows(domain, "/wp-json/")
+    if not allowed:
+        result["status"], result["note"] = "skipped", note
+        return result
+
+    products, page = [], 1
+    while page <= MAX_PAGES:
+        pacer.wait()
+        status, headers, body = get(
+            f"https://{domain}/wp-json/wc/store/v1/products"
+            f"?per_page=100&page={page}")
+        if status == 429:
+            wait_s = float(headers.get("Retry-After", 30) or 30)
+            time.sleep(wait_s + 2)
+            continue
+        if status != 200:
+            result["status"] = f"http_{status}"
+            return result
+        try:
+            batch = json.loads(body)
+        except json.JSONDecodeError:
+            result["status"] = "bad_json"
+            return result
+        if not isinstance(batch, list):
+            result["status"], result["note"] = "bad_json", "not a list"
+            return result
+        products.extend(batch)
+        if len(batch) < 100:
+            break
+        page += 1
+
+    result["status"] = "ok"
+    result["products"] = products
+    return result
+
+
+# --- Magento 2 storefront GraphQL -------------------------------------------
+#
+# Magento ships /graphql as the storefront's own read API: public, no token,
+# no account — it is what the shop's frontend queries on every page view. The
+# REST catalogue next door is the opposite (/rest/V1/products 401s without an
+# admin token) and stays untouched. Verified open on rab.equipment and
+# vaude.com 2026-08-01; both run Hyvä themes over stock Magento.
+#
+# It is the richest non-Shopify source found so far, because Magento stores
+# keep their spec sheet in custom attributes and hand the whole set over:
+# Rab publishes `dimensions: "54 x 32 x 26cm"`, `volume: "28lt / 1710cu.in"`
+# and `r_weight: "1.09kg / 2lb 6oz"`; Vaude publishes height/width/length and
+# volume as plain numbers. normalize.py's build_magento owns the mapping.
+
+MAGENTO_PRODUCT_FIELDS = """
+      name sku url_key url_suffix stock_status
+      ... on PhysicalProductInterface { weight }
+      description { html }
+      short_description { html }
+      image { url }
+      media_gallery { url }
+      price_range {
+        minimum_price { final_price { value currency } regular_price { value } }
+        maximum_price { final_price { value } }
+      }
+      categories { name url_path }
+      custom_attributesV2 {
+        items {
+          code
+          ... on AttributeValue { value }
+          ... on AttributeSelectedOptions { selected_options { label } }
+        }
+      }
+      ... on ConfigurableProduct {
+        configurable_options { label attribute_code values { label } }
+        variants {
+          attributes { code label }
+          product {
+            sku name stock_status
+            ... on PhysicalProductInterface { weight }
+            price_range {
+              minimum_price { final_price { value currency } regular_price { value } }
+            }
+            image { url }
+          }
+        }
+      }
+"""
+
+# `categoryList` with no argument, not `categoryList(filters: {})`: the empty
+# filter is legal on Rab's Magento and a 500 on Vaude's, while the bare call
+# returns the store root — and therefore the whole tree — on both.
+MAGENTO_CATEGORY_QUERY = """
+{ categoryList { %s } }
+""" % ("uid name url_path product_count children { %s }" % (
+    "uid name url_path product_count children { %s }" % (
+        "uid name url_path product_count children "
+        "{ uid name url_path product_count }")))
+
+MAGENTO_PRODUCT_QUERY = """
+query ($uid: String!, $page: Int!, $size: Int!) {
+  products(filter: {category_uid: {eq: $uid}}, pageSize: $size, currentPage: $page) {
+    total_count
+    page_info { current_page total_pages }
+    items { __typename %s }
+  }
+}
+""" % MAGENTO_PRODUCT_FIELDS
+
+# Which shelves are worth querying. A brand that also sells jackets should
+# cost a handful of requests, not its whole catalogue — and the negative list
+# is about spending requests, not about classification: normalize.py still has
+# the final say on everything that comes back.
+#
+# Bilingual because Magento is where the European brands are: Vaude's tree is
+# entirely German, Rab's entirely English, and one adapter covers both.
+MAGENTO_CARRY_CATEGORY = re.compile(
+    r"rucks(?:a|ä|ae)ck|backpack|daypack|\bpacks?\b|\bbags?\b|tasche|"
+    r"luggage|gep(?:ä|ae)ck|koffer|duffel|duffle|holdall|tote|sling|"
+    r"pouch|beutel|wallet|geldb(?:ö|oe)rse", re.I)
+MAGENTO_NOT_CARRY = re.compile(
+    r"sleeping|schlafs(?:a|ä|ae)ck|tent|zelt|jacket|jacke|apparel|bekleidung|"
+    r"shoes?\b|schuh|shirt|glove|handschuh|repair|spare|ersatzteil|"
+    r"sale\b|outlet|archive|gift|geschenk", re.I)
+
+
+def magento_gql(domain, query, variables=None, pacer=None):
+    """One GraphQL POST. Returns (data_or_None, note)."""
+    if pacer:
+        pacer.wait()
+    payload = {"query": query}
+    if variables:
+        payload["variables"] = variables
+    status, _, body = post_json(f"https://{domain}/graphql", payload)
+    if status != 200:
+        return None, f"http_{status}"
+    try:
+        res = json.loads(body)
+    except json.JSONDecodeError:
+        return None, "bad_json"
+    if res.get("errors"):
+        return None, str(res["errors"][0].get("message"))[:120]
+    return res.get("data"), ""
+
+
+def _magento_flatten(nodes, depth=0):
+    for node in nodes or []:
+        if not isinstance(node, dict):
+            continue
+        yield node
+        if depth < 4:
+            for child in _magento_flatten(node.get("children"), depth + 1):
+                yield child
+
+
+def fetch_magento(brand, pacer):
+    domain = brand["domain"]
+    result = {
+        "slug": brand["slug"], "name": brand["name"], "domain": domain,
+        "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "platform": "magento", "status": None, "note": "", "products": [],
+    }
+
+    pacer.wait()
+    allowed, note = robots_allows(domain, "/graphql")
+    if not allowed:
+        result["status"], result["note"] = "skipped", note
+        return result
+
+    tree, note = magento_gql(domain, MAGENTO_CATEGORY_QUERY, pacer=pacer)
+    if tree is None:
+        result["status"] = note if note.startswith("http_") else "bad_json"
+        result["note"] = f"categoryList: {note}"
+        return result
+
+    wanted = []
+    for node in _magento_flatten(tree.get("categoryList")):
+        name = node.get("name") or ""
+        if not node.get("uid") or not (node.get("product_count") or 0):
+            continue
+        if MAGENTO_NOT_CARRY.search(name) or not MAGENTO_CARRY_CATEGORY.search(name):
+            continue
+        wanted.append(node)
+    # Biggest shelf first. A store's "All packs" category usually subsumes the
+    # narrower ones, and products are deduplicated by SKU as they arrive, so
+    # starting wide means the later categories mostly confirm what is already
+    # in hand rather than adding to it.
+    wanted.sort(key=lambda n: -(n.get("product_count") or 0))
+    print(f"    {len(wanted)} carry categories "
+          f"({', '.join(n['name'] for n in wanted[:6])}"
+          f"{' ...' if len(wanted) > 6 else ''})", flush=True)
+
+    by_sku = {}
+    for node in wanted:
+        page = 1
+        while page <= MAX_PAGES:
+            data, note = magento_gql(
+                domain, MAGENTO_PRODUCT_QUERY,
+                {"uid": node["uid"], "page": page, "size": 50}, pacer)
+            if data is None:
+                result["note"] = (result["note"] + f"; {node['name']}: {note}").strip("; ")
+                break
+            block = data.get("products") or {}
+            items = block.get("items") or []
+            for item in items:
+                if item.get("sku"):
+                    by_sku.setdefault(item["sku"], item)
+            info = block.get("page_info") or {}
+            if page >= (info.get("total_pages") or 1) or not items:
+                break
+            page += 1
+
+    result["products"] = list(by_sku.values())
+    result["status"] = "ok" if by_sku else "empty"
+    return result
+
+
+# --- storefront pages -------------------------------------------------------
+#
+# The adapter of last resort, and the one most storefronts answer to: no API,
+# just the pages a store already publishes for search engines, reached through
+# the sitemap it advertises in robots.txt. It is what covers Salesforce
+# Commerce Cloud (Gregory, CamelBak) and the server-rendered schema.org sites
+# (Deuter, Mammut) — four brands on four unrelated platforms, one crawler,
+# because every difference between them is in what the page *says*, and
+# normalize.py's build_pages owns that.
+
+SPEC_LABEL_CLASS = re.compile(r"spec[\w-]*[-_](?:name|label)|attribute[-_]label",
+                              re.I)
+SPEC_VALUE_CLASS = re.compile(r"spec[\w-]*[-_]value|attribute[-_]value", re.I)
+
+
+class PageDigest(HTMLParser):
+    """
+    Reduces a product page to the record normalize.py needs: schema.org
+    blocks, head metadata, the h1, tables and label/value pairs as arrays,
+    elements carrying a `content` attribute (how SFCC publishes prices), and
+    the visible text in document order.
+
+    Not the raw HTML. A brand catalogue is a few hundred pages of half a
+    megabyte each and none of the markup survives a theme change, so keeping
+    it would cost gigabytes to protect nothing. Everything in a page that can
+    carry a fact is kept instead, which is what the no-refetch-to-fix-a-parser
+    rule actually asks for.
+    """
+
+    SKIP = {"script", "style", "noscript", "svg", "template"}
+    CAPTURE = {"h1", "td", "th", "dt", "dd"}
+    VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input",
+            "link", "meta", "param", "source", "track", "wbr"}
+
+    def __init__(self):
+        HTMLParser.__init__(self, convert_charrefs=True)
+        self.title = None
+        self.meta = {}
+        self.jsonld = []
+        self.h1 = None
+        self.pairs = []
+        self.tables = []
+        self.values = []
+        self.images = []
+        self._text = []
+        self._skip = 0
+        self._ld = None
+        self._in_title = False
+        self._stack = []
+        self._elems = []
+        self._table = None
+        self._row = None
+        self._label = None
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag in self.SKIP:
+            if tag == "script" and (a.get("type") or "").lower() == "application/ld+json":
+                self._ld = []
+            else:
+                self._skip += 1
+            return
+        if tag == "title":
+            self._in_title = True
+            return
+        if tag == "meta":
+            key = (a.get("property") or a.get("name") or "").lower()
+            if key and a.get("content"):
+                self.meta.setdefault(key, a["content"])
+            return
+        if tag == "img":
+            src = a.get("src") or a.get("data-src") or ""
+            # Forty rather than a handful: a storefront's first dozen <img>
+            # are its nav thumbnails, and CamelBak's product shot does not
+            # appear until well past them. Choosing between them is
+            # normalize.py's job; getting them all here is this one's.
+            if src and not src.startswith("data:") and len(self.images) < 40:
+                self.images.append(src)
+            return
+        cls = a.get("class") or ""
+        if a.get("content") and len(self.values) < 80:
+            # With the nearest classed ancestors, because the element itself
+            # rarely says what the number means: SFCC prints both the sale and
+            # the list price as <span class="value" content="...">, and only
+            # the wrapper (`sales` vs `strike-through`) tells them apart.
+            near = " ".join(c for _, c in self._elems[-3:] if c)
+            self.values.append([f"{cls} {near}".strip(), a["content"]])
+        if tag not in self.VOID:
+            self._elems.append((tag, cls))
+        if tag == "table":
+            self._table = []
+        elif tag == "tr" and self._table is not None:
+            self._row = []
+        if SPEC_LABEL_CLASS.search(cls):
+            kind = "label"
+        elif SPEC_VALUE_CLASS.search(cls):
+            kind = "value"
+        elif tag in self.CAPTURE:
+            kind = tag
+        else:
+            kind = None
+        if kind:
+            self._stack.append([tag, kind, []])
+
+    def handle_endtag(self, tag):
+        if tag in self.SKIP:
+            if tag == "script" and self._ld is not None:
+                raw, self._ld = "".join(self._ld), None
+                try:
+                    data = json.loads(raw)
+                except (json.JSONDecodeError, ValueError):
+                    return
+                for item in (data if isinstance(data, list) else [data]):
+                    if isinstance(item, dict):
+                        self.jsonld.append(item)
+            elif self._skip:
+                self._skip -= 1
+            return
+        if tag == "title":
+            self._in_title = False
+            return
+        for i in range(len(self._elems) - 1, -1, -1):
+            if self._elems[i][0] == tag:
+                del self._elems[i:]
+                break
+        # Unwind to the matching open element. Themes leave tags unclosed all
+        # the time; closing everything above the match keeps one stray <td>
+        # from swallowing the rest of the page into a single cell.
+        for i in range(len(self._stack) - 1, -1, -1):
+            if self._stack[i][0] == tag:
+                for entry in self._stack[i:]:
+                    self._close(entry)
+                del self._stack[i:]
+                break
+        if tag == "tr" and self._row is not None:
+            if self._table is not None:
+                self._table.append(self._row)
+            self._row = None
+        elif tag == "table" and self._table is not None:
+            if self._table and len(self.tables) < 12:
+                self.tables.append(self._table)
+            self._table = None
+
+    def _close(self, entry):
+        tag, kind, buf = entry
+        text = " ".join("".join(buf).split())
+        if kind in ("td", "th"):
+            if self._row is not None:
+                self._row.append(text)
+            return
+        if not text:
+            return
+        if kind in ("label", "dt"):
+            self._label = text
+        elif kind in ("value", "dd"):
+            if self._label and len(self.pairs) < 100:
+                self.pairs.append([self._label, text])
+            self._label = None
+        elif kind == "h1" and self.h1 is None:
+            self.h1 = text
+
+    def handle_data(self, data):
+        if self._ld is not None:
+            self._ld.append(data)
+            return
+        if self._skip:
+            return
+        if self._in_title and self.title is None:
+            self.title = " ".join(data.split()) or None
+            return
+        if self._stack:
+            self._stack[-1][2].append(data)
+        if len(self._text) < 6000:
+            chunk = " ".join(data.split())
+            if chunk:
+                self._text.append(chunk)
+
+    def digest(self, url):
+        return {
+            "url": url, "title": self.title, "meta": self.meta,
+            "h1": self.h1, "jsonld": self.jsonld, "pairs": self.pairs,
+            "tables": self.tables, "values": self.values,
+            "images": self.images, "text": " ".join(self._text)[:40000],
+        }
+
+
+# A challenge page is not a product page that happened to fail. Gregory sits
+# behind PerimeterX and answers a crawl with a 307 to a px-captcha page that
+# carries no Location header — invisible to a status check, and indistinguishable
+# from a parse failure unless you look for it. Recognising it is what turns
+# twelve more polite knocks into none: the answer is already no.
+CHALLENGE = re.compile(
+    rb"px-captcha|_pxVid|Access to this page has been denied|"
+    rb"Checking your browser|cf-browser-verification|Just a moment\.\.\.|"
+    rb"/cdn-cgi/challenge-platform|Attention Required!", re.I)
+
+
+def _xml_locs(body):
+    if body[:2] == b"\x1f\x8b":
+        try:
+            body = gzip.decompress(body)
+        except OSError:
+            return []
+    return re.findall(r"<loc>\s*([^<\s]+)\s*</loc>",
+                      body.decode("utf-8", "replace"))
+
+
+def sitemap_urls(start, pacer, patterns, extra=0.0, max_shards=40):
+    """
+    Walk a sitemap — index or urlset, plain or gzipped — sorting the URLs it
+    reaches into {name: [url]} by the {name: regex} in `patterns`. A sitemap is
+    the one discovery surface a store publishes *for* crawlers, which is why
+    every page adapter here starts at one instead of following links out of its
+    catalogue pages.
+
+    One walk, several patterns, because a store's sitemap is 35 files and the
+    product pages and the category pages are interleaved through all of them.
+    """
+    # Dicts, not lists: a store can list the same URL in several of its
+    # sitemaps — Mammut's /us/en and /int/en shards each hold part of the US
+    # catalogue and overlap in the middle — and a duplicate here is a second
+    # request for a page already in hand.
+    out = {name: {} for name in patterns}
+    seen, queue, shards = set(), [start], 0
+    while queue and shards < max_shards:
+        url = queue.pop(0)
+        if url in seen:
+            continue
+        seen.add(url)
+        pacer.wait(extra)
+        status, _, body = get(url, timeout=60,
+                              accept="application/xml, text/xml, */*")
+        if status != 200:
+            continue
+        shards += 1
+        for loc in _xml_locs(body):
+            if re.search(r"\.xml(?:\.gz)?(?:$|[?#])", loc, re.I):
+                queue.append(loc)
+                continue
+            for name, rx in patterns.items():
+                if rx.search(loc):
+                    out[name][loc] = True
+                    break
+    return {name: list(urls) for name, urls in out.items()}
+
+
+def shelf_hints(shelf_urls, pacer, keep, extra=0.0):
+    """
+    Product slug -> category, read off the store's own shelving.
+
+    The non-Shopify half of what fetch_collections does, and for the same
+    reason. Mammut ships a "Trion 38" and a "Lithium 25": the title names no
+    category, the schema.org block carries none, and there is no breadcrumb —
+    every signal a classifier could use is absent, and 267 crawled pages
+    yielded seven bags. The one place the brand does say what these are is the
+    shelf it hangs them on, and that is a statement rather than a guess.
+
+    Keyed on the product's slug, not its URL: a shelf links to a specific
+    colourway (`/products/2530-00301-1334/lithium-15`) while the sitemap lists
+    the model (`/products/2530-00301/lithium-15`), and only the tail agrees.
+    """
+    shelves = []
+    for url in shelf_urls:
+        slug = url.rstrip("/").rsplit("/", 1)[-1]
+        name = slug.replace("-", " ")
+        if NOISE.search(slug) or SPARE_PART.search(name) or NOT_CARRY_SHELF.search(name):
+            continue
+        category = collection_category(name)
+        if not category and not GENERIC_BAG.search(name):
+            continue
+        shelves.append((url, slug, name, category))
+
+    # Specific shelves first, so `hiking-backpacks` is read before the
+    # `backpacks-and-bags` catch-all it sits under and the narrower ruling is
+    # the one that sticks.
+    shelves.sort(key=lambda s: (s[3] is None, s[3] == "daypack"))
+
+    hints = {}
+    for url, slug, name, category in shelves:
+        pacer.wait(extra)
+        status, _, body = get(url, timeout=60, accept="text/html,*/*")
+        if status != 200:
+            continue
+        found = 0
+        for href in set(re.findall(r'href="([^"#?]+)"',
+                                   body.decode("utf-8", "replace"))):
+            if not keep.search(href):
+                continue
+            product = href.rstrip("/").rsplit("/", 1)[-1]
+            # First shelf wins, and shelves are visited in sitemap order, so a
+            # narrow one ("hiking-backpacks") beats the catch-all it sits
+            # under only if it comes first. Categories still lose to the
+            # product's own title in normalize.py either way.
+            if product and product not in hints:
+                hints[product] = category
+            found += 1
+        print(f"    shelf {slug}: {found} products -> {category or 'bag'}",
+              flush=True)
+    return hints
+
+
+def fetch_pages(brand, pacer, limit=0, force=False):
+    """
+    Crawl a storefront's sitemap and keep a digest of each product page.
+
+    Per-brand configuration lives in brands.json under `crawl`:
+        sitemap  where to start (default: whatever robots.txt advertises)
+        product  regex a URL must match to be worth a request
+        delay    seconds between requests, when robots.txt names no Crawl-delay
+
+    Incremental like the CampSaver crawler and with the same circuit breaker:
+    a long run of pages that parse to nothing is what a soft block looks like
+    from here, and every request served while blocked argues for keeping the
+    block.
+
+    Chunked crawls take `--limit N --max-age H`, never `--force`: --force is
+    what tells this to drop the pages it already has and start over, so a run
+    carrying both fetches the same first N pages every night and never reaches
+    the rest of the catalogue.
+    """
+    domain = brand["domain"]
+    cfg = brand.get("crawl") or {}
+    result = {
+        "slug": brand["slug"], "name": brand["name"], "domain": domain,
+        "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "platform": "pages", "status": None, "note": "", "products": [],
+    }
+
+    pacer.wait()
+    _, crawl_delay, note = robots(domain)
+    # A store that asks for ten seconds between requests gets ten seconds.
+    extra = max(0.0, (crawl_delay or cfg.get("delay") or 0.0) - pacer.delay)
+
+    start = cfg.get("sitemap")
+    if not start:
+        pacer.wait(extra)
+        status, _, body = get(f"https://{domain}/robots.txt", timeout=20)
+        found = re.findall(r"(?im)^sitemap:\s*(\S+)", body.decode("utf-8", "replace"))
+        if not found:
+            result["status"], result["note"] = "no-sitemap", note
+            return result
+        start = found[0]
+
+    keep = re.compile(cfg.get("product") or r"\.html$", re.I)
+    patterns = {"product": keep}
+    if cfg.get("shelf"):
+        patterns["shelf"] = re.compile(cfg["shelf"], re.I)
+    found = sitemap_urls(start, pacer, patterns, extra)
+    candidates = found["product"]
+    if not candidates:
+        result["status"] = "no-products"
+        result["note"] = f"nothing in {start} matched {keep.pattern!r}"
+        return result
+
+    # The store's own shelving, where it publishes one. Gathered before the
+    # product crawl so every page fetched can be filed as it arrives.
+    hints = shelf_hints(found.get("shelf") or [], pacer, keep, extra)
+    result["shelves"] = hints
+
+    path = urllib.parse.urlparse(candidates[0]).path
+    allowed, why = robots_allows(domain, path)
+    if not allowed:
+        result["status"], result["note"] = "skipped", why
+        return result
+
+    seen = {}
+    prior = os.path.join(RAW, f"{brand['slug']}.json")
+    if not force and os.path.exists(prior):
+        try:
+            for page in json.load(open(prior)).get("products", []):
+                seen[page["url"]] = page
+        except (json.JSONDecodeError, KeyError):
+            seen = {}
+
+    fresh = [u for u in candidates if u not in seen]
+    if limit:
+        fresh = fresh[:limit]
+    print(f"    {len(candidates)} candidate URLs, {len(seen)} cached, "
+          f"fetching {len(fresh)} at {pacer.delay + extra:.0f}s", flush=True)
+
+    # Two counters, because they mean opposite things and conflating them
+    # stopped a healthy crawl. A page that answers 200 and contains no product
+    # is the soft-block signature — CampSaver's forbidden.html does exactly
+    # that — and twelve in a row is a decision, not chance. A timeout or a 502
+    # is just a bad minute: Deuter served a run of them mid-crawl and the
+    # single counter read it as a block, on pages that parse perfectly well.
+    fetched, empty, errors, stopped = 0, 0, 0, ""
+    for url in fresh:
+        pacer.wait(extra)
+        status, _, body = get(url, timeout=45, accept="text/html,*/*")
+        if CHALLENGE.search(body[:4000]):
+            print(f"    stopping: {url} answered a bot challenge", flush=True)
+            stopped = "challenge"
+            break
+        digest = None
+        if status == 200:
+            parser = PageDigest()
+            try:
+                parser.feed(body.decode("utf-8", "replace"))
+            except Exception:
+                # A malformed page is one lost product, not a lost run.
+                parser = None
+            if parser and (parser.jsonld or parser.h1):
+                digest = parser.digest(url)
+        if digest:
+            seen[url] = digest
+            fetched += 1
+            empty = errors = 0
+            if fetched % 50 == 0:
+                snap = dict(result, status="partial",
+                            note=f"checkpoint at {fetched} pages",
+                            products=list(seen.values()))
+                with open(prior, "w") as f:
+                    json.dump(snap, f)
+        elif status == 200:
+            empty += 1
+            if empty >= 12:
+                print(f"    aborting: {empty} consecutive pages answered 200 "
+                      f"with no product — soft block likely", flush=True)
+                stopped = "soft-block"
+                break
+        else:
+            errors += 1
+            if errors >= 8:
+                print(f"    aborting: {errors} consecutive transport errors "
+                      f"(last {status}) — the site or the link is unwell",
+                      flush=True)
+                stopped = "errors"
+                break
+
+    # File every page against the shelving, cached ones included: the
+    # shelf pass is fifteen requests and re-reading it must never cost a
+    # re-crawl of the catalogue behind it.
+    for page_url, page in seen.items():
+        slug = page_url.rstrip("/").rsplit("/", 1)[-1]
+        if slug in hints:
+            page["shelf"] = hints[slug]
+            page["shelved"] = True
+
+    result["products"] = list(seen.values())
+    # A crawl something else ended is not a crawl that finished, and the
+    # fetch log is the only place that difference is visible afterwards.
+    # Named by *how* it ended, so a WAF and a bad network are told apart
+    # in the log rather than in somebody's memory of the night.
+    if stopped:
+        result["status"] = f"stopped:{stopped}"
+        # Keep what the run did get. main() only persists an "ok" result — the
+        # right rule when a failed fetch would replace a good catalogue with an
+        # empty one, but here `seen` is the previous catalogue *plus* this
+        # run's pages, so the write is strictly additive and dropping it means
+        # re-fetching up to fifty pages that were already politely fetched.
+        if result["products"]:
+            with open(prior, "w") as f:
+                json.dump(dict(result, status="partial",
+                               note=f"stopped:{stopped} at {fetched} pages"), f)
+    else:
+        result["status"] = "ok" if result["products"] else "empty"
+    result["note"] = f"{fetched} pages fetched this run"
+    return result
+
+
 # CampSaver is an aggregator, not a brand: one adapter reaches every brand it
 # stocks that has no feed of its own. Discovery goes through the orderable-
 # product sitemaps (robots.txt allows them; the /api/ search endpoints its own
@@ -270,20 +1022,17 @@ def fetch_bellroy(brand, pacer):
 # the negative list trims the obvious non-carry noise (backpacking guidebooks,
 # sleeping bags, stove carry-cases); normalize.py's classifier is the real
 # gate, this filter only spends requests.
-#
-# When the wallet vertical opens (Notes/gearherd/wallets-later.md): add
-# wallet|billfold|card-holder to YES, drop `wallet` from NO, rerun — the
-# fetch is incremental, so the top-up costs only the new pages.
 CAMPSAVER_SLUG_YES = re.compile(
     r"backpack|back-pack|daypack|day-pack|rucksack|duffel|duffle|sling|"
     r"crossbody|tote|messenger|briefcase|hip-pack|waist-pack|fanny|lumbar|"
-    r"travel-pack|carry-on|luggage|suitcase|dopp|toiletry|pouch|organizer",
+    r"travel-pack|carry-on|luggage|suitcase|dopp|toiletry|pouch|organizer|"
+    r"wallet|billfold|card-holder",
     re.I)
 CAMPSAVER_SLUG_NO = re.compile(
     r"sleeping|bivy|guide|book|map|dvd|strap|buckle|repair|rain-?cover|"
     r"pack-cover|liner|towel|stove|oven|grill|griddle|tent|chair|table|"
     r"cooler(?!-bag)|holster|shaker|press|tether|harness|carrier|litter|"
-    r"stuff-sack|compression|dry-bag|dry-sack|cube|insert|divider|wallet|"
+    r"stuff-sack|compression|dry-bag|dry-sack|cube|insert|divider|"
     r"first-aid|hydration|reservoir|bottle|filter|shovel|trowel",
     re.I)
 
@@ -345,30 +1094,54 @@ def fetch_campsaver(brand, pacer, limit=0, force=False):
 
     LD_RE = re.compile(
         r'<script type="application/ld\+json">(.*?)</script>', re.S)
-    fetched = 0
+    fetched, misses, blocked = 0, 0, False
     for url in fresh:
         pacer.wait()
         status, _, body = get(url, timeout=30)
-        if status != 200:
-            continue
         product, crumbs = None, []
-        for block in LD_RE.findall(body.decode("utf-8", "replace")):
-            try:
-                data = json.loads(block)
-            except json.JSONDecodeError:
-                continue
-            if data.get("@type") == "Product":
-                product = data
-            elif data.get("@type") == "BreadcrumbList":
-                crumbs = [e.get("item", {}).get("name") or e.get("name") or ""
-                          for e in data.get("itemListElement", [])]
+        if status == 200:
+            for block in LD_RE.findall(body.decode("utf-8", "replace")):
+                try:
+                    data = json.loads(block)
+                except json.JSONDecodeError:
+                    continue
+                if data.get("@type") == "Product":
+                    product = data
+                elif data.get("@type") == "BreadcrumbList":
+                    crumbs = [e.get("item", {}).get("name") or e.get("name") or ""
+                              for e in data.get("itemListElement", [])]
         if product:
             seen[url] = {"url": url, "product": product, "breadcrumbs": crumbs}
             fetched += 1
+            misses = 0
+            # Checkpoint: an hour of polite requests should not be lost to a
+            # dropped connection at page 900. Same shape main() writes, so an
+            # interrupted run resumes from the last mark instead of zero.
+            if fetched % 50 == 0:
+                snap = dict(result, status="partial",
+                            note=f"checkpoint at {fetched} pages",
+                            products=list(seen.values()))
+                with open(prior, "w") as f:
+                    json.dump(snap, f)
+        else:
+            # CampSaver's bot protection soft-blocks: pages redirect to a
+            # forbidden.html that answers 200 with no Product JSON-LD, so a
+            # block looks like an endless run of product-less pages, not an
+            # error code. Legit misses ran ~40% in testing, so twelve in a row
+            # is a block, not chance (0.4^12) — stop knocking; every request
+            # served while blocked argues for keeping the block. Learned the
+            # hard way 2026-08-01: a sustained run tripped it a few hundred
+            # pages in and ground on invisibly.
+            misses += 1
+            if misses >= 12:
+                print(f"    aborting: {misses} consecutive pages without "
+                      f"product data — soft block likely", flush=True)
+                result["note"] = "aborted on soft block; "
+                break
 
     result["products"] = list(seen.values())
     result["status"] = "ok"
-    result["note"] = f"{fetched} pages fetched this run"
+    result["note"] = (result["note"] or "") + f"{fetched} pages fetched this run"
     return result
 
 
@@ -384,6 +1157,11 @@ def fetch_campsaver(brand, pacer, limit=0, force=False):
 # fetches a handful per brand rather than all 116.
 
 COLLECTION_CATEGORY = [
+    # First, because bike luggage is named after everything else: a pannier
+    # shelf is "roller bags", a bikepacking shelf is "seat packs", and the
+    # luggage and daypack patterns below were taking both.
+    ("bike-bag",        r"pannier|handlebar bags?|frame bags?|saddle bags?|"
+                        r"rack[- ]top|bikepacking|\bbike bags?\b|fork bags?"),
     ("sling",           r"sling|crossbody"),
     ("hip-pack",        r"hip pack|fanny|waist pack|belt bag|bum bag"),
     ("duffel",          r"duffel|duffle|gym bag"),
@@ -392,7 +1170,7 @@ COLLECTION_CATEGORY = [
     ("messenger",       r"messenger|courier|satchel"),
     ("briefcase",       r"briefcase|portfolio"),
     ("camera-bag",      r"camera bag|camera backpack|photo bag"),
-    ("hiking-pack",     r"hiking|backpacking|trekking"),
+    ("hiking-pack",     r"hiking|backpacking|trekking|mountaineering|alpine"),
     ("travel-backpack", r"travel pack|travel backpack"),
     ("daypack",         r"backpack|daypack|rucksack"),
     ("pouch",           r"pouch|dopp|toiletry|organi[sz]er"),
@@ -400,6 +1178,26 @@ COLLECTION_CATEGORY = [
 
 # Collections that mean "this is a bag" without saying which kind.
 GENERIC_BAG = re.compile(r"\bbags?\b", re.I)
+
+# Checked before all of them, including GENERIC_BAG. A shelf of spare parts
+# for panniers is named after panniers and is not one: Ortlieb files 39
+# products under `spare-parts-bike-bags` and 12 under
+# `spare-parts-luggage-racks`, and the `\bbags?\b` vote swept every mounting
+# hook and buckle into the index as carry. A luggage rack is the same story
+# without the word "spare" — it is the thing a pannier hangs on.
+SPARE_PART = re.compile(
+    r"spare[- ]parts?|replacement|ersatzteil|luggage[- ]racks?|mounting", re.I)
+
+# A brand's own category tree is its whole catalogue, not a bag shop's
+# collection list, so the patterns above meet things they were never meant to
+# judge: Mammut shelves `hiking-pants` and `hiking-shoes` beside
+# `hiking-backpacks`, and `hiking` takes all three. What a shelf is *for* has
+# to be settled before what it is about.
+NOT_CARRY_SHELF = re.compile(
+    r"pants?|trousers?|shorts?|shoes?|boots?|jackets?|shirts?|gloves?|hats?|"
+    r"apparel|clothing|footwear|socks?|helmets?|harness|ropes?|cords?|"
+    r"sleeping|tents?|poles?|axes?|crampons?|shovels?|probes?|beacons?|"
+    r"accessor|spare|nutrition|care|sunglass", re.I)
 
 # Collections that mean "this is not a bag at all" — the negative signal that
 # keeps zipper pullers and camera cubes out of a bag index.
@@ -452,7 +1250,9 @@ def fetch_collections(brand, pacer):
         if NOISE.search(handle) or NOISE.search(title):
             continue
         category = collection_category(name)
-        if category:
+        if SPARE_PART.search(name):
+            wanted.append((handle, None, False))
+        elif category:
             wanted.append((handle, category, True))
         elif GENERIC_BAG.search(name):
             wanted.append((handle, None, True))
@@ -565,7 +1365,7 @@ def main():
                     help="fetch collection membership (category ground truth)")
     ap.add_argument("--limit", type=int, default=0,
                     help="cap page fetches for crawl-style platforms "
-                         "(campsaver) — for test runs")
+                         "(campsaver, pages) — for test runs and chunked crawls")
     args = ap.parse_args()
 
     os.makedirs(RAW, exist_ok=True)
@@ -641,8 +1441,27 @@ def main():
         elif platform == "campsaver":
             res = fetch_campsaver(brand, pacer, limit=args.limit,
                                   force=args.force)
-        else:
+        elif platform == "woocommerce":
+            res = fetch_woocommerce(brand, pacer)
+        elif platform == "magento":
+            res = fetch_magento(brand, pacer)
+        elif platform == "pages":
+            res = fetch_pages(brand, pacer, limit=args.limit, force=args.force)
+        elif platform == "shopify":
             res = fetch_brand(brand, pacer)
+        else:
+            # A detected platform with no adapter yet (squarespace, custom).
+            # Skip loudly rather than hammering it with Shopify requests.
+            print(f"    no adapter for platform {platform!r}, skipping",
+                  flush=True)
+            log[brand["slug"]] = {"slug": brand["slug"], "name": brand["name"],
+                                  "domain": brand["domain"],
+                                  "platform": platform,
+                                  "status": "no-adapter", "note": "",
+                                  "product_count": 0}
+            with open(log_path, "w") as f:
+                json.dump(log, f, indent=2)
+            continue
         n = len(res["products"])
         if res["status"] == "ok" and n:
             with open(out, "w") as f:

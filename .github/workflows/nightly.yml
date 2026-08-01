@@ -38,7 +38,7 @@ env:
   # immediately, so pace hard. This is the number that keeps the crawl polite.
   DELAY: '65'
   SHARDS: '4'
-  CALIPERED_CONTACT: https://calipered.com/bot
+  GEARHERD_CONTACT: https://gearherd.com/bot
 
 jobs:
   fetch:
@@ -190,8 +190,8 @@ jobs:
 
       - name: Commit the diff
         run: |
-          git config user.name  "calipered-bot"
-          git config user.email "calipered-bot@users.noreply.github.com"
+          git config user.name  "gearherd-bot"
+          git config user.email "gearherd-bot@users.noreply.github.com"
           # data/price-events.json is gitignored — it is a hand-off to the
           # matcher, not a record. The ledger is the record.
           git add data/

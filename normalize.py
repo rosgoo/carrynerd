@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-calipered normalizer — turns raw Shopify catalogs into one comparable schema.
+gearherd normalizer — turns raw Shopify catalogs into one comparable schema.
 
 The hard part of a bag directory is not fetching, it is that no two brands
 describe a bag the same way. Volume shows up in the title ("Travel Pack 45L"),
@@ -30,6 +30,9 @@ OUT = os.path.join(HERE, "data", "bags.json")
 # Dropped products, kept so the classifier can be audited rather than
 # guessed at — a count says 141 were dropped, this says which.
 REJECTS = os.path.join(HERE, "data", "rejected.json")
+# Human rulings on the tail the patterns cannot reach. See `Overrides`.
+COLOUR_OVERRIDES_PATH = os.path.join(HERE, "data", "colour-overrides.json")
+CATEGORY_OVERRIDES_PATH = os.path.join(HERE, "data", "category-overrides.json")
 
 CM_PER_IN = 2.54
 G_PER_LB = 453.592
@@ -45,10 +48,25 @@ G_PER_OZ = 28.3495
 # bags — WANDRD's whole PRVKE line among them.
 CATEGORIES = [
     ("sling",            r"\bslings?\b|\bcrossbody\b|\bchest (?:packs?|bags?)\b"),
-    ("hip-pack",         r"\b(?:hip packs?|fanny packs?|waist packs?|bum bags?|belt bags?)\b"),
+    # Optional space in each: brands compound these as often as they space
+    # them, and "Waistpack" was reading as no category at all.
+    ("hip-pack",         r"\b(?:hip ?packs?|fanny ?packs?|waist ?packs?|"
+                         r"bum ?bags?|belt ?(?:bags?|packs?)|lumbar ?packs?)\b"),
     # go-bag: Baboon's entire flagship line (32L/40L/60L) is named this and
     # nothing else, so the whole range sat in `unclassified` while the brand
     # showed as indexed. A store's own coinage beats a generic noun.
+    # Bike luggage is its own thing and was arriving as `daypack`, which is
+    # both wrong and unfilterable. Above daypack because half these names end
+    # in "pack" — Ortlieb's Seat-Pack, a bikepacking frame pack — and \bpacks?\b
+    # would take every one of them.
+    # Both nouns for each mount point, because a brand picks one and sticks to
+    # it: Ortlieb sells a Handlebar-Pack and a Toptube-Bag and means the same
+    # kind of thing by both.
+    ("bike-bag",         r"\bpanniers?\b|\bbikepacking\b|"
+                         r"\b(?:handle ?bar|fork|frame|top[- ]?tube|seat|"
+                         r"saddle|gravel|down ?tube|stem)[- ]?(?:bags?|packs?)\b|"
+                         r"\bbike[- ]?(?:bags?|packs?|packers?)\b|"
+                         r"\btrunk[- ]?bags?\b"),
     ("duffel",           r"\bduff?les?\b|\bduffels?\b|\bgym bags?\b|\bgo-?bags?\b"),
     ("luggage",          r"\b(?:suitcases?|carry[- ]ons?(?: luggage)?|spinners?|rollers?|check[- ]in)\b"),
     ("tote",             r"\btotes?\b|\bshoppers?\b"),
@@ -57,6 +75,12 @@ CATEGORIES = [
     ("camera-bag",       r"\bcamera (?:bags?|backpacks?)\b|\bphoto (?:bags?|packs?)\b"),
     ("hiking-pack",      r"\b(?:hiking|backpacking|trekking|mountaineering|thru[- ]hik)\w*\b"),
     ("travel-backpack",  r"\btravel (?:packs?|backpacks?)\b|\bcarry[- ]on backpacks?\b"),
+    # Above daypack, not below: wallets named "Card Pack" would otherwise be
+    # eaten by \bpacks?\b, while backpacks with "wallet" in the title are
+    # essentially unheard of.
+    ("wallet",           r"\bwallets?\b|\bbillfolds?\b|"
+                         r"\bcard ?(?:holders?|cases?|sleeves?)\b|"
+                         r"\bpassport (?:holders?|covers?|wallets?)\b"),
     ("daypack",          r"\b(?:daypacks?|day packs?|rucksacks?|backpacks?|packs?)\b"),
     # The long tail of soft carry that is not a backpack. "kit" is qualified
     # rather than bare because "Sewing Kit" and "Rift Camera Kit" are contents,
@@ -75,16 +99,27 @@ CATEGORIES = [
 # classified as bags and then showed up with no specs and no features.
 NOT_A_BAG = re.compile(
     r"\b(gift cards?|t-?shirts?|tee\b|hoodies?|jackets?|caps?\b|hats?\b|beanies?|"
-    r"socks?|gloves?|pants?|shorts?|sweatshirts?|wallets?|cardholders?|"
-    r"card cases?|keychains?|key ?rings?|patch(?:es)?|stickers?|pins?\b|"
-    r"lanyards?|straps?\b|harness(?:es)?|tripods?|lens(?:es)?|filters?\b|"
+    r"socks?|gloves?|pants?|shorts?|sweatshirts?|"
+    r"keychains?|key ?rings?|patch(?:es)?|stickers?|pins?\b|"
+    r"lanyards?|straps?\b|harness(?:es)?|buckles?|clips?|hooks?|"
+    r"tripods?|lens(?:es)?|filters?\b|"
     r"batteries|battery|chargers?|cables?|adapters?|power banks?|bottles?\b|"
     r"mugs?\b|tumblers?|notebooks?|journals?|pens?\b|sunglass(?:es)?|"
     r"watch(?:es)?\b|towels?|blankets?|pillows?|tents?\b|sleeping bags?|stoves?|"
     r"trekking poles?|inserts?\b|packing cubes?|camera cubes?|dividers?|"
     r"luggage tags?|bag tags?|"
     r"zip(?:per)? pull(?:er)?s?|playing cards?|rain ?(?:covers?|fly|flies)|repairs?|"
-    r"warranty|spares?|replacements?|samples?)\b",
+    r"warranty|spares?|replacements?|samples?|bundles?|"
+    # A "Multi-Pack" is a quantity, not a bag — CamelBak sells straws and
+    # bite valves that way and `\bpacks?\b` took every one of them.
+    r"straws?|multi[- ]?packs?|\d+\s*pk|packs? of \d+|packages?|"
+    # Climbing hardware, which an alpine brand sells beside its packs.
+    # `sling` is the sharp one: it is a real bag category *and* the word for a
+    # loop of webbing, so Mammut's "Contact Sling 8.0 180cm" was being indexed
+    # as carry. The length in centimetres is the tell — a bag's name states
+    # its litres, never its span.
+    r"quickdraws?|carabiners?|belay|crampons?|ice axes?|pitons?|"
+    r"down bags?|slings? [^,|]{0,16}\d{2,3} ?cm)\b",
     re.I,
 )
 
@@ -156,13 +191,122 @@ COLOUR_FAMILIES = [
 ]
 
 
-def colour_family(name):
+# --- reviewed overrides ------------------------------------------------------
+#
+# The classifier is regex over other people's prose, so it will always have a
+# tail it cannot reach: a colourway named after a collaborator ("J Prince"), a
+# product whose title names no category any pattern knows. An override is a
+# human ruling recorded as data and consulted before the patterns run.
+#
+# Three states, deliberately. An absent key has not been looked at; a key with
+# a value carries the ruling; a key with `null` records that the right answer
+# *is* nothing — "X-Pac" names a fabric, not a colour, and saying so once is
+# what stops it heading the audit list forever. Without that third state the
+# list can only grow, and a list that never shrinks stops being read.
+#
+# Keyed by brand, because these names are not global. Chrome's "Royale" is a
+# red; the next brand's Royale will be a blue, and a flat name -> family map
+# would quietly repaint it.
+
+MISSING = object()
+
+
+def norm_key(s):
+    """Keys are matched on their content, not their typing."""
+    return re.sub(r"\s+", " ", str(s or "")).strip().casefold()
+
+
+def product_key(url):
+    """
+    The last path segment of a product URL — a Shopify handle, a WooCommerce
+    slug, a Bellroy path. Stable across a domain move, and the one identifier
+    every adapter here can produce for a product it has just rejected.
+    """
+    path = re.sub(r"[?#].*$", "", url or "").rstrip("/")
+    return norm_key(path.rsplit("/", 1)[-1])
+
+
+class Overrides:
+    """A file of reviewed rulings, plus which of them this run actually used."""
+
+    def __init__(self, path, valid, label):
+        self.path, self.label = path, label
+        self.valid = set(valid)
+        self.table, self.used = {}, set()
+        if not os.path.exists(path):
+            return
+        with open(path) as f:
+            try:
+                raw = json.load(f)
+            except json.JSONDecodeError as e:
+                sys.exit(f"{path}: not valid JSON ({e})")
+        for brand, entries in raw.items():
+            # `_`-prefixed keys are notes to whoever opens the file. JSON has
+            # nowhere else to put one.
+            if brand.startswith("_"):
+                continue
+            if not isinstance(entries, dict):
+                sys.exit(f"{path}: '{brand}' must map keys to rulings, "
+                         f"got {type(entries).__name__}")
+            for key, value in entries.items():
+                # A typo here would otherwise land as a category no filter
+                # offers and no page links to — silently missing, which is the
+                # failure mode this whole file exists to prevent.
+                if value is not None and value not in self.valid:
+                    sys.exit(f"{path}: {brand}/{key} -> {value!r} is not a known "
+                             f"{label}. Known: {', '.join(sorted(self.valid))}")
+                self.table.setdefault(brand, {})[norm_key(key)] = value
+
+    def decide(self, brand, key):
+        """The recorded ruling, or MISSING when nobody has ruled on this."""
+        entries = self.table.get(brand)
+        if not entries:
+            return MISSING
+        k = norm_key(key)
+        if k not in entries:
+            return MISSING
+        self.used.add((brand, k))
+        return entries[k]
+
+    def report(self):
+        """
+        Counts plus the rulings nothing matched this run — a product the brand
+        stopped selling, a colourway they renamed. Reported rather than
+        dropped: a hand-off file nobody prunes is one nobody trusts, and the
+        audit page is where a stale line should surface.
+        """
+        stale = [{"brand": b, "key": k}
+                 for b, entries in self.table.items() for k in entries
+                 if (b, k) not in self.used]
+        return {
+            "file": os.path.relpath(self.path, HERE),
+            "entries": sum(len(e) for e in self.table.values()),
+            "used": len(self.used),
+            "stale": sorted(stale, key=lambda r: (r["brand"], r["key"])),
+        }
+
+
+COLOUR_OVERRIDES = Overrides(COLOUR_OVERRIDES_PATH,
+                             [f for f, _ in COLOUR_FAMILIES], "colour family")
+CATEGORY_OVERRIDES = Overrides(CATEGORY_OVERRIDES_PATH,
+                               [c for c, _ in CATEGORIES], "category")
+
+
+def colour_family(name, brand=None):
     """
     The family a colourway name belongs to, or None when it names no colour.
     Material words are stripped first: plenty of brands put the fabric in the
     colour field ("Heritage Suede", "Castlerock Twill", "X-Pac"), and those are
     a material statement, not a colour one.
+
+    A reviewed ruling for this brand and name wins outright — including a ruling
+    of "no colour", which is why the override is consulted before the patterns
+    rather than only as a fallback for what they miss.
     """
+    if brand:
+        decided = COLOUR_OVERRIDES.decide(brand, name)
+        if decided is not MISSING:
+            return decided
     text = name or ""
     for _, pattern in MATERIALS:
         text = re.sub(pattern, " ", text, flags=re.I)
@@ -200,15 +344,19 @@ def strip_html(s):
 
 # --- extraction -------------------------------------------------------------
 
+# `lt` because Rab writes capacity as "28lt / 1710cu.in" and nothing else in
+# the corpus spells a litre that way — without it their whole catalogue loses
+# its volume to a two-letter abbreviation.
 VOLUME_RE = re.compile(
-    r"(?<![A-Za-z0-9.])(\d{1,3}(?:\.\d)?)\s*(?:L\b|l\b|lit(?:er|re)s?\b)", re.I)
+    r"(?<![A-Za-z0-9.])(\d{1,3}(?:[.,]\d)?)\s*(?:L\b|l\b|lt\b|lit(?:er|re)s?\b)",
+    re.I)
 
 
 def find_volume(text):
     """Liters, sanity-bounded. Returns None rather than a guess."""
     for m in VOLUME_RE.finditer(text or ""):
         try:
-            v = float(m.group(1))
+            v = float(m.group(1).replace(",", "."))
         except ValueError:
             continue
         if 0.5 <= v <= 150:
@@ -241,6 +389,55 @@ AXIS = {"length": "h", "height": "h", "tall": "h",
         "width": "w", "wide": "w",
         "depth": "d", "deep": "d", "thickness": "d"}
 
+# The third shape: the axis letter *follows* its number, which is how the
+# Salesforce Commerce Cloud themes write a spec row —
+# Gregory's `22.5in H x 11in L x 12.8in W`. The labelled parser cannot see it
+# (it wants the word first) and the bare H x W x D parser chokes on the
+# letters between the numbers, so it needed its own pattern rather than a
+# looser version of either.
+DIM_AXIS_SUFFIX = re.compile(
+    r"(\d{1,3}(?:\.\d+)?)\s*(cm|mm|\"|”|in\b|inch(?:es)?)?\s*([HWDL])\b\s*[x×*]\s*"
+    r"(\d{1,3}(?:\.\d+)?)\s*(cm|mm|\"|”|in\b|inch(?:es)?)?\s*([HWDL])\b\s*[x×*]\s*"
+    r"(\d{1,3}(?:\.\d+)?)\s*(cm|mm|\"|”|in\b|inch(?:es)?)?\s*([HWDL])\b",
+    re.I)
+
+# Slash-separated metric triples — Deuter's `72 / 34 / 26 cm`. Deliberately
+# *not* folded into DIM_CM: a slash between numbers is far more often a size
+# range ("38/40/42 cm" of back length) than a measurement, so only the callers
+# that know their source writes dimensions this way opt in.
+# The trailing `(...)` is Deuter naming the axes after the numbers rather than
+# before them — `52 / 23 / 18 (L x W x D) cm` — which put the unit out of
+# reach of a pattern that expected it to follow the last number directly.
+DIM_CM_SLASH = re.compile(
+    r"(\d{1,3}(?:\.\d+)?)\s*/\s*(\d{1,3}(?:\.\d+)?)\s*/\s*"
+    r"(\d{1,3}(?:\.\d+)?)\s*(?:\([^)]{0,30}\)\s*)?(?:cm|centimet)", re.I)
+
+
+def find_dims_axis_suffix(text):
+    """Parse `22.5in H x 11in L x 12.8in W`. Returns ([h, w, d] cm, unit)."""
+    m = DIM_AXIS_SUFFIX.search(text or "")
+    if not m:
+        return None, None
+    g = m.groups()
+    vals, units = [], []
+    for i in range(0, 9, 3):
+        vals.append(float(g[i]))
+        units.append((g[i + 1] or "").lower())
+    # Brands mix a unit onto one axis and leave the others bare; whichever
+    # unit the row does state governs the whole row.
+    stated = next((u for u in units if u), "")
+    if stated in ("cm",):
+        cm, src = vals, "cm"
+    elif stated == "mm":
+        cm, src = [v / 10.0 for v in vals], "mm"
+    elif stated:
+        cm, src = [v * CM_PER_IN for v in vals], "in"
+    else:
+        return None, None                 # no unit anywhere — not a guess
+    if not all(2 <= v <= 120 for v in cm):
+        return None, None
+    return sorted((round(v, 1) for v in cm), reverse=True), src
+
 
 def find_dims_labelled(text):
     """Parse per-axis labelled dimensions. Needs at least two axes to count."""
@@ -265,15 +462,21 @@ def find_dims_labelled(text):
     return None, None
 
 
-def find_dims_cm(text):
+def find_dims_cm(text, slash=False):
     """
     Returns ([h, w, d] in cm, source) — largest value first, since brands
     disagree on ordering and height is the dimension airlines care about.
+
+    `slash` opts into reading `72 / 34 / 26 cm` as dimensions. Off by default:
+    see DIM_CM_SLASH.
     """
     text = text or ""
     dims, _ = find_dims_labelled(text)
     if dims and len(dims) == 3:
         return dims, "description:labelled"
+    axis_dims, unit = find_dims_axis_suffix(text)
+    if axis_dims:
+        return axis_dims, f"description:axis-{unit}"
     m = DIM_CM.search(text)
     if m:
         vals = [float(g) for g in m.groups()]
@@ -284,27 +487,73 @@ def find_dims_cm(text):
         vals = [float(g) * CM_PER_IN for g in m.groups()]
         if all(2 <= v <= 120 for v in vals):
             return sorted((round(v, 1) for v in vals), reverse=True), "description:in"
+    if slash:
+        m = DIM_CM_SLASH.search(text)
+        if m:
+            vals = [float(g) for g in m.groups()]
+            if all(2 <= v <= 120 for v in vals):
+                return sorted(vals, reverse=True), "description:cm-slash"
     if dims:                              # two axes is better than nothing
         return dims, "description:labelled-partial"
     return None, None
 
 
-WEIGHT_RES = [
-    (re.compile(r"(\d{1,4}(?:\.\d+)?)\s*(?:kg|kilogram)", re.I), 1000.0),
-    (re.compile(r"(\d{1,2}(?:\.\d+)?)\s*(?:lbs?\b|pounds?\b)", re.I), G_PER_LB),
-    (re.compile(r"(\d{1,3}(?:\.\d+)?)\s*(?:oz\b|ounces?\b)", re.I), G_PER_OZ),
-    (re.compile(r"(\d{2,4})\s*(?:g\b|grams?\b)", re.I), 1.0),
-]
+# `[.,]` for the decimal: half the brands now in the index are European and
+# write "2,7 kg". Reading that as an English decimal-free string matched the
+# "7 kg" and published a 2.7 kg pack as a 7 kg one — a plausible number,
+# silently wrong. The 50 g - 8 kg gate below is what makes taking the comma as
+# a decimal point safe: read as a thousands separator instead, every one of
+# these lands far outside it and is thrown away rather than believed.
+WEIGHT_KG = (re.compile(r"(\d{1,4}(?:[.,]\d+)?)\s*(?:kg|kilogram)", re.I), 1000.0)
+WEIGHT_LB = (re.compile(r"(\d{1,2}(?:[.,]\d+)?)\s*(?:lbs?\b|pounds?\b)", re.I), G_PER_LB)
+WEIGHT_OZ = (re.compile(r"(\d{1,3}(?:[.,]\d+)?)\s*(?:oz\b|ounces?\b)", re.I), G_PER_OZ)
+WEIGHT_G = (re.compile(r"(\d{2,4})\s*(?:g\b|grams?\b)", re.I), 1.0)
+
+# Order matters, and the right order depends on what is being read.
+#
+# Over free prose, the imperial units come first: a description that mentions
+# both "600 grams" (of yarn, explaining a denier) and "2.4 lbs" (the pack) is
+# talking about two different things, and the pounds are the one being asked
+# about.
+#
+# Over a single spec field it is the opposite. Rab publishes weight as
+# "865g / 1lb 14.5oz" — one measurement, restated — and taking the pounds
+# meant reading "1lb" and rounding a 865 g pack down to 454 g. Every gram of
+# that error was invisible: the number was real, the unit was real, and only
+# the choice between them was wrong.
+WEIGHT_RES = [WEIGHT_KG, WEIGHT_LB, WEIGHT_OZ, WEIGHT_G]
+WEIGHT_RES_METRIC_FIRST = [WEIGHT_KG, WEIGHT_G, WEIGHT_LB, WEIGHT_OZ]
 
 
-def find_weight_g(text):
-    for rx, mult in WEIGHT_RES:
+def find_weight_g(text, prefer_metric=False):
+    for rx, mult in (WEIGHT_RES_METRIC_FIRST if prefer_metric else WEIGHT_RES):
         m = rx.search(text or "")
         if m:
-            g = float(m.group(1)) * mult
+            g = float(m.group(1).replace(",", ".")) * mult
             if 50 <= g <= 8000:
                 return int(round(g))
     return None
+
+
+# A labelled weight is the product speaking; a bare one in the same paragraph
+# might be the fabric. Cottage makers quote "5.8 oz VX21" beside the pack
+# weight and Rab explains that "600D means 9,000 meters of yarn weigh 600
+# grams" — first-match-wins takes the wrong number in both cases.
+WEIGHT_LABELLED = re.compile(
+    r"\b(?:weights?|gewicht)\s*[:\-]?\s*(\d+(?:[.,]\d+)?)\s*"
+    r"(oz\b|ounces?\b|g\b|grams?\b|gramm\b|lbs?\b|pounds?\b|kg\b)", re.I)
+WEIGHT_UNIT = {"oz": G_PER_OZ, "ounce": G_PER_OZ, "ounces": G_PER_OZ,
+               "g": 1.0, "gram": 1.0, "grams": 1.0, "gramm": 1.0,
+               "lb": G_PER_LB, "lbs": G_PER_LB,
+               "pound": G_PER_LB, "pounds": G_PER_LB, "kg": 1000.0}
+
+
+def find_weight_labelled(text):
+    m = WEIGHT_LABELLED.search(text or "")
+    if not m:
+        return None
+    g = float(m.group(1).replace(",", ".")) * WEIGHT_UNIT[m.group(2).lower().rstrip(".")]
+    return int(round(g)) if 50 <= g <= 8000 else None
 
 
 LAPTOP_RES = [
@@ -399,7 +648,7 @@ def option_index(options, pattern):
     return None
 
 
-def build_shopify(product, brand, hint=None):
+def build_shopify(product, brand, hint=None, force=None):
     title = product.get("title") or ""
     tags = product.get("tags") or []
     ptype = product.get("product_type") or ""
@@ -410,34 +659,40 @@ def build_shopify(product, brand, hint=None):
     # not a guess the way a keyword match is: a brand filing something under
     # /accessories is telling us plainly, and it catches products whose title
     # carries no category word at all (WANDRD's entire PRVKE line).
-    if hint is not None and hint.get("is_bag") is False:
-        return None, "not-a-bag:collection"
-    if NOT_A_BAG.search(title) or NOT_A_BAG.search(ptype):
-        return None, "not-a-bag"
-    # Only after the title has had its say: a "Camera Bag" filed under a
-    # store's "Photo Accessories" shelf is still a camera bag.
-    if (NOT_A_BAG_TYPE.search(ptype) and not BAGGISH_TYPE.search(ptype)
-            and not classify(title, "", [])[0]):
-        return None, "not-a-bag:product-type"
-
-    # Precedence: the product's own title, then the store's shelving, then
-    # tags. A title is specific and deliberate; a shelf is deliberate but
-    # broad; a tag is neither, and letting tags win put WANDRD's whole camera
-    # line under hiking-pack.
-    keyword, keyword_src = classify(title, ptype, tags)
-    if keyword_src == "title":
-        category, cat_src = keyword, "title"
-    elif hint and hint.get("category"):
-        category, cat_src = hint["category"], "collection"
-    elif keyword:
-        category, cat_src = keyword, "tag"
+    # A reviewed ruling states this is a bag and which kind, so the exclusion
+    # rules get no vote — overriding them is the entire point of ruling on it.
+    if force:
+        category, cat_src = force, "override"
     else:
-        category, cat_src = None, None
-    if not category:
-        # Knowing it is a bag but not what kind is still not knowing. Counted
-        # separately so the gap is visible rather than lost in one number.
-        return None, ("unclassified:known-bag" if hint and hint.get("is_bag")
-                      else "unclassified")
+        if hint is not None and hint.get("is_bag") is False:
+            return None, "not-a-bag:collection"
+        if NOT_A_BAG.search(title) or NOT_A_BAG.search(ptype):
+            return None, "not-a-bag"
+        # Only after the title has had its say: a "Camera Bag" filed under a
+        # store's "Photo Accessories" shelf is still a camera bag.
+        if (NOT_A_BAG_TYPE.search(ptype) and not BAGGISH_TYPE.search(ptype)
+                and not classify(title, "", [])[0]):
+            return None, "not-a-bag:product-type"
+
+        # Precedence: the product's own title, then the store's shelving, then
+        # tags. A title is specific and deliberate; a shelf is deliberate but
+        # broad; a tag is neither, and letting tags win put WANDRD's whole
+        # camera line under hiking-pack.
+        keyword, keyword_src = classify(title, ptype, tags)
+        if keyword_src == "title":
+            category, cat_src = keyword, "title"
+        elif hint and hint.get("category"):
+            category, cat_src = hint["category"], "collection"
+        elif keyword:
+            category, cat_src = keyword, "tag"
+        else:
+            category, cat_src = None, None
+        if not category:
+            # Knowing it is a bag but not what kind is still not knowing.
+            # Counted separately so the gap is visible rather than lost in one
+            # number.
+            return None, ("unclassified:known-bag" if hint and hint.get("is_bag")
+                          else "unclassified")
 
     options = product.get("options") or []
     color_idx = option_index(options, r"colou?r|finish|colorway")
@@ -476,7 +731,7 @@ def build_shopify(product, brand, hint=None):
             "color": color,
             # The family is what makes colour filterable. Nobody searches for
             # "Atacama"; they search for brown.
-            "color_family": colour_family(color or v.get("title")),
+            "color_family": colour_family(color or v.get("title"), brand["slug"]),
             "size": size,
             "price": price,
             "compare_at": compare,
@@ -540,7 +795,7 @@ def build_shopify(product, brand, hint=None):
         "variant_count": len(variants),
         "variants": variants,
         "color_families": sorted({f for f in (
-            [colour_family(c) for c in colors]
+            [colour_family(c, brand["slug"]) for c in colors]
             + [v["color_family"] for v in variants]) if f}),
         # Colourway names are a real source of material facts — brands ship a
         # "Heritage Suede" or an "X-Pac Black" and never mention the fabric in
@@ -590,20 +845,21 @@ BELLROY_CATEGORY = {
     "pouch": "pouch",
     "folio": "briefcase",
     "luggage": "luggage",
+    "wallet": "wallet",
+    "passport_holder": "wallet",
 }
 
 # Real products, not bags. Their shelf name is trusted the same way a Shopify
-# product_type is — it is the brand speaking, not a keyword guess.
-# Wallets are out of *scope*, not garbage — raw/ keeps them fully specced, and
-# the planned wallet vertical flips this set (Notes/gearherd/wallets-later.md).
-BELLROY_NOT_A_BAG = {"phone_case", "wallet", "tech_accessory", "key_holder",
-                     "passport_holder"}
+# product_type is — it is the brand speaking, not a keyword guess. (Wallets
+# were in this set until the vertical opened on 2026-08-01 — see
+# Notes/gearherd/wallets-later.md for the flip record.)
+BELLROY_NOT_A_BAG = {"phone_case", "tech_accessory", "key_holder"}
 
 # product_type is even blunter than the shelf: {Bag, Wheeled Luggage,
 # Accessory} carry, the rest (Wallet, Phone Case, Marketing) never do. This is
 # what catches "Card Pack" — a promo deck of cards whose title reads as a
 # daypack and which has no shelf at all, only product_type: Marketing.
-BELLROY_BAG_TYPES = {"Bag", "Wheeled Luggage", "Accessory"}
+BELLROY_BAG_TYPES = {"Bag", "Wheeled Luggage", "Accessory", "Wallet"}
 
 # Feature tokens that map straight onto ours; anything unmapped still gets a
 # chance via detect() over the humanised token text.
@@ -641,7 +897,7 @@ def group_bellroy(products):
     return list(groups.values())
 
 
-def build_bellroy(skus, brand, hint=None):
+def build_bellroy(skus, brand, hint=None, force=None):
     rep = skus[0]
     dims = rep.get("dimensions") or {}
     name = rep.get("name") or ""
@@ -661,17 +917,20 @@ def build_bellroy(skus, brand, hint=None):
 
     subcat = _bellroy_val(dims, "filter_sub_category") or ""
     ptype = _bellroy_val(dims, "product_type")
-    if ptype and ptype not in BELLROY_BAG_TYPES:
-        return None, "not-a-bag:bellroy-type"
-    if NOT_A_BAG.search(title):
-        return None, "not-a-bag"
-    if subcat in BELLROY_NOT_A_BAG:
-        return None, "not-a-bag:bellroy-shelf"
-    category, cat_src = classify(title, "", [])
-    if not category and subcat in BELLROY_CATEGORY:
-        category, cat_src = BELLROY_CATEGORY[subcat], "bellroy-shelf"
-    if not category:
-        return None, "unclassified"
+    if force:
+        category, cat_src = force, "override"
+    else:
+        if ptype and ptype not in BELLROY_BAG_TYPES:
+            return None, "not-a-bag:bellroy-type"
+        if NOT_A_BAG.search(title):
+            return None, "not-a-bag"
+        if subcat in BELLROY_NOT_A_BAG:
+            return None, "not-a-bag:bellroy-shelf"
+        category, cat_src = classify(title, "", [])
+        if not category and subcat in BELLROY_CATEGORY:
+            category, cat_src = BELLROY_CATEGORY[subcat], "bellroy-shelf"
+        if not category:
+            return None, "unclassified"
 
     axes = [v for v in (_bellroy_num(dims, "product_dim_h_cm"),
                         _bellroy_num(dims, "product_dim_l_cm"),
@@ -728,7 +987,7 @@ def build_bellroy(skus, brand, hint=None):
             "sku": a.get("sku"),
             "title": " / ".join(x for x in (color, material or None) if x) or None,
             "color": color,
-            "color_family": colour_family(color),
+            "color_family": colour_family(color, brand["slug"]),
             "size": pretty_size,
             "price": price,
             "compare_at": None,
@@ -767,7 +1026,7 @@ def build_bellroy(skus, brand, hint=None):
         "variant_count": len(variants),
         "variants": variants,
         "color_families": sorted({f for f in (
-            [colour_family(c) for c in colors]) if f}),
+            [colour_family(c, brand["slug"]) for c in colors]) if f}),
         "materials": materials,
         "features": features,
         "tags": [],
@@ -786,7 +1045,7 @@ CUIN_RE = re.compile(r"([\d,]{3,7})\s*(?:cu\.?\s*in\b|cubic\s*inch)", re.I)
 CUIN_TO_L = 0.0163871
 
 
-def build_campsaver(item, brand, hint=None):
+def build_campsaver(item, brand, hint=None, force=None):
     ld = item.get("product") or {}
     crumbs = [c for c in (item.get("breadcrumbs") or []) if c]
     title = (ld.get("name") or "").strip()
@@ -798,16 +1057,20 @@ def build_campsaver(item, brand, hint=None):
         return None, "no-brand"
 
     crumb_text = " ".join(crumbs)
-    if NOT_A_BAG.search(title):
-        return None, "not-a-bag"
-    # Breadcrumbs are the retailer's shelving — same standing as a Shopify
-    # product_type, same guard against a shelf name that also names a bag.
-    if (NOT_A_BAG_TYPE.search(crumb_text) and not BAGGISH_TYPE.search(crumb_text)
-            and not classify(title, "", [])[0]):
-        return None, "not-a-bag:breadcrumb"
-    category, cat_src = classify(title, crumb_text, [])
-    if not category:
-        return None, "unclassified"
+    if force:
+        category, cat_src = force, "override"
+    else:
+        if NOT_A_BAG.search(title):
+            return None, "not-a-bag"
+        # Breadcrumbs are the retailer's shelving — same standing as a Shopify
+        # product_type, same guard against a shelf name that also names a bag.
+        if (NOT_A_BAG_TYPE.search(crumb_text)
+                and not BAGGISH_TYPE.search(crumb_text)
+                and not classify(title, "", [])[0]):
+            return None, "not-a-bag:breadcrumb"
+        category, cat_src = classify(title, crumb_text, [])
+        if not category:
+            return None, "unclassified"
 
     desc = strip_html(ld.get("description") or "")
     dims_cm, dims_src = find_dims_cm(desc)
@@ -882,6 +1145,918 @@ def build_campsaver(item, brand, hint=None):
         "tags": [],
         "updated_at": None,
         "source": "campsaver:jsonld",
+        "fetched_at": brand.get("fetched_at"),
+    }, None
+
+
+# WooCommerce Store API — public storefront JSON, one item per product with
+# attribute terms for colours/sizes. Prices are strings in minor units. The
+# payload carries no spec fields at all; everything physical is parsed out of
+# the description HTML, which for the cottage makers using Woo (ULA, LiteAF,
+# Bonfus) is where they publish exact weights and volumes.
+
+def _woo_price(prices, key):
+    raw = (prices or {}).get(key)
+    if not raw:
+        return None
+    try:
+        minor = int((prices or {}).get("currency_minor_unit", 2))
+        return round(float(raw) / (10 ** minor), 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def build_woocommerce(product, brand, hint=None, force=None):
+    title = strip_html(product.get("name") or "")
+    if not title:
+        return None, "no-title"
+    cats = [c.get("name") or "" for c in product.get("categories") or []]
+    tags = [t.get("name") or "" for t in product.get("tags") or []]
+    cats_text = " ".join(cats)
+
+    if force:
+        category, cat_src = force, "override"
+    else:
+        if NOT_A_BAG.search(title):
+            return None, "not-a-bag"
+        # Categories are the store's own shelving — same standing and same
+        # guard as a Shopify product_type.
+        if (NOT_A_BAG_TYPE.search(cats_text)
+                and not BAGGISH_TYPE.search(cats_text)
+                and not classify(title, "", [])[0]):
+            return None, "not-a-bag:category"
+        category, cat_src = classify(title, cats_text, tags)
+        if not category:
+            return None, "unclassified"
+
+    desc = strip_html(f"{product.get('description') or ''}\n"
+                      f"{product.get('short_description') or ''}")
+    blob = f"{title}\n{cats_text}\n{' '.join(tags)}\n{desc}"
+
+    volume = find_volume(title)
+    vol_src = "title" if volume else None
+    if volume is None:
+        volume = find_volume(desc)
+        vol_src = "description" if volume else None
+    dims, dims_src = find_dims_cm(desc)
+
+    weight = find_weight_labelled(desc)
+    w_src = "description:labelled" if weight else None
+    if weight is None:
+        weight = find_weight_g(desc)
+        w_src = "description" if weight else None
+
+    colors, sizes = [], []
+    for attr in product.get("attributes") or []:
+        terms = [t.get("name") for t in attr.get("terms") or [] if t.get("name")]
+        if re.search(r"colou?r|finish", attr.get("name") or "", re.I):
+            colors.extend(t for t in terms if t not in colors)
+        elif re.search(r"size|capacity|volume|litre|liter",
+                       attr.get("name") or "", re.I):
+            sizes.extend(t for t in terms if t not in sizes)
+
+    prices = product.get("prices") or {}
+    price = _woo_price(prices, "price")
+    regular = _woo_price(prices, "regular_price")
+    images = product.get("images") or []
+    in_stock = bool(product.get("is_in_stock"))
+
+    # The Store API lists variations only as ids; attribute terms above carry
+    # the colour/size axes, so one variant row stands for the product.
+    variants = [{
+        "sku": product.get("sku") or None,
+        "title": None,
+        "color": colors[0] if len(colors) == 1 else None,
+        "color_family": (colour_family(colors[0], brand["slug"])
+                         if len(colors) == 1 else None),
+        "size": sizes[0] if len(sizes) == 1 else None,
+        "price": price,
+        "compare_at": regular if regular and price and regular > price else None,
+        "available": in_stock,
+        "grams": None,
+        "image": images[0].get("src") if images else None,
+    }]
+
+    return {
+        "id": f"{brand['slug']}__{product.get('slug') or slugify(title)}",
+        "brand": brand["name"],
+        "brand_slug": brand["slug"],
+        "name": title,
+        "category": category,
+        "category_source": cat_src,
+        "url": product.get("permalink")
+               or f"https://{brand['domain']}/product/{product.get('slug') or ''}",
+        "image": images[0].get("src") if images else None,
+        "volume_l": volume,
+        "volume_source": vol_src,
+        "dims_cm": dims,
+        "dims_source": dims_src,
+        "linear_cm": round(sum(dims), 1) if dims else None,
+        "weight_g": weight,
+        "weight_source": w_src,
+        "laptop_in": find_laptop_in(blob),
+        "price_min": price,
+        "price_max": price,
+        "on_sale": bool(product.get("on_sale")),
+        "in_stock": in_stock,
+        "colors": colors,
+        "sizes": sizes,
+        "variant_count": 1,
+        "variants": variants,
+        "color_families": sorted({f for f in (colour_family(c, brand["slug"])
+                                              for c in colors) if f}),
+        "materials": sorted(set(detect(blob, MATERIALS))),
+        "features": detect(blob, FEATURES),
+        "tags": tags,
+        "updated_at": None,
+        "source": "woocommerce:store-api",
+        "fetched_at": brand.get("fetched_at"),
+    }, None
+
+
+# Magento 2 storefront GraphQL — one item per product, variants nested, and
+# the store's entire custom-attribute set alongside. The attributes are where
+# the specs are, and every store names them differently: Rab writes
+# `dimensions: "54 x 32 x 26cm"` and `volume: "28lt / 1710cu.in"` as strings,
+# Vaude writes `height`/`width`/`length`/`volume` as bare numbers. Both are
+# read here rather than configured per brand, because the shapes are few and a
+# brand that matches neither still gets its description parsed.
+
+# Attribute codes carrying a physical fact, most specific first.
+MAGENTO_AXIS = {"height": "h", "hoehe": "h", "length": "h", "laenge": "h",
+                "width": "w", "breite": "w",
+                "depth": "d", "tiefe": "d", "thickness": "d"}
+MAGENTO_DIM_ATTR = re.compile(r"dimension|abmessung|ma(?:ß|ss)e|\bsize_cm\b", re.I)
+MAGENTO_VOLUME_ATTR = re.compile(r"^(?:volume|volumen|capacity|kapazit)", re.I)
+MAGENTO_WEIGHT_ATTR = re.compile(r"weight|gewicht", re.I)
+
+# Attribute codes that are plumbing rather than description. Excluded from the
+# text blob so a store's SEO copy and image paths cannot invent a material.
+# What a German-language catalogue calls out that the English exclusion list
+# has no word for. Vaude sells a "Regenhülle Doppel-Fahrradtaschen" — a rain
+# cover for pannier bags — and every pattern we own reads that as a bag.
+MAGENTO_NOT_A_BAG = re.compile(
+    r"regenh(?:ü|ue)lle|regenschutz|ersatzteil|abdeckung|halterung|"
+    r"schloss|adapter|zubeh(?:ö|oe)r", re.I)
+
+MAGENTO_ATTR_NOISE = re.compile(
+    r"^(?:image|small_image|thumbnail|swatch|media|url_|meta_|status|"
+    r"visibility|tax_class|options_container|msrp|gift_|price|special_|"
+    r"sale_flag|mp_|amxnotif|compare_|hide_|enable_|disallow_|disable_|"
+    r"listing_|content_block|vimeo|seasonality|mf_pfc|m_percent|"
+    r"fourteen_day)", re.I)
+
+# The store's own shelving, as a fallback after the title has had its say.
+# Substring patterns rather than \b-anchored words, because German compounds
+# are single words: a "Trekkingrucksack" is shelved under "Rucksäcke" and no
+# word boundary exists between the noun and its qualifier.
+MAGENTO_CATEGORY = [
+    ("bike-bag",     r"fahrradtasche|lenkertasche|rahmentasche|satteltasche|"
+                     r"gep(?:ä|ae)cktr(?:ä|ae)gertasche|oberrohrtasche|"
+                     r"pannier|bikepacking"),
+    ("hip-pack",     r"h(?:ü|ue)fttasche|g(?:ü|ue)rteltasche|bauchtasche|"
+                     r"hip pack|waist pack|lumbar"),
+    ("duffel",       r"reisetasche|sporttasche|duffel|duffle|holdall"),
+    ("luggage",      r"koffer|trolley|luggage|suitcase"),
+    ("tote",         r"shopper|tote"),
+    ("messenger",    r"umh(?:ä|ae)ngetasche|schultertasche|messenger|satchel"),
+    ("sling",        r"sling|brusttasche|crossbody"),
+    ("pouch",        r"kulturbeutel|waschbeutel|packsack|pouch|organi[sz]er|"
+                     r"dopp|toiletry"),
+    ("camera-bag",   r"kamerata|camera bag"),
+    ("hiking-pack",  r"trekking|wander|bergsteig|alpin|backpacking|mountaineer"),
+    ("travel-backpack", r"reiserucks|travel pack|travel backpack"),
+    ("daypack",      r"rucks(?:ä|ae)ck|rucksack|daypack|backpack|tagesrucks"),
+]
+
+
+def _magento_attrs(product):
+    """code -> value string, flattening both attribute shapes into one map."""
+    attrs = {}
+    for item in ((product.get("custom_attributesV2") or {}).get("items") or []):
+        code = item.get("code")
+        if not code:
+            continue
+        if item.get("value") is not None:
+            attrs[code] = str(item["value"])
+        elif item.get("selected_options"):
+            attrs[code] = "; ".join(
+                o.get("label") or "" for o in item["selected_options"]
+                if o.get("label"))
+    return attrs
+
+
+def _magento_num(value):
+    try:
+        n = float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return n or None                      # a zero is "not set", not a fact
+
+
+def _magento_grams(value):
+    """
+    Magento stores weight in whatever unit the store configured and never says
+    which. Vaude's packs weigh `880`, Rab's weigh `1.184` — nothing else in a
+    bag catalogue is ambiguous at that scale, so the number picks its own unit:
+    under 20 it is kilograms, over it is grams.
+    """
+    n = _magento_num(value)
+    if n is None:
+        return None
+    grams = n * 1000.0 if n <= 20 else n
+    return int(round(grams)) if 50 <= grams <= 8000 else None
+
+
+def build_magento(product, brand, hint=None, force=None):
+    title = strip_html(product.get("name") or "")
+    if not title:
+        return None, "no-title"
+    attrs = _magento_attrs(product)
+    desc = strip_html(f"{(product.get('description') or {}).get('html') or ''}\n"
+                      f"{(product.get('short_description') or {}).get('html') or ''}")
+    cats = [c.get("name") or "" for c in product.get("categories") or []]
+    shelf = " ".join(cats + [attrs.get(k, "") for k in
+                             ("main_category", "internal_category",
+                              "filter_product_type", "vaude_category",
+                              "programme", "compare_category")])
+
+    if force:
+        category, cat_src = force, "override"
+    else:
+        if NOT_A_BAG.search(title):
+            return None, "not-a-bag"
+        if MAGENTO_NOT_A_BAG.search(title):
+            return None, "not-a-bag:de"
+        if (NOT_A_BAG_TYPE.search(shelf) and not BAGGISH_TYPE.search(shelf)
+                and not classify(title, "", [])[0]):
+            return None, "not-a-bag:category"
+        category, cat_src = classify(title, shelf, [])
+        if not category:
+            for name, pattern in MAGENTO_CATEGORY:
+                if re.search(pattern, shelf, re.I):
+                    category, cat_src = name, "magento-shelf"
+                    break
+        if not category:
+            return None, "unclassified"
+
+    # Prose attributes only: the feature lists (r_feature1..10), the material
+    # breakdown and the buying copy, which is where a Magento brand states the
+    # fabric and the pocket count the description skips.
+    prose = [v for code, v in sorted(attrs.items())
+             if v and not MAGENTO_ATTR_NOISE.search(code) and not v.isdigit()]
+    blob = f"{title}\n{shelf}\n{desc}\n" + "\n".join(prose)
+
+    # dims: the store's own axis attributes, then a dimensions string, then
+    # the description. Slash-separated triples are allowed out of the
+    # attributes (where a lone "72 / 34 / 26 cm" is unambiguous) but not out of
+    # prose, where a slash is usually a size range.
+    axes = {}
+    for code, value in attrs.items():
+        axis = MAGENTO_AXIS.get(code.lower())
+        if axis and axis not in axes:
+            n = _magento_num(value)
+            if n and 2 <= n <= 120:
+                axes[axis] = round(n, 1)
+    dims, dims_src = None, None
+    if len(axes) >= 2:
+        dims, dims_src = sorted(axes.values(), reverse=True), "magento:attributes"
+    if not dims:
+        for code, value in attrs.items():
+            if MAGENTO_DIM_ATTR.search(code):
+                dims, src = find_dims_cm(value, slash=True)
+                if dims:
+                    dims_src = f"magento:{code}"
+                    break
+    if not dims:
+        dims, dims_src = find_dims_cm(desc)
+
+    volume, vol_src = None, None
+    for code, value in attrs.items():
+        if not MAGENTO_VOLUME_ATTR.search(code):
+            continue
+        volume = _magento_num(value) or find_volume(value)
+        if volume is None:
+            # Rab restates capacity in cubic inches and occasionally drops the
+            # litre unit off the front — "22 / 1343cu.in".
+            m = CUIN_RE.search(value)
+            if m:
+                volume = round(float(m.group(1).replace(",", "")) * CUIN_TO_L, 1)
+        if volume and 0.5 <= volume <= 150:
+            vol_src = f"magento:{code}"
+            break
+        volume = None
+    if volume is None:
+        volume = find_volume(title)
+        vol_src = "title" if volume else None
+    if volume is None:
+        volume = find_volume(desc)
+        vol_src = "description" if volume else None
+
+    variants_in = product.get("variants") or []
+
+    # A weight attribute that carries its unit is the published spec; the bare
+    # number on the product is Magento's shipping weight, which is the same
+    # thing plus a box.
+    weight, w_src = None, None
+    for code, value in sorted(attrs.items()):
+        if MAGENTO_WEIGHT_ATTR.search(code) and re.search(r"[a-z]", value, re.I):
+            weight = find_weight_g(value, prefer_metric=True)
+            if weight:
+                w_src = f"magento:{code}"
+                break
+    if weight is None:
+        shipping = [_magento_grams((v.get("product") or {}).get("weight"))
+                    for v in variants_in]
+        shipping = [g for g in shipping if g]
+        weight = max(shipping) if shipping else _magento_grams(product.get("weight"))
+        w_src = "magento:weight" if weight else None
+    if weight is None:
+        weight = find_weight_labelled(desc)
+        w_src = "description:labelled" if weight else None
+
+    option_axis = {}
+    for option in product.get("configurable_options") or []:
+        code = option.get("attribute_code") or ""
+        label = option.get("label") or ""
+        if re.search(r"colou?r|farbe|finish", f"{code} {label}", re.I):
+            option_axis[code] = "color"
+        elif re.search(r"size|gr(?:ö|oe)(?:ss|ß)e|capacity|volume|litre|liter",
+                       f"{code} {label}", re.I):
+            option_axis[code] = "size"
+
+    variants, colors, sizes, prices = [], [], [], []
+    for entry in variants_in:
+        child = entry.get("product") or {}
+        color = size = None
+        for attribute in entry.get("attributes") or []:
+            axis = option_axis.get(attribute.get("code") or "")
+            if axis == "color" and not color:
+                color = attribute.get("label")
+            elif axis == "size" and not size:
+                size = attribute.get("label")
+        money = ((child.get("price_range") or {}).get("minimum_price") or {})
+        price = _magento_num((money.get("final_price") or {}).get("value"))
+        regular = _magento_num((money.get("regular_price") or {}).get("value"))
+        if price:
+            prices.append(price)
+        if color and color not in colors:
+            colors.append(color)
+        if size and size not in sizes:
+            sizes.append(size)
+        variants.append({
+            "sku": child.get("sku"),
+            "title": " / ".join(x for x in (size, color) if x) or child.get("name"),
+            "color": color,
+            "color_family": colour_family(color, brand["slug"]),
+            "size": size,
+            "price": round(price, 2) if price else None,
+            "compare_at": (round(regular, 2)
+                           if regular and price and regular > price else None),
+            "available": (child.get("stock_status") or "") == "IN_STOCK",
+            "grams": _magento_grams(child.get("weight")),
+            "image": (child.get("image") or {}).get("url"),
+        })
+
+    money = (product.get("price_range") or {}).get("minimum_price") or {}
+    price = _magento_num((money.get("final_price") or {}).get("value"))
+    regular = _magento_num((money.get("regular_price") or {}).get("value"))
+    top = (((product.get("price_range") or {}).get("maximum_price") or {})
+           .get("final_price") or {}).get("value")
+    top = _magento_num(top)
+    if not variants:
+        # A simple product with no configurable axis is still one buyable
+        # thing; the index expects at least one row per model.
+        if price:
+            prices.append(price)
+        variants.append({
+            "sku": product.get("sku"), "title": None, "color": None,
+            "color_family": None, "size": None,
+            "price": round(price, 2) if price else None,
+            "compare_at": (round(regular, 2)
+                           if regular and price and regular > price else None),
+            "available": (product.get("stock_status") or "") == "IN_STOCK",
+            "grams": _magento_grams(product.get("weight")),
+            "image": (product.get("image") or {}).get("url"),
+        })
+
+    price_min = round(min(prices), 2) if prices else (round(price, 2) if price else None)
+    price_max = round(max(prices), 2) if prices else (round(top or price, 2) if (top or price) else None)
+
+    url_key = product.get("url_key") or slugify(title)
+    return {
+        "id": f"{brand['slug']}__{url_key}",
+        "brand": brand["name"],
+        "brand_slug": brand["slug"],
+        "name": title,
+        "category": category,
+        "category_source": cat_src,
+        "url": f"https://{brand['domain']}/{url_key}{product.get('url_suffix') or ''}",
+        "image": (product.get("image") or {}).get("url"),
+        "volume_l": round(volume, 1) if volume else None,
+        "volume_source": vol_src,
+        "dims_cm": dims,
+        "dims_source": dims_src,
+        "linear_cm": round(sum(dims), 1) if dims else None,
+        "weight_g": weight,
+        "weight_source": w_src,
+        "laptop_in": find_laptop_in(blob),
+        "price_min": price_min,
+        "price_max": price_max,
+        "on_sale": any(v["compare_at"] for v in variants),
+        "in_stock": ((product.get("stock_status") or "") == "IN_STOCK"
+                     or any(v["available"] for v in variants)),
+        "colors": colors,
+        "sizes": sizes,
+        "variant_count": len(variants),
+        "variants": variants,
+        "color_families": sorted({f for f in (colour_family(c, brand["slug"])
+                                              for c in colors) if f}),
+        "materials": sorted(set(detect(blob, MATERIALS))),
+        "features": detect(blob, FEATURES),
+        "tags": [],
+        "updated_at": None,
+        "source": "magento:graphql",
+        "fetched_at": brand.get("fetched_at"),
+    }, None
+
+
+# Storefront pages — the digest fetch.py's page crawler keeps of each product
+# page. Four brands on four unrelated platforms arrive through here, and no
+# two of them publish the same way: Gregory nests schema.org inside a WebPage
+# and marks its spec sheet up as name/value divs; CamelBak ships no schema.org
+# at all and hides the price in a `content` attribute; Deuter ships a
+# ProductGroup with its variants; Mammut ships a Product plus a size table.
+#
+# So every field below is a short ladder of sources, each rung of which some
+# real brand needs. What none of them do is guess: a page that states nothing
+# leaves the field null, exactly like the feed adapters.
+
+PAGE_SPEC_HEADING = re.compile(
+    r"dimensions?\s*(?:&|and)?\s*weight|specifications?|"
+    r"tech(?:nical)?\s*(?:data|details|specs?)|product\s+details|"
+    r"technische\s+daten|ma(?:ß|ss)e\s*(?:&|und)?\s*gewicht", re.I)
+
+# Column headers that name a physical axis. Which axis is which does not
+# matter — the schema sorts the three values descending anyway — so this only
+# has to recognise that a column holds a measurement.
+PAGE_TABLE_AXIS = re.compile(
+    r"^(?:height|h(?:ö|oe)he|length|l(?:ä|ae)nge|width|breite|depth|tiefe|"
+    r"thickness|dicke)\b", re.I)
+PAGE_TABLE_WEIGHT = re.compile(r"^(?:weight|gewicht)\b", re.I)
+
+
+def _ld_walk(blocks):
+    """Yield every schema.org node in the page, however it is nested."""
+    queue = list(blocks or [])
+    seen = 0
+    while queue and seen < 200:
+        node = queue.pop(0)
+        if not isinstance(node, dict):
+            continue
+        seen += 1
+        yield node
+        for key in ("mainEntity", "@graph", "hasVariant", "itemOffered"):
+            child = node.get(key)
+            if isinstance(child, dict):
+                queue.append(child)
+            elif isinstance(child, list):
+                queue.extend(c for c in child if isinstance(c, dict))
+
+
+def _ld_type(node):
+    t = node.get("@type")
+    return t if isinstance(t, str) else (t[0] if isinstance(t, list) and t else "")
+
+
+def _ld_product(blocks):
+    """The Product (or ProductGroup) node, and the breadcrumb trail."""
+    product, crumbs = None, []
+    for node in _ld_walk(blocks):
+        kind = _ld_type(node)
+        if kind in ("Product", "ProductGroup") and product is None:
+            product = node
+        elif kind == "BreadcrumbList" and not crumbs:
+            # Gregory wraps the list in a second list; flatten whatever comes.
+            stack = list(node.get("itemListElement") or [])
+            while stack:
+                entry = stack.pop(0)
+                if isinstance(entry, list):
+                    stack = list(entry) + stack
+                    continue
+                if not isinstance(entry, dict):
+                    continue
+                item = entry.get("item")
+                name = entry.get("name") or (item.get("name")
+                                             if isinstance(item, dict) else None)
+                if name:
+                    crumbs.append(name)
+    return product or {}, crumbs
+
+
+def _ld_number(value):
+    """schema.org numbers arrive as floats, as strings, and as QuantitativeValue."""
+    if isinstance(value, dict):
+        value = value.get("value")
+    if value is None:
+        return None
+    try:
+        return float(str(value).replace(",", "").strip())
+    except ValueError:
+        return None
+
+
+def _ld_offers(node):
+    """Flatten Offer / AggregateOffer / a list of either into offer dicts."""
+    offers, queue = [], []
+    raw = node.get("offers")
+    queue.extend(raw if isinstance(raw, list) else ([raw] if raw else []))
+    while queue:
+        offer = queue.pop(0)
+        if not isinstance(offer, dict):
+            continue
+        if _ld_type(offer) == "AggregateOffer":
+            inner = offer.get("offers")
+            if inner:
+                queue.extend(inner if isinstance(inner, list) else [inner])
+                continue
+            offers.append({"price": _ld_number(offer.get("lowPrice")),
+                           "high": _ld_number(offer.get("highPrice")),
+                           "currency": offer.get("priceCurrency"),
+                           "availability": offer.get("availability") or "",
+                           "sku": offer.get("sku"), "node": offer})
+        else:
+            offers.append({"price": _ld_number(offer.get("price")),
+                           "high": None,
+                           "currency": offer.get("priceCurrency"),
+                           "availability": offer.get("availability") or "",
+                           "sku": offer.get("sku") or offer.get("gtin13"),
+                           "node": offer})
+    return offers
+
+
+def _page_prices(values):
+    """(sale prices, list prices) out of the elements carrying `content`."""
+    sale, listed = [], []
+    for entry in values or []:
+        if not isinstance(entry, list) or len(entry) != 2:
+            continue
+        cls, content = entry
+        try:
+            n = float(str(content).replace(",", ""))
+        except (TypeError, ValueError):
+            continue
+        if not 1 <= n <= 100000:
+            continue
+        if re.search(r"strike|\blist\b|was[- ]price|original|regular", cls, re.I):
+            listed.append(n)
+        elif re.search(r"\bsales?\b|\bprices?\b|\bvalue\b", cls, re.I):
+            sale.append(n)
+    return sale, listed
+
+
+def _page_table_specs(tables):
+    """Dims, volume and weight out of a spec table. Returns a dict."""
+    for table in tables or []:
+        rows = [r for r in table if r]
+        if len(rows) < 2:
+            continue
+        header = [c.strip() for c in rows[0]]
+        axis_cols = [i for i, c in enumerate(header) if PAGE_TABLE_AXIS.search(c)]
+        if len(axis_cols) < 2:
+            continue
+        weight_cols = [i for i, c in enumerate(header) if PAGE_TABLE_WEIGHT.search(c)]
+        body = rows[1]
+        cells = [body[i] if i < len(body) else "" for i in range(len(header))]
+
+        # The unit is usually printed once, on whichever axis cell the theme
+        # felt like — Mammut writes `7.00  14.00  26.50 cm`.
+        unit = ""
+        for i in axis_cols:
+            m = re.search(r"(cm|mm|\"|”|in\b|inch)", cells[i], re.I)
+            if m:
+                unit = m.group(1).lower()
+                break
+        values = []
+        for i in axis_cols:
+            m = re.search(r"(\d{1,3}(?:[.,]\d+)?)", cells[i])
+            if m:
+                values.append(float(m.group(1).replace(",", ".")))
+        if len(values) < 2:
+            continue
+        if unit == "mm":
+            values = [v / 10.0 for v in values]
+        elif unit in ('"', "”", "in", "inch"):
+            values = [v * CM_PER_IN for v in values]
+        values = [round(v, 1) for v in values[:3]]
+        if not all(2 <= v <= 120 for v in values):
+            continue
+
+        out = {"dims_cm": sorted(values, reverse=True), "dims_source": "table"}
+        for i in weight_cols:
+            grams = find_weight_g(cells[i])
+            if grams:
+                out["weight_g"] = grams
+                break
+        for i, cell in enumerate(cells):
+            if i in axis_cols or i in weight_cols:
+                continue
+            litres = find_volume(cell)
+            if litres:
+                out["volume_l"] = litres
+                break
+        return out
+    return {}
+
+
+# Where a page states a fact in prose, it labels it: "Volume: 75 l",
+# "Weight: 2,25 kg", "Dimensions & Weight 46 cm x 25 cm x 25 cm 750 g". Anchor
+# on the label and read only what follows it — a bare sweep over forty
+# kilobytes of page text will find a number shaped like an answer somewhere,
+# which is how an index ends up publishing a related product's capacity.
+# A hydration pack states two capacities and means different things by them:
+# CamelBak's "Octane 16 ... with Fusion 2L Reservoir" is a 16-litre pack
+# holding a 2-litre bladder, and the only one with a unit attached is the
+# bladder. Publishing that as the pack's volume is worse than publishing none.
+VOLUME_RESERVOIR = re.compile(
+    r"\d{1,3}(?:[.,]\d)?\s*(?:L|l|lt|lit(?:er|re)s?)\s*\W{0,3}\s*"
+    r"(?:\w+\s+){0,2}(?:reservoir|bladder|crux)", re.I)
+
+# Nav thumbnails, payment badges and logos, which every storefront serves
+# before it serves the product shot.
+PAGE_IMAGE_NOISE = re.compile(
+    r"/navigation/|/nav/|logo|sprite|icon|placeholder|badge|flag|payment|"
+    r"social|swatch|\.svg(?:$|[?#])", re.I)
+
+
+def find_volume_bag(text):
+    """find_volume, minus any capacity that belongs to a water bladder."""
+    return find_volume(VOLUME_RESERVOIR.sub(" ", text or ""))
+
+
+PAGE_LABEL = {
+    "dims": re.compile(r"\b(?:dimensions?|ma(?:ß|ss)e|abmessungen?)\b\s*[:\-]?", re.I),
+    "volume": re.compile(r"\b(?:volume|volumen|capacity|kapazit\w*)\b\s*[:\-]?", re.I),
+    "weight": re.compile(r"\b(?:weights?|gewicht)\b\s*[:\-]?", re.I),
+}
+
+
+def _page_near_label(text, key, finder, span=140):
+    for m in PAGE_LABEL[key].finditer(text or ""):
+        value = finder(text[m.end():m.end() + span])
+        if value:
+            return value
+    return None
+
+
+def _page_windows(text, desc):
+    """
+    Text slices to read specs out of when nothing is labelled: whatever
+    follows a "Dimensions & Weight"-style heading, then the description.
+
+    Deliberately not the whole page. Forty kilobytes of nav, footer, related
+    products and sustainability copy always contains *a* number next to *a*
+    unit, and sweeping it gave a Deuter pencil case a 10-litre capacity and a
+    16-litre running pack a 3-litre one — both from text about something else
+    entirely. A null is worth more than either.
+    """
+    windows = []
+    for m in PAGE_SPEC_HEADING.finditer(text or ""):
+        windows.append(text[m.start():m.start() + 600])
+        if len(windows) >= 3:
+            break
+    if desc:
+        windows.append(desc)
+    return windows
+
+
+def build_pages(item, brand, hint=None, force=None):
+    url = item.get("url") or ""
+    meta = item.get("meta") or {}
+    product, crumbs = _ld_product(item.get("jsonld"))
+
+    title = strip_html(product.get("name") or item.get("h1") or "")
+    if not title:
+        # og:title and <title> both carry the site name; the product's own
+        # name is whatever comes before the separator.
+        title = re.split(r"\s+[|–—-]\s+",
+                         meta.get("og:title") or item.get("title") or "")[0].strip()
+    if not title:
+        return None, "no-title"
+
+    crumb_text = " ".join(crumbs)
+    if force:
+        category, cat_src = force, "override"
+    else:
+        if NOT_A_BAG.search(title):
+            return None, "not-a-bag"
+        if (NOT_A_BAG_TYPE.search(crumb_text) and not BAGGISH_TYPE.search(crumb_text)
+                and not classify(title, "", [])[0]):
+            return None, "not-a-bag:breadcrumb"
+        category, cat_src = classify(title, crumb_text, [])
+        # The shelf the store hangs it on, from fetch.py's shelf pass. Same
+        # standing as a Shopify collection and the same precedence: the
+        # product's own title wins, the brand's shelving comes next, and for
+        # Mammut — whose bags are called "Trion 38" and nothing else — it is
+        # the only signal there is.
+        if not category and item.get("shelf"):
+            category, cat_src = item["shelf"], "shelf"
+        if not category:
+            return None, ("unclassified:known-bag" if item.get("shelved")
+                          else "unclassified")
+
+    desc = strip_html(product.get("description") or meta.get("og:description")
+                      or meta.get("description") or "")
+    text = item.get("text") or ""
+    pairs = {norm_key(k): v for k, v in (item.get("pairs") or []) if k}
+    blob = f"{title}\n{crumb_text}\n{desc}"
+
+    # Specs. The store's own label/value markup first — a row headed
+    # "Dimensions" is the brand answering the question, not us finding a
+    # number that looks like an answer.
+    dims = dims_src = volume = vol_src = weight = w_src = None
+    for label, value in pairs.items():
+        if dims is None and re.search(r"dimension|ma(?:ß|ss)e|abmessung", label):
+            dims, src = find_dims_cm(value, slash=True)
+            # find_dims_cm names the shape it matched with a `description:`
+            # prefix; the shape is the useful half, the provenance is `pairs`.
+            dims_src = f"pairs:{src.split(':')[-1]}" if dims else None
+        if volume is None and re.search(r"volume|capacity|volumen", label):
+            volume = find_volume_bag(value)
+            vol_src = "pairs" if volume else None
+        if weight is None and re.search(r"weight|gewicht", label):
+            weight = find_weight_g(value)
+            w_src = "pairs" if weight else None
+
+    table = _page_table_specs(item.get("tables"))
+    if dims is None and table.get("dims_cm"):
+        dims, dims_src = table["dims_cm"], "table"
+    if volume is None and table.get("volume_l"):
+        volume, vol_src = table["volume_l"], "table"
+    if weight is None and table.get("weight_g"):
+        weight, w_src = table["weight_g"], "table"
+
+    # schema.org's own physical properties, which Deuter fills in.
+    if dims is None:
+        axes = [_ld_number(product.get(k))
+                for k in ("height", "width", "depth", "length")]
+        axes = [round(v, 1) for v in axes if v and 2 <= v <= 120]
+        if len(axes) >= 2:
+            dims, dims_src = sorted(axes, reverse=True)[:3], "schema.org:axes"
+    if weight is None:
+        weight = find_weight_g(str(product.get("weight") or "")) or None
+        w_src = "schema.org:weight" if weight else None
+
+    # The name, where it states a unit: CamelBak's "Arete Sling 8, 0.6L". The
+    # bare number in "SnoBlast 22" is left alone — it is a litre count by
+    # convention and by nothing the page actually says.
+    if volume is None:
+        volume = find_volume_bag(title)
+        vol_src = "title" if volume else None
+
+    # Labelled prose, which is how Deuter, CamelBak and Tatonka all publish.
+    if dims is None:
+        found = _page_near_label(text, "dims",
+                                 lambda s: find_dims_cm(s, slash=True)[0])
+        if found:
+            dims, dims_src = found, "label"
+    if volume is None:
+        volume = _page_near_label(text, "volume", find_volume_bag)
+        vol_src = "label" if volume else None
+    if weight is None:
+        weight = _page_near_label(
+            text, "weight", lambda s: find_weight_labelled(s) or find_weight_g(s))
+        w_src = "label" if weight else None
+
+    for window in _page_windows(text, desc):
+        source = "description" if window is desc else "spec-block"
+        if dims is None:
+            dims, src = find_dims_cm(window, slash=True)
+            dims_src = f"{source}:{src}" if dims else None
+        if volume is None:
+            volume = find_volume_bag(window)
+            vol_src = source if volume else None
+        if weight is None:
+            weight = find_weight_labelled(window) or find_weight_g(window)
+            w_src = source if weight else None
+        if dims and volume and weight:
+            break
+
+    offers = _ld_offers(product)
+    prices = [o["price"] for o in offers if o.get("price")]
+    prices += [o["high"] for o in offers if o.get("high")]
+    sale, listed = _page_prices(item.get("values"))
+    if not prices:
+        prices = sale
+    available = (any("InStock" in (o.get("availability") or "")
+                     or "LimitedAvailability" in (o.get("availability") or "")
+                     for o in offers)
+                 if offers else bool(prices))
+
+    variants = []
+    for node in (product.get("hasVariant") or []):
+        if not isinstance(node, dict):
+            continue
+        colour = node.get("color")
+        if isinstance(colour, list):
+            colour = colour[0] if colour else None
+        colour = (colour or "").replace("-", " ").title() or None
+        node_offers = _ld_offers(node)
+        price = next((o["price"] for o in node_offers if o.get("price")), None)
+        variants.append({
+            "sku": node.get("sku") or node.get("gtin13"),
+            "title": strip_html(node.get("name") or "") or None,
+            "color": colour,
+            "color_family": colour_family(colour, brand["slug"]),
+            "size": None,
+            "price": round(price, 2) if price else None,
+            "compare_at": None,
+            "available": any("InStock" in (o.get("availability") or "")
+                             for o in node_offers),
+            "grams": find_weight_g(str(node.get("weight") or "")) or None,
+            "barcode": node.get("gtin13"),
+            "image": None,
+        })
+        if price:
+            prices.append(price)
+    if not variants:
+        for offer in offers:
+            node = offer.get("node") or {}
+            offered = node.get("itemOffered") or {}
+            colour = offered.get("color") if isinstance(offered, dict) else None
+            if isinstance(colour, list):
+                colour = colour[0] if colour else None
+            variants.append({
+                "sku": offer.get("sku") or (offered or {}).get("model"),
+                "title": strip_html((offered or {}).get("name") or "") or None,
+                "color": colour,
+                "color_family": colour_family(colour, brand["slug"]),
+                "size": None,
+                "price": round(offer["price"], 2) if offer.get("price") else None,
+                "compare_at": None,
+                "available": "InStock" in (offer.get("availability") or ""),
+                "grams": None,
+                "image": None,
+            })
+    if not variants:
+        # No schema.org at all — CamelBak. The page still states a price and
+        # a name, which is one buyable thing.
+        variants.append({
+            "sku": None, "title": None, "color": None, "color_family": None,
+            "size": None,
+            "price": round(min(sale), 2) if sale else None,
+            "compare_at": (round(max(listed), 2)
+                           if listed and sale and max(listed) > min(sale) else None),
+            "available": available,
+            "grams": None, "image": None,
+        })
+
+    image = product.get("image") or meta.get("og:image")
+    if isinstance(image, list):
+        image = image[0] if image else None
+    if isinstance(image, dict):
+        image = image.get("url") or image.get("contentUrl")
+    if not image:
+        candidates = [src for src in (item.get("images") or [])
+                      if not PAGE_IMAGE_NOISE.search(src)]
+        image = next((src for src in candidates
+                      if re.search(r"product|catalog|media", src, re.I)),
+                     candidates[0] if candidates else None)
+
+    colors = [v["color"] for v in variants if v.get("color")]
+    handle = re.sub(r"\.html?$", "", url.rstrip("/").rsplit("/", 1)[-1])
+    return {
+        "id": f"{brand['slug']}__{slugify(handle) or slugify(title)}",
+        "brand": brand["name"],
+        "brand_slug": brand["slug"],
+        "name": title,
+        "category": category,
+        "category_source": cat_src,
+        "url": url,
+        "image": image,
+        "volume_l": volume,
+        "volume_source": f"pages:{vol_src}" if vol_src else None,
+        "dims_cm": dims,
+        "dims_source": f"pages:{dims_src}" if dims_src else None,
+        "linear_cm": round(sum(dims), 1) if dims else None,
+        "weight_g": weight,
+        "weight_source": f"pages:{w_src}" if w_src else None,
+        "laptop_in": find_laptop_in(f"{blob}\n{text[:4000]}"),
+        "price_min": round(min(prices), 2) if prices else None,
+        "price_max": round(max(prices), 2) if prices else None,
+        "on_sale": bool(listed and sale and max(listed) > min(sale)),
+        "in_stock": available or any(v["available"] for v in variants),
+        "colors": sorted(set(colors), key=colors.index),
+        "sizes": [],
+        "variant_count": len(variants),
+        "variants": variants,
+        "color_families": sorted({f for f in (colour_family(c, brand["slug"])
+                                              for c in colors) if f}),
+        "materials": sorted(set(detect(blob, MATERIALS))),
+        "features": detect(f"{blob}\n{text[:8000]}", FEATURES),
+        "tags": [],
+        "updated_at": None,
+        "source": "pages:crawl",
         "fetched_at": brand.get("fetched_at"),
     }, None
 
@@ -1000,11 +2175,20 @@ def merge_models(bags):
         out["materials"] = sorted({m for b in group for m in b["materials"]})
         out["color_families"] = sorted(
             {f for b in group for f in (b.get("color_families") or [])}
-            | {f for f in (colour_family(c) for c in out["colors"]) if f})
+            | {f for f in (colour_family(c, out["brand_slug"])
+                           for c in out["colors"]) if f})
         out["features"] = list(dict.fromkeys(f for b in group for f in b["features"]))
         out["tags"] = list(dict.fromkeys(t for b in group for t in b["tags"]))
 
         prices = [v["price"] for v in out["variants"] if v["price"]]
+        if not prices:
+            # Some sources price the model rather than the colourway: a
+            # schema.org ProductGroup lists its variants with no offer on any
+            # of them. Recomputing purely from variants dropped the price off a
+            # third of Deuter's models, every one of which was priced correctly
+            # until the moment it was merged.
+            prices = [p for b in group
+                      for p in (b.get("price_min"), b.get("price_max")) if p]
         out["price_min"] = round(min(prices), 2) if prices else None
         out["price_max"] = round(max(prices), 2) if prices else None
         out["in_stock"] = any(b["in_stock"] for b in group)
@@ -1050,6 +2234,12 @@ def main():
             items, builder = group_bellroy(payload.get("products", [])), build_bellroy
         elif platform == "campsaver":
             items, builder = payload.get("products", []), build_campsaver
+        elif platform == "woocommerce":
+            items, builder = payload.get("products", []), build_woocommerce
+        elif platform == "magento":
+            items, builder = payload.get("products", []), build_magento
+        elif platform == "pages":
+            items, builder = payload.get("products", []), build_pages
         else:
             items, builder = payload.get("products", []), build_shopify
 
@@ -1067,6 +2257,25 @@ def main():
                 return (ld.get("name"),
                         " > ".join(product.get("breadcrumbs") or []) or None,
                         [], product.get("url"))
+            if platform == "magento":
+                return (strip_html(product.get("name") or ""),
+                        ", ".join(c.get("name") or ""
+                                  for c in product.get("categories") or [])
+                        or None,
+                        [], f"https://{brand['domain']}/"
+                            f"{product.get('url_key') or ''}"
+                            f"{product.get('url_suffix') or ''}")
+            if platform == "pages":
+                ld, crumbs = _ld_product(product.get("jsonld"))
+                return (strip_html(ld.get("name") or product.get("h1") or ""),
+                        " > ".join(crumbs) or None, [], product.get("url"))
+            if platform == "woocommerce":
+                return (strip_html(product.get("name") or ""),
+                        ", ".join(c.get("name") or ""
+                                  for c in product.get("categories") or [])
+                        or None,
+                        [t.get("name") for t in (product.get("tags") or [])][:6],
+                        product.get("permalink"))
             return (product.get("title"),
                     product.get("product_type") or None,
                     (product.get("tags") or [])[:6],
@@ -1076,7 +2285,13 @@ def main():
         for product in items:
             hint = (hints.get(str(product.get("id")))
                     if platform == "shopify" else None)
-            bag, why = builder(product, brand, hint)
+            # Described up front rather than only on rejection: the product's
+            # URL is what a ruling is keyed on, and a ruling has to be consulted
+            # before the builder decides whether to admit it.
+            title, ptype, tags, url = describe(product)
+            ruling = CATEGORY_OVERRIDES.decide(brand["slug"], product_key(url))
+            bag, why = builder(product, brand, hint,
+                               force=None if ruling is MISSING else ruling)
             if bag:
                 bags.append(bag)
             else:
@@ -1085,7 +2300,6 @@ def main():
                 # were dropped; it does not tell you that they were all one
                 # brand whose titles use a plural the classifier could not
                 # match. Keeping the rows makes the classifier auditable.
-                title, ptype, tags, url = describe(product)
                 quarantine.append({
                     "brand_slug": brand["slug"],
                     "reason": why,
@@ -1093,6 +2307,11 @@ def main():
                     "product_type": ptype,
                     "tags": tags,
                     "url": url,
+                    # A ruling of `null` says someone looked and agreed it does
+                    # not belong. Carried through so the audit list can show
+                    # what is still waiting on a human rather than everything
+                    # that was ever dropped.
+                    "reviewed": ruling is None,
                 })
 
     # Aggregator entries only fill brands with no direct source. A retailer's
@@ -1135,7 +2354,9 @@ def main():
         return {"have": n, "pct": round(100.0 * n / len(bags)) if bags else 0}
 
     meta = {
-        "generated_from": "public Shopify /products.json feeds",
+        "generated_from": "public storefront sources: Shopify products.json, "
+                          "WooCommerce Store API, Magento storefront GraphQL, "
+                          "the Bellroy products API, and published product pages",
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "bag_count": len(bags),
         "brand_count": len({b["brand_slug"] for b in bags}),
@@ -1143,6 +2364,10 @@ def main():
         "categories": sorted({b["category"] for b in bags}),
         "products_merged": before - len(bags),
         "rejected": rejects,
+        "overrides": {
+            "colour": COLOUR_OVERRIDES.report(),
+            "category": CATEGORY_OVERRIDES.report(),
+        },
         "coverage": {f: coverage(f) for f in
                      ("volume_l", "dims_cm", "weight_g", "laptop_in", "price_min")},
     }
@@ -1159,6 +2384,15 @@ def main():
     print(json.dumps(meta, indent=2))
     print(f"\nwrote {OUT}")
     print(f"wrote {REJECTS} ({len(quarantine)} quarantined products)")
+
+    # Loud, because a stale ruling is invisible by nature: the product it was
+    # about is gone, so nothing else in the output mentions it.
+    for kind, report in meta["overrides"].items():
+        if report["stale"]:
+            print(f"\n{len(report['stale'])} stale {kind} override(s) in "
+                  f"{report['file']} — nothing matched this run:")
+            for row in report["stale"]:
+                print(f"  {row['brand']}: {row['key']}")
 
 
 if __name__ == "__main__":

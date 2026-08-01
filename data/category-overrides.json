@@ -1,0 +1,9 @@
+{
+ "_shape": "brand_slug -> { product key: category, or null }",
+ "_product_key": "the last path segment of the product URL — the Shopify handle, the WooCommerce slug, the Bellroy path",
+ "_null_means": "reviewed, and it really is not a bag — it stays rejected and stops heading the audit list",
+ "_categories": "briefcase, camera-bag, daypack, duffel, hiking-pack, hip-pack, luggage, messenger, pouch, sling, tote, travel-backpack",
+ "_example": { "wandrd": { "prvke-pocket": "pouch", "gift-card": null } },
+ "_precedence": "a category ruling admits the product outright: the not-a-bag rules get no vote, and category_source reads `override`",
+ "_stale": "a ruling nothing matched this run is printed by normalize.py and listed at /internal/"
+}

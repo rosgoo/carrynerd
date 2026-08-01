@@ -16,7 +16,7 @@ export const CAT_LABELS = {
   "travel-backpack": "Travel pack", daypack: "Daypack", sling: "Sling",
   duffel: "Duffel", tote: "Tote", messenger: "Messenger", briefcase: "Briefcase",
   "hip-pack": "Hip pack", luggage: "Luggage", "camera-bag": "Camera",
-  "hiking-pack": "Hiking", pouch: "Pouch",
+  "hiking-pack": "Hiking", pouch: "Pouch", "bike-bag": "Bike bag",
 };
 
 // Where a value came from, spelled out. normalize.py records one of these on
@@ -34,6 +34,9 @@ export const SOURCE_LABELS = {
   description: "parsed from the description",
   tag: "matched from a product tag — the weakest signal we use",
   collection: "the brand's own shelving",
+  // The one source that is not an extraction: somebody looked at this product
+  // and said so, in data/category-overrides.json.
+  override: "a reviewed ruling, not an extraction",
 };
 
 /* Colour families. Brands name colourways for places and moods — "Wasatch

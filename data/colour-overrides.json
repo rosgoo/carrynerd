@@ -1,0 +1,8 @@
+{
+ "_shape": "brand_slug -> { colourway name: colour family, or null }",
+ "_null_means": "reviewed, and the name genuinely states no colour (a fabric, a collab, a place) — it drops off the audit list instead of coming back every run",
+ "_families": "black, blue, brown, green, grey, multi, orange, pink, purple, red, white, yellow",
+ "_example": { "chrome": { "Royale": "red", "J Prince": null } },
+ "_matching": "exact name, whitespace-collapsed and case-insensitive; a ruling wins over the patterns in normalize.py",
+ "_stale": "a ruling nothing matched this run is printed by normalize.py and listed at /internal/"
+}

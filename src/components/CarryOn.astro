@@ -1,0 +1,71 @@
+---
+/* Airline carry-on fit for one bag. Renders nothing when the bag's three
+ * dimensions are not known — an empty section would imply we checked. */
+import {
+  airlines, airlinesUpdated, airlineFit, complianceSummary,
+  fmtLimit, REGION_LABELS,
+} from '../lib/carryon.js';
+
+const { bag } = Astro.props;
+const summary = complianceSummary(bag);
+
+const regions = summary
+  ? Object.entries(REGION_LABELS).map(([key, label]) => ({
+      label,
+      rows: airlines
+        .filter((a) => a.region === key)
+        .map((a) => ({ airline: a, fit: airlineFit(bag, a) })),
+    }))
+  : [];
+
+const mark = (v) =>
+  v == null ? { text: '—', cls: 'nil' }
+  : v ? { text: 'fits', cls: 'instock' }
+  : { text: 'no', cls: 'nil' };
+---
+{summary && (
+  <section>
+    <h2>Airline carry-on fit</h2>
+    <p>
+      Fits the published carry-on size at <b>{summary.carryOn} of {summary.carryOnOf}</b> airlines
+      {summary.personalOf > 0 && (
+        <Fragment> and the personal-item size at <b>{summary.personal} of {summary.personalOf}</b></Fragment>
+      )}, comparing sorted dimensions so orientation does not matter.
+    </p>
+    {regions.map(({ label, rows }) => rows.length > 0 && (
+      <details open={label === 'Americas'}>
+        <summary>{label}</summary>
+        <table class="spectable">
+          <thead>
+            <tr>
+              <th>Airline</th><th>Carry-on limit</th><th>Fit</th>
+              <th>Personal item</th><th>Fit</th><th>Weight cap</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ airline, fit }) => (
+              <tr>
+                <th scope="row">
+                  {airline.name}
+                  {airline.carry_on_note && <i class="prov">{airline.carry_on_note}</i>}
+                </th>
+                <td>{fmtLimit(airline) ?? '—'}</td>
+                <td class={mark(fit.carryOn).cls}>{mark(fit.carryOn).text}</td>
+                <td>{airline.personal_cm ? airline.personal_cm.join(' × ') + ' cm' : '—'}</td>
+                <td class={mark(fit.personal).cls}>{mark(fit.personal).text}</td>
+                <td>{airline.weight_kg != null ? `${airline.weight_kg} kg` : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
+    ))}
+    <p class="note">
+      Computed from the bag’s stated dimensions against limits published by
+      each airline (last reviewed {airlinesUpdated}). Soft bags compress, so a
+      near-miss may fit in practice — we do not estimate that. Weight caps
+      apply to the packed bag and never fail a bag here, since only the empty
+      weight is known. Limits change; check the airline before you fly.
+    </p>
+  </section>
+)}

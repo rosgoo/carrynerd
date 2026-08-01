@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-calipered enricher — stage 2, fills in what the Shopify feed leaves out.
+gearherd enricher — stage 2, fills in what the Shopify feed leaves out.
 
 /products.json gives us SKUs, colourways, prices, stock and weight, but brands
 keep dimensions and laptop fit in metafields that the feed does not expose.
@@ -70,6 +70,22 @@ def load_page(bag_id):
     except (OSError, EOFError):
         return None
 
+# Which sources are worth a product-page crawl.
+#
+# Shopify feeds carry no dimensions at all (267 of 274 dimensions in the
+# validated catalog came from pages, 7 from feed text), and the WooCommerce
+# Store API carries none either — those brands publish specs in the
+# description HTML and on the page. Bellroy's API already returns dimensions,
+# net weight and materials for every SKU, so crawling it would spend requests
+# to learn nothing; CampSaver is an aggregator whose JSON-LD is parsed at
+# fetch time and whose WAF soft-blocks sustained crawling.
+ENRICHABLE_SOURCES = ("shopify", "woocommerce")
+
+
+def enrichable(bag):
+    return (bag.get("source") or "shopify").startswith(ENRICHABLE_SOURCES)
+
+
 def interleave(items, key):
     """Round-robin the items across their key groups, preserving order within
     each group. [a1 a2 a3 b1 c1] -> [a1 b1 c1 a2 a3]."""
@@ -88,6 +104,14 @@ def interleave(items, key):
 LD_RE = re.compile(
     r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
     re.S | re.I)
+
+# Deliberately looser than the parsers in normalize.py: this only answers "is
+# there anything dimension-shaped here at all", to tell a parser gap apart from
+# a brand that publishes no dimensions.
+DIM_SHAPED = re.compile(
+    r"\d[\d.]*\s*(?:\"|”|in\b|inch(?:es)?|cm)?\s*[x×*]\s*\d[\d.]*\s*"
+    r"(?:\"|”|in\b|inch(?:es)?|cm)|"
+    r"\b(?:height|width|depth|length)\b\s*[:\-–]?\s*\d", re.I)
 
 # Brands overwhelmingly label the spec block with one of these words, so we
 # narrow to that neighbourhood before pattern matching. Searching the whole
@@ -304,9 +328,25 @@ def parse_product_page(html_text):
     # hunch. Must run *after* extraction — checking before it means every
     # product looks like a failure.
     if "dims_cm" not in found:
-        found["_no_dims"] = (
-            "no-spec-text" if not scoped and "dimension" not in text.lower()
-            else "unparsed")
+        # Three different failures, and conflating them sends the next person
+        # to fix the wrong thing:
+        #   no-spec-text  the page has no spec prose at all — JS-rendered, so
+        #                 only a per-brand adapter helps.
+        #   not-published the prose is there and states no H×W×D anywhere. The
+        #                 cottage ultralight makers are all like this (ULA,
+        #                 LiteAF, Bonfus): a frameless pack is specified by
+        #                 volume, torso range and weight, because external
+        #                 dimensions of a soft bag are not a meaningful number.
+        #                 Nothing to fix — the data does not exist.
+        #   unparsed      dimension-shaped text is present and the regexes
+        #                 missed it. This is the only bucket a parser change
+        #                 can win, and `--reparse` tests a fix for free.
+        if not scoped and "dimension" not in text.lower():
+            found["_no_dims"] = "no-spec-text"
+        elif DIM_SHAPED.search(scoped or text):
+            found["_no_dims"] = "unparsed"
+        else:
+            found["_no_dims"] = "not-published"
 
     return found
 
@@ -315,7 +355,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--delay", type=float, default=1.5)
     ap.add_argument("--limit", type=int, default=0)
-    ap.add_argument("--brand", default="")
+    ap.add_argument("--brand", default="",
+                    help="comma-separated brand slugs")
     ap.add_argument("--refresh", action="store_true", help="ignore cache")
     ap.add_argument("--cache-pages", action="store_true",
                     help="keep the raw page in data/page-cache for --reparse")
@@ -336,6 +377,8 @@ def main():
     payload = json.load(open(BAGS))
     bags = payload["bags"]
 
+    brands_wanted = {s.strip() for s in args.brand.split(",") if s.strip()}
+
     cache = {}
     if os.path.exists(CACHE) and not args.refresh:
         try:
@@ -349,7 +392,7 @@ def main():
         # seconds instead of a fresh crawl.
         reparsed = 0
         for bag in bags:
-            if args.brand and bag["brand_slug"] != args.brand:
+            if brands_wanted and bag["brand_slug"] not in brands_wanted:
                 continue
             html_text = load_page(bag["id"])
             if html_text is None:
@@ -366,12 +409,9 @@ def main():
                   "--cache-pages first", flush=True)
     else:
         targets = [b for b in bags
-                   if (not args.brand or b["brand_slug"] == args.brand)
+                   if (not brands_wanted or b["brand_slug"] in brands_wanted)
                    and b["id"] not in cache
-                   # Only Shopify bags get a page crawl. Other platforms
-                   # (bellroy, campsaver) arrive with their specs in the feed,
-                   # and their pages are not Shopify-shaped anyway.
-                   and (b.get("source") or "shopify").startswith("shopify")
+                   and enrichable(b)
                    and (b.get("dims_cm") is None or b.get("laptop_in") is None)]
         # Round-robin across brands rather than finishing one store before
         # starting the next. Two reasons, and the first is the one that bit:
@@ -552,8 +592,9 @@ def main():
         why = entry.get("_no_dims") if not entry.get("dims_cm") else None
         if why:
             slug = bag["brand_slug"]
-            diag.setdefault(slug, {"no-spec-text": 0, "unparsed": 0})
-            diag[slug][why] += 1
+            diag.setdefault(slug, {"no-spec-text": 0, "not-published": 0,
+                                   "unparsed": 0})
+            diag[slug][why] = diag[slug].get(why, 0) + 1
     payload["meta"]["enrich_gaps"] = diag
 
     with open(BAGS, "w") as f:
@@ -568,6 +609,7 @@ def main():
         for slug, counts in sorted(
                 diag.items(), key=lambda kv: -sum(kv[1].values())):
             print(f"  {slug:16} js-rendered={counts['no-spec-text']:4} "
+                  f"not-published={counts.get('not-published', 0):4} "
                   f"unparsed={counts['unparsed']:4}")
 
 

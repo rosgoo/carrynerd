@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-calipered domain resolver — turns a brand name into a verified storefront.
+gearherd domain resolver — turns a brand name into a verified storefront.
 
 `brands-master.json` holds 170 researched brands and only 40 have somewhere to
 fetch from. Names like "Code of Bell" or "Alpha One-Niner" need a domain before
@@ -281,6 +281,103 @@ def slugify(name):
     return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", name.lower())).strip("-")
 
 
+# --- platform detection -------------------------------------------------------
+#
+# Which adapter a domain needs, using only signals that stay clear of
+# Shopify's rate-limited endpoints — safe to run while a products.json IP
+# block is live. Shopify names itself in robots.txt ("# we use Shopify…" on
+# older stores, "# Shopify storefront" on newer ones), WooCommerce answers on
+# its public Store API, Squarespace serves JSON for `?format=json`.
+
+SHOPIFY_ROBOTS = re.compile(r"shopify", re.I)
+
+
+def detect_platform(domain, pacer):
+    """Returns (platform, evidence). Never touches /products.json.
+
+    All probes run with retries=0: probe()'s wait-out-the-429 behaviour is for
+    verifying a specific Shopify domain, where a rate limit read as "no" would
+    record a wrong answer. Here a 429 on robots.txt IS the answer — a hostile
+    WAF — and waiting it out cost six minutes on one domain (ogio.com) before
+    this was learned.
+    """
+    pacer.wait()
+    status, _, text = probe(f"https://{domain}/robots.txt", retries=0)
+    if status == 429:
+        return "hostile", "rate-limits even robots.txt"
+    if status == 0:
+        return "unreachable", "no HTTPS answer"
+    if status == 200 and SHOPIFY_ROBOTS.search(text or ""):
+        return "shopify", "robots.txt names Shopify"
+
+    disallows, group = [], False
+    if status == 200:
+        for raw in (text or "").splitlines():
+            line = raw.split("#", 1)[0].strip()
+            if not line or ":" not in line:
+                continue
+            field, value = (p.strip() for p in line.split(":", 1))
+            if field.lower() == "user-agent":
+                group = value == "*"
+            elif field.lower() == "disallow" and group and value:
+                disallows.append(value)
+
+    if not any("/wp-json/".startswith(r) for r in disallows):
+        pacer.wait()
+        s, _, body = probe(
+            f"https://{domain}/wp-json/wc/store/v1/products?per_page=1",
+            retries=0)
+        body = (body or "").lstrip()
+        if s == 200 and body.startswith("["):
+            return "woocommerce", "Store API answers publicly"
+        if body.startswith("{") and '"code"' in body[:200]:
+            # WordPress REST is there but the store route is not public.
+            return "wordpress:no-store-api", "wp-json answers, store route closed"
+
+    pacer.wait()
+    s, _, body = probe(f"https://{domain}/?format=json", retries=0)
+    body = (body or "").lstrip()
+    if s == 200 and body.startswith("{") and '"website"' in body[:2000]:
+        return "squarespace", "?format=json answers"
+
+    return "custom", "no platform signal matched"
+
+
+def detect_platforms(delay):
+    """Annotate domains-todo.csv with a platform column, in place."""
+    if not os.path.exists(TODO):
+        raise SystemExit(f"no {TODO} — run the resolver first")
+    with open(TODO, newline="") as f:
+        rows = list(csv.DictReader(f))
+
+    pacer = Pacer(delay)
+    counts = {}
+    for i, row in enumerate(rows, 1):
+        domain = (row.get("domain") or "").strip() or \
+                 (row.get("best_guess") or "").strip()
+        domain = re.sub(r"^https?://", "", domain).split("/")[0]
+        if not domain:
+            row["platform"] = ""
+            print(f"[{i}/{len(rows)}] {row['name']:26} (no candidate)",
+                  flush=True)
+            continue
+        platform, why = detect_platform(domain, pacer)
+        row["platform"] = platform
+        counts[platform] = counts.get(platform, 0) + 1
+        print(f"[{i}/{len(rows)}] {row['name']:26} {domain:28} -> "
+              f"{platform}  ({why})", flush=True)
+
+    fields = ["name", "domain", "platform", "best_guess", "why_unsure", "search"]
+    with open(TODO, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fields)
+        w.writeheader()
+        for row in rows:
+            w.writerow({k: row.get(k, "") for k in fields})
+    print(f"\nplatforms: {counts}")
+    print(f"written back to {TODO} — fill/confirm the domain column, then "
+          f"python3 resolve_domains.py --import")
+
+
 def write_todo(unresolved):
     """
     The hand-off. Anything the resolver could not prove lands here with its
@@ -320,7 +417,8 @@ def import_todo():
             domain = re.sub(r"^https?://", "", domain).split("/")[0]
             domain = re.sub(r"^www\.", "", domain).strip().lower()
             if domain:
-                filled[row["name"]] = domain
+                filled[row["name"]] = (domain,
+                                       (row.get("platform") or "").strip())
     if not filled:
         raise SystemExit(f"no domains filled in yet in {TODO}")
 
@@ -334,14 +432,22 @@ def import_todo():
     have = {b["slug"] for b in brands}
 
     added = 0
-    for name, domain in filled.items():
+    for name, (domain, platform) in filled.items():
         entry = by_name.get(name)
         if entry is not None:
             entry["domain"] = domain
             entry["domain_source"] = "human"
+            if platform:
+                entry["platform"] = platform
         slug = slugify(name)
         if slug not in have:
-            brands.append({"slug": slug, "name": name, "domain": domain})
+            new = {"slug": slug, "name": name, "domain": domain}
+            # Shopify is the default; anything else rides along so fetch.py
+            # dispatches (woocommerce) or skips with a message (squarespace,
+            # custom) until its adapter exists.
+            if platform and platform != "shopify":
+                new["platform"] = platform
+            brands.append(new)
             have.add(slug)
             added += 1
 
@@ -370,10 +476,16 @@ def main():
     ap.add_argument("--dns-only", action="store_true",
                     help="build the review list from DNS alone, no HTTP — "
                          "safe to run while a crawl is going")
+    ap.add_argument("--detect-platforms", action="store_true",
+                    help="annotate domains-todo.csv with each candidate's "
+                         "platform; never touches /products.json, so it is "
+                         "safe during a Shopify IP block")
     args = ap.parse_args()
 
     if args.do_import:
         return import_todo()
+    if args.detect_platforms:
+        return detect_platforms(args.delay)
 
     with open(MASTER) as f:
         master = json.load(f)

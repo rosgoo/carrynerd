@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-calipered alert matcher — the cron that isn't a cron.
+gearherd alert matcher — the cron that isn't a cron.
 
 There is no separate scheduler. This runs inside the nightly workflow, directly
 after track_prices.py, because that script has just finished working out which
@@ -30,8 +30,8 @@ import sys
 import urllib.error
 import urllib.request
 
-SITE_URL = os.environ.get("SITE_URL", "https://calipered.com").rstrip("/")
-ALERT_FROM = os.environ.get("ALERT_FROM", "calipered <alerts@calipered.com>")
+SITE_URL = os.environ.get("SITE_URL", "https://gearherd.com").rstrip("/")
+ALERT_FROM = os.environ.get("ALERT_FROM", "gearherd <alerts@gearherd.com>")
 RESEND_ENDPOINT = "https://api.resend.com/emails"
 
 # One alert per subscription per bag per day. A brand that restages a sale
@@ -74,7 +74,7 @@ def render(event, unsub_url):
 
     html = f"""
 <div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;max-width:520px;color:#16181a">
-  <p style="letter-spacing:.1em;text-transform:uppercase;font-size:11px;color:#8e938f">calipered price drop</p>
+  <p style="letter-spacing:.1em;text-transform:uppercase;font-size:11px;color:#8e938f">gearherd price drop</p>
   <h1 style="font-size:18px;margin:0 0 6px">{esc(name)}</h1>
   {f'<p style="font-size:12px;color:#5e6360;margin:0 0 12px">{esc(event["color"])}</p>' if event.get("color") else ''}
   <p style="font-size:26px;margin:0 0 4px;color:#e8430a;font-weight:600">{esc(now)}

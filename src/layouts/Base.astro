@@ -35,10 +35,24 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
      the page ships in both units and CSS picks one. -->
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <script is:inline>
+  // These keys are deliberately not brand-named. The site has been renamed
+  // twice, and a brand-named key means every rename silently resets the theme
+  // and units for everyone who ever set them — the exact flash this script
+  // exists to prevent, handed out once per rename. Neutral keys end that.
+  //
+  // The migration below carries the last brand-named values across and then
+  // forgets them. Safe to delete once returning visitors have cycled through.
   try {
-    const saved = localStorage.getItem('calipered-theme');
+    for (const [old, key] of [['calipered-theme', 'theme'],
+                              ['calipered-units', 'units']]) {
+      const prev = localStorage.getItem(old);
+      if (prev === null) continue;
+      if (localStorage.getItem(key) === null) localStorage.setItem(key, prev);
+      localStorage.removeItem(old);
+    }
+    const saved = localStorage.getItem('theme');
     if (saved) document.documentElement.setAttribute('data-theme', saved);
-    const units = localStorage.getItem('calipered-units');
+    const units = localStorage.getItem('units');
     if (units) document.documentElement.setAttribute('data-units', units);
   } catch {}
 </script>
@@ -86,10 +100,11 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
       if (event) document.dispatchEvent(new CustomEvent(event, { detail: next }));
     });
 
-  swap('theme', 'data-theme', 'calipered-theme', ['dark', 'light']);
+  // Keys are brand-neutral on purpose — see the migration note in <head>.
+  swap('theme', 'data-theme', 'theme', ['dark', 'light']);
   // The browse island keeps two lengths in <input>s, which CSS cannot rewrite.
   // It listens for this and converts them.
-  swap('units', 'data-units', 'calipered-units', ['cm', 'in'], 'unitchange');
+  swap('units', 'data-units', 'units', ['cm', 'in'], 'unitchange');
 </script>
 </body>
 </html>

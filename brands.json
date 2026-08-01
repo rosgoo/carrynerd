@@ -107,7 +107,7 @@
   {
     "slug": "moment",
     "name": "Moment",
-    "domain": "shopmoment.com"
+    "domain": "www.shopmoment.com"
   },
   {
     "slug": "lo-and-sons",
@@ -167,7 +167,8 @@
   {
     "slug": "ula",
     "name": "ULA Equipment",
-    "domain": "ula-equipment.com"
+    "domain": "ula-equipment.com",
+    "platform": "woocommerce"
   },
   {
     "slug": "trakke",
@@ -365,5 +366,496 @@
     "name": "CampSaver",
     "domain": "www.campsaver.com",
     "platform": "campsaver"
+  },
+  {
+    "slug": "liteaf",
+    "name": "LiteAF",
+    "domain": "liteaf.com",
+    "platform": "woocommerce"
+  },
+  {
+    "slug": "bonfus",
+    "name": "Bonfus",
+    "domain": "bonfus.com",
+    "platform": "woocommerce"
+  },
+  {
+    "slug": "3ful-gear",
+    "name": "3FUL Gear",
+    "domain": "3fulgear.com",
+    "platform": "woocommerce"
+  },
+  {
+    "slug": "arc-teryx",
+    "name": "Arc'teryx",
+    "domain": "arcteryx.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "fjallraven",
+    "name": "Fjallraven",
+    "domain": "fjallraven.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "gregory",
+    "name": "Gregory",
+    "domain": "www.gregory.com",
+    "platform": "walled"
+  },
+  {
+    "slug": "inside-line-equipment",
+    "name": "Inside Line Equipment",
+    "domain": "ilequipment.com"
+  },
+  {
+    "slug": "jansport",
+    "name": "JanSport",
+    "domain": "jansport.com"
+  },
+  {
+    "slug": "5-11-tactical",
+    "name": "5.11 Tactical",
+    "domain": "511tactical.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "airback",
+    "name": "Airback",
+    "domain": "airback.us"
+  },
+  {
+    "slug": "alpine-sea",
+    "name": "Alpine Sea",
+    "domain": "alpinesea.com"
+  },
+  {
+    "slug": "arcido",
+    "name": "Arcido",
+    "domain": "arcido.com"
+  },
+  {
+    "slug": "arktype",
+    "name": "Arktype",
+    "domain": "arktypedesign.com"
+  },
+  {
+    "slug": "attitude-supply",
+    "name": "Attitude Supply",
+    "domain": "attitudesupply.com"
+  },
+  {
+    "slug": "avio-gear",
+    "name": "Avio Gear",
+    "domain": "aviotravel.com"
+  },
+  {
+    "slug": "bagsmart",
+    "name": "Bagsmart",
+    "domain": "bagsmart.com"
+  },
+  {
+    "slug": "black-voyage",
+    "name": "Black Voyage",
+    "domain": "blackvoyage.com"
+  },
+  {
+    "slug": "burton",
+    "name": "Burton",
+    "domain": "burton.com"
+  },
+  {
+    "slug": "cabelas",
+    "name": "Cabelas",
+    "domain": "cabelas.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "cabinzero",
+    "name": "CabinZero",
+    "domain": "cabinzero.com"
+  },
+  {
+    "slug": "camelbak",
+    "name": "CamelBak",
+    "domain": "www.camelbak.com",
+    "platform": "pages",
+    "crawl": {
+      "sitemap": "https://www.camelbak.com/sitemap_0.xml",
+      "product": "/product/.+\\.html$"
+    }
+  },
+  {
+    "slug": "caribee",
+    "name": "Caribee",
+    "domain": "caribee.com"
+  },
+  {
+    "slug": "corsurf",
+    "name": "Corsurf",
+    "domain": "corsurf.com"
+  },
+  {
+    "slug": "craghoppers",
+    "name": "Craghoppers",
+    "domain": "craghoppers.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "dakine",
+    "name": "Dakine",
+    "domain": "dakine.com"
+  },
+  {
+    "slug": "day-owl",
+    "name": "Day Owl",
+    "domain": "dayowl.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "defy",
+    "name": "DEFY",
+    "domain": "defybags.com"
+  },
+  {
+    "slug": "deuter",
+    "name": "Deuter",
+    "domain": "www.deuter.com",
+    "platform": "pages",
+    "crawl": {
+      "sitemap": "https://www.deuter.com/de-en/sitemap.xml",
+      "product": "/de-en/[^/]+/\\d{8,14}/?$"
+    }
+  },
+  {
+    "slug": "everyman",
+    "name": "Everyman",
+    "domain": "everyman.co",
+    "platform": "custom"
+  },
+  {
+    "slug": "exped",
+    "name": "Exped",
+    "domain": "exped.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "fhf-gear",
+    "name": "FHF Gear",
+    "domain": "fhfgear.com"
+  },
+  {
+    "slug": "filson",
+    "name": "Filson",
+    "domain": "filson.com"
+  },
+  {
+    "slug": "forclaz",
+    "name": "Forclaz",
+    "domain": "decathlon.com"
+  },
+  {
+    "slug": "fredrik-packers",
+    "name": "Fredrik Packers",
+    "domain": "fredrikpackers.com",
+    "platform": "unreachable"
+  },
+  {
+    "slug": "fyro",
+    "name": "Fyro",
+    "domain": "fyro.co"
+  },
+  {
+    "slug": "grams",
+    "name": "Grams",
+    "domain": "grams28.com"
+  },
+  {
+    "slug": "graphene-x",
+    "name": "Graphene-x",
+    "domain": "graphene-x.com"
+  },
+  {
+    "slug": "haize-project",
+    "name": "Haize Project",
+    "domain": "haizeproject.com"
+  },
+  {
+    "slug": "hanchor",
+    "name": "Hanchor",
+    "domain": "hanchor.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "hill-people-gear",
+    "name": "Hill People Gear",
+    "domain": "hillpeoplegear.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "homiee",
+    "name": "Homiee",
+    "domain": "homieebackpack.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "hynes-eagle",
+    "name": "Hynes Eagle",
+    "domain": "hyneseagle.com"
+  },
+  {
+    "slug": "ikea",
+    "name": "Ikea",
+    "domain": "ikea.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "kifaru",
+    "name": "Kifaru",
+    "domain": "kifaru.net"
+  },
+  {
+    "slug": "kipling",
+    "name": "Kipling",
+    "domain": "kipling.com"
+  },
+  {
+    "slug": "kl-ttermusen",
+    "name": "Kl\u00e4ttermusen",
+    "domain": "klattermusen.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "l-l-bean",
+    "name": "L.L.Bean",
+    "domain": "llbean.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "mammut",
+    "name": "Mammut",
+    "domain": "www.mammut.com",
+    "platform": "pages",
+    "crawl": {
+      "sitemap": "https://www.mammut.com/sitemap.xml",
+      "product": "/us/en/products/[\\d-]+/[^/]+$",
+      "shelf": "/us/en/category/\\d+/[^/]+$"
+    }
+  },
+  {
+    "slug": "mec",
+    "name": "MEC",
+    "domain": "mec.ca",
+    "platform": "custom"
+  },
+  {
+    "slug": "ministry-of-supply",
+    "name": "Ministry of Supply",
+    "domain": "ministryofsupply.com"
+  },
+  {
+    "slug": "mismo",
+    "name": "Mismo",
+    "domain": "mismo.dk"
+  },
+  {
+    "slug": "mixed-works",
+    "name": "Mixed Works",
+    "domain": "mixedworks.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "modern-dayfarer",
+    "name": "Modern Dayfarer",
+    "domain": "moderndayfarer.com"
+  },
+  {
+    "slug": "mountainsmith",
+    "name": "Mountainsmith",
+    "domain": "mountainsmith.com"
+  },
+  {
+    "slug": "nemo-equipment",
+    "name": "Nemo Equipment",
+    "domain": "nemoequipment.com"
+  },
+  {
+    "slug": "nike",
+    "name": "Nike",
+    "domain": "nike.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "ogio",
+    "name": "Ogio",
+    "domain": "ogio.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "ortlieb",
+    "name": "Ortlieb",
+    "domain": "us.ortlieb.com",
+    "platform": "shopify"
+  },
+  {
+    "slug": "packolab",
+    "name": "Packolab",
+    "domain": "packolab.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "pacsafe",
+    "name": "Pacsafe",
+    "domain": "pacsafe.com"
+  },
+  {
+    "slug": "patagonia",
+    "name": "Patagonia",
+    "domain": "patagonia.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "piorama",
+    "name": "Piorama",
+    "domain": "piorama.co"
+  },
+  {
+    "slug": "porter",
+    "name": "Porter",
+    "domain": "ll-porter.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "portland-gear",
+    "name": "Portland Gear",
+    "domain": "portlandgear.com"
+  },
+  {
+    "slug": "property-of",
+    "name": "Property Of",
+    "domain": "thepropertyof.com"
+  },
+  {
+    "slug": "rab",
+    "name": "Rab",
+    "domain": "rab.equipment",
+    "platform": "magento"
+  },
+  {
+    "slug": "rawrow",
+    "name": "RAWROW",
+    "domain": "rawrow.com"
+  },
+  {
+    "slug": "red-oxx",
+    "name": "Red Oxx",
+    "domain": "redoxx.com"
+  },
+  {
+    "slug": "remote-equipment",
+    "name": "Remote Equipment",
+    "domain": "remoteeq.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "rework-gear",
+    "name": "Rework Gear",
+    "domain": "reworkgear.com"
+  },
+  {
+    "slug": "salomon",
+    "name": "Salomon",
+    "domain": "salomon.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "simond",
+    "name": "Simond",
+    "domain": "simond.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "snow-peak",
+    "name": "Snow Peak",
+    "domain": "snowpeak.com"
+  },
+  {
+    "slug": "solgaard",
+    "name": "Solgaard",
+    "domain": "solgaard.co"
+  },
+  {
+    "slug": "stio",
+    "name": "Stio",
+    "domain": "stio.com"
+  },
+  {
+    "slug": "stubble-co",
+    "name": "Stubble & Co",
+    "domain": "stubbleandco.com"
+  },
+  {
+    "slug": "swissgear",
+    "name": "SwissGear",
+    "domain": "swissgear.com"
+  },
+  {
+    "slug": "tatonka",
+    "name": "Tatonka",
+    "domain": "www.tatonka.com",
+    "platform": "pages",
+    "crawl": {
+      "sitemap": "https://www.tatonka.com/en/sitemap_index.xml",
+      "product": "/en/product/[^/]+/$"
+    }
+  },
+  {
+    "slug": "tobiq",
+    "name": "Tobiq",
+    "domain": "tobiq.com"
+  },
+  {
+    "slug": "uniqlo",
+    "name": "Uniqlo",
+    "domain": "uniqlo.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "vaude",
+    "name": "Vaude",
+    "domain": "www.vaude.com",
+    "platform": "magento"
+  },
+  {
+    "slug": "vertx",
+    "name": "Vertx",
+    "domain": "vertx.com"
+  },
+  {
+    "slug": "wave",
+    "name": "Wave",
+    "domain": "waveproducts.com"
+  },
+  {
+    "slug": "yeti",
+    "name": "Yeti",
+    "domain": "yeti.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "ynot",
+    "name": "YNOT",
+    "domain": "ynotmade.com"
+  },
+  {
+    "slug": "zeeksack",
+    "name": "Zeeksack",
+    "domain": "zeeksack.com",
+    "platform": "custom"
+  },
+  {
+    "slug": "zorali",
+    "name": "Zorali",
+    "domain": "zorali.com"
   }
 ]

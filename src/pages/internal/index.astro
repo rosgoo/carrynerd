@@ -3,6 +3,8 @@ import Base from '../../layouts/Base.astro';
 import { bags, bagHref, meta } from '../../lib/catalog.js';
 import { SITE_NAME } from '../../lib/brand.js';
 import rejectedPayload from '../../../data/rejected.json';
+import colourOverrides from '../../../data/colour-overrides.json';
+import categoryOverrides from '../../../data/category-overrides.json';
 
 /* The working list behind the coverage banners.
  *
@@ -13,6 +15,49 @@ import rejectedPayload from '../../../data/rejected.json';
  *
  * Unlinked, noindex and out of the sitemap. A working list, not a page.
  */
+
+/* ---------- reviewed rulings ----------
+ *
+ * The same two files normalize.py consults, read here so the audit list can
+ * separate "nobody has looked at this" from "somebody looked and this is the
+ * answer". The matching rules have to agree with the Python exactly: content
+ * keys, whitespace-collapsed and case-folded; products keyed on the last path
+ * segment of their URL.
+ */
+
+const normKey = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+const productKey = (url) =>
+  normKey(
+    String(url ?? '').replace(/[?#].*$/, '').replace(/\/+$/, '').split('/').pop(),
+  );
+
+/** brand + key -> ruling, skipping the `_`-prefixed notes in the file. */
+function rulings(payload) {
+  const out = new Map();
+  for (const [brand, entries] of Object.entries(payload ?? {})) {
+    if (brand.startsWith('_') || typeof entries !== 'object' || entries === null) {
+      continue;
+    }
+    for (const [key, value] of Object.entries(entries)) {
+      out.set(`${brand}|${normKey(key)}`, value);
+    }
+  }
+  return out;
+}
+
+const BRAND_NAMES = new Map(bags.map((b) => [b.brand_slug, b.brand]));
+const brandName = (slug) => BRAND_NAMES.get(slug) ?? slug;
+
+const COLOUR_RULINGS = rulings(colourOverrides);
+const CATEGORY_RULINGS = rulings(categoryOverrides);
+const ruled = (map, brand, key) => map.has(`${brand}|${normKey(key)}`);
+const ruling = (map, brand, key) => map.get(`${brand}|${normKey(key)}`);
+
+/* Written by normalize.py, so it is absent until the pipeline has run since
+   the override files appeared. Absent is reported as absent — the one thing
+   this page must not do is imply a clean bill of health it cannot see. */
+const overrideReport = meta.overrides ?? null;
 
 /* ---------- colour classification ---------- */
 
@@ -37,19 +82,82 @@ for (const bag of bags) {
   }
 }
 
-// Names that state no colour, grouped. Case-folded: "X-Pac" and "X-PAC" are
-// one problem, not two.
+/* Names that state no colour, grouped by brand and name — the same unit a
+   ruling is written in, because these names are not global. Case-folded:
+   "X-Pac" and "X-PAC" are one problem, not two. */
 const byName = new Map();
 for (const row of rows.filter((r) => r.name)) {
-  const key = row.name.toLowerCase();
+  const key = `${row.bag.brand_slug} ${normKey(row.name)}`;
   let entry = byName.get(key);
-  if (!entry) byName.set(key, (entry = { name: row.name, skus: 0, bags: new Map() }));
+  if (!entry) {
+    byName.set(
+      key,
+      (entry = {
+        name: row.name,
+        brand: row.bag.brand,
+        brandSlug: row.bag.brand_slug,
+        skus: 0,
+        bags: new Map(),
+        decided: ruled(COLOUR_RULINGS, row.bag.brand_slug, row.name),
+      }),
+    );
+  }
   entry.skus += 1;
   entry.bags.set(row.bag.id, row.bag);
 }
 const names = [...byName.values()].sort(
   (a, b) => b.skus - a.skus || a.name.localeCompare(b.name),
 );
+/* The top table is work; a name with a ruling has already had its turn. A name
+   ruled a *family* also stops being unclassified once the pipeline has run, so
+   it leaves this list on its own — until then it sits in both, which is why
+   the table below reports what the data currently says rather than inferring
+   the ruling from the fact that the name is still here. */
+const unreviewedNames = names.filter((n) => !n.decided);
+
+/* Every ruling, read back out of the file and checked against the catalog: how
+   many SKUs it matches, and whether the built data actually reflects it. A
+   ruling recorded but not yet run is the normal state right after editing the
+   file, and saying so beats showing a number that means neither thing. */
+const decidedColours = [];
+for (const [brand, entries] of Object.entries(colourOverrides ?? {})) {
+  if (brand.startsWith('_') || typeof entries !== 'object' || entries === null) {
+    continue;
+  }
+  for (const [name, family] of Object.entries(entries)) {
+    const matched = [];
+    for (const bag of bags) {
+      if (bag.brand_slug !== brand) continue;
+      for (const v of bag.variants ?? []) {
+        if (normKey(v.color) === normKey(name)) matched.push(v);
+      }
+    }
+    decidedColours.push({
+      brand: brandName(brand),
+      name,
+      family,
+      skus: matched.length,
+      // `family` is a string or null, and `color_family` is the same shape, so
+      // this compares like with like in both directions.
+      applied: matched.length > 0
+        && matched.every((v) => (v.color_family ?? null) === (family ?? null)),
+    });
+  }
+}
+decidedColours.sort(
+  (a, b) => a.brand.localeCompare(b.brand) || a.name.localeCompare(b.name),
+);
+
+/* Paste-ready skeleton for everything still unreviewed. The placeholder is
+   deliberately not a valid family: paste it unedited and normalize.py stops
+   with the list of families it accepts, rather than silently recording a
+   ruling nobody made. */
+const skeleton = (entries) => {
+  const out = {};
+  for (const [brand, key] of entries) (out[brand] ??= {})[key] = '?';
+  return JSON.stringify(out, null, 1);
+};
+const colourSkeleton = skeleton(unreviewedNames.map((n) => [n.brandSlug, n.name]));
 
 // Models the brand ships without any colourway.
 const silent = bags
@@ -101,12 +209,16 @@ const REASON_NOTES = {
   'not-a-bag:product-type': 'the store filed it under a type that is not carry',
 };
 
-const brandNames = new Map(bags.map((b) => [b.brand_slug, b.brand]));
 const rejected = (rejectedPayload.rejected ?? [])
   .map((r) => ({
     ...r,
-    brand: brandNames.get(r.brand_slug) ?? r.brand_slug,
-    inCatalog: brandNames.has(r.brand_slug),
+    brand: brandName(r.brand_slug),
+    inCatalog: BRAND_NAMES.has(r.brand_slug),
+    key: productKey(r.url),
+    /* The ruling is joined here rather than trusted from the file:
+       rejected.json only carries `reviewed` if it was written after the
+       override files existed, and the override file is right here. */
+    decided: ruled(CATEGORY_RULINGS, r.brand_slug, productKey(r.url)),
   }))
   .sort(
     (a, b) =>
@@ -121,9 +233,27 @@ const rejectReasons = [...reasonCount.keys()].sort(
   (a, b) => reasonCount.get(b) - reasonCount.get(a),
 );
 const inCatalogRejects = rejected.filter((r) => r.inCatalog).length;
+const decidedRejects = rejected.filter((r) => r.decided).length;
 const otherBrands = new Set(
   rejected.filter((r) => !r.inCatalog).map((r) => r.brand_slug),
 );
+
+/* Products a ruling pulled back in are no longer rejected, so they are read
+   out of the file the same way applied colours are. */
+const admitted = [];
+for (const [brand, entries] of Object.entries(categoryOverrides ?? {})) {
+  if (brand.startsWith('_') || typeof entries !== 'object' || entries === null) {
+    continue;
+  }
+  for (const [key, category] of Object.entries(entries)) {
+    if (category == null) continue;
+    const bag = bags.find(
+      (b) => b.brand_slug === brand && productKey(b.url) === normKey(key),
+    );
+    admitted.push({ brand: brandName(brand), key, category, bag: bag ?? null });
+  }
+}
+admitted.sort((a, b) => a.brand.localeCompare(b.brand) || a.key.localeCompare(b.key));
 
 /* The two files are written by different steps of the same night: the reject
    list covers everything the crawl saw, the catalog only the brands we
@@ -143,15 +273,28 @@ const catalogStamp = meta.generated_at ?? null;
       <a href="/">Bags</a> <span>/</span> <b>Internal · coverage audit</b>
       <span>·</span> <a href="#colours">Colours</a>
       <span>·</span> <a href="#rejects">Rejects</a>
+      <span>·</span> <a href="/internal/domains/">Domains</a>
     </nav>
     <h1>Coverage audit</h1>
     <p class="note">
       What the index declined to claim, at both ends of the pipeline: the
       colourways inside it that map to no colour, and the products that never
-      got in. Read-only — it is generated from <code>data/bags.json</code> and
-      {' '}<code>data/rejected.json</code> at build time, so a fix is a change
-      to <code>normalize.py</code> and a re-run, not an edit here.
+      got in. Generated from <code>data/bags.json</code> and
+      {' '}<code>data/rejected.json</code> at build time, so the page itself
+      writes nothing — a ruling is a line in
+      {' '}<code>data/colour-overrides.json</code> or
+      {' '}<code>data/category-overrides.json</code> and a re-run of
+      {' '}<code>normalize.py</code>, which consults both before its own
+      patterns. Each table below hands you the line to paste.
     </p>
+    {!overrideReport && (
+      <p class="note warnrun">
+        <b>bags.json predates the override files.</b> Nothing is wrong — the
+        rulings just have not been through the pipeline yet, so the stale-ruling
+        report below is empty because it has never been written, not because
+        there is nothing to report. Run <code>python3 normalize.py</code>.
+      </p>
+    )}
 
     <section>
       <h2 id="colours">Colour classification</h2>
@@ -168,47 +311,104 @@ const catalogStamp = meta.generated_at ?? null;
     </section>
 
     <section>
-      <h2>Names that state no colour</h2>
+      <h2>Names that state no colour — unreviewed</h2>
       <p class="note">
-        <b>{names.length}</b> distinct names across <b>{namedSkus}</b> SKUs of
-        {' '}{skuTotal}. A name here is a gap only if it really does name a
-        colour — a material ("X-Pac", "Heritage Suede") or a collab name
-        correctly maps to nothing, and stripping it is the point. Fixes go in
-        {' '}<code>COLOUR_FAMILIES</code> in <code>normalize.py</code>.
+        <b>{unreviewedNames.length}</b> brand-and-name pairs nobody has ruled
+        on, across <b>{unreviewedNames.reduce((n, e) => n + e.skus, 0)}</b> SKUs
+        of {skuTotal}. A name here is a gap only if it really does name a colour
+        — a material ("X-Pac", "Heritage Suede") or a collab name correctly maps
+        to nothing, and ruling it <code>null</code> is how you say so and get it
+        off this list.
       </p>
-      {names.length === 0 ? (
-        <p class="note">Nothing unclassified. Every colourway name maps to a family.</p>
+      {unreviewedNames.length === 0 ? (
+        <p class="note">
+          Nothing unreviewed. Every unclassified colourway name has a ruling.
+        </p>
       ) : (
-        <table class="spectable brandtable">
-          <thead>
-            <tr><th>Colourway</th><th>SKUs</th><th>Models</th></tr>
-          </thead>
-          <tbody>
-            {names.map((entry) => (
-              <tr>
-                <td>{entry.name}</td>
-                <td>{entry.skus}</td>
-                <td class="modelcell">
-                  {modelLinks(entry.bags.values()).map((bag, i) => (
-                    <>
-                      {i > 0 && <span class="nil">, </span>}
-                      <a href={bagHref(bag)}>{bag.brand} {bag.name}</a>
-                      {!(bag.color_families ?? []).length && (
-                        <span class="nil" title="answers no colour filter"> ∅</span>
-                      )}
-                    </>
-                  ))}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <>
+          <table class="spectable brandtable">
+            <thead>
+              <tr><th>Brand</th><th>Colourway</th><th>SKUs</th><th>Models</th></tr>
+            </thead>
+            <tbody>
+              {unreviewedNames.map((entry) => (
+                <tr>
+                  <td>{entry.brand}</td>
+                  <td>{entry.name}</td>
+                  <td>{entry.skus}</td>
+                  <td class="modelcell">
+                    {modelLinks(entry.bags.values()).map((bag, i) => (
+                      <>
+                        {i > 0 && <span class="nil">, </span>}
+                        <a href={bagHref(bag)}>{bag.brand} {bag.name}</a>
+                        {!(bag.color_families ?? []).length && (
+                          <span class="nil" title="answers no colour filter"> ∅</span>
+                        )}
+                      </>
+                    ))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div class="paste">
+            <div class="pastebar">
+              <em>Paste into <code>data/colour-overrides.json</code></em>
+              <button class="tbtn" data-copy="colour-skeleton">Copy</button>
+            </div>
+            <pre id="colour-skeleton">{colourSkeleton}</pre>
+            <p class="note foot">
+              Replace each <code>"?"</code> with a family — black, blue, brown,
+              green, grey, multi, orange, pink, purple, red, white, yellow — or
+              with <code>null</code> for "reviewed, states no colour".
+              {' '}<code>"?"</code> is not a valid family on purpose: leave one
+              in and <code>normalize.py</code> stops and tells you, rather than
+              recording a ruling you did not make.
+            </p>
+          </div>
+        </>
       )}
       <p class="note foot">
         <span class="nil">∅</span> marks a model with no colour family at all —
         it is missing from every colour filter, not just this colourway.
       </p>
     </section>
+
+    {decidedColours.length > 0 && (
+      <section>
+        <h2>Colourways already ruled on</h2>
+        <p class="note">
+          From <code>data/colour-overrides.json</code>, checked against the
+          catalog as built. A ruling matching <b>0</b> SKUs has gone stale; one
+          matching SKUs the data does not agree with is simply waiting on a
+          re-run of <code>normalize.py</code>.
+        </p>
+        <table class="spectable brandtable">
+          <thead>
+            <tr><th>Brand</th><th>Colourway</th><th>Ruling</th><th>SKUs</th><th>In the data</th></tr>
+          </thead>
+          <tbody>
+            {decidedColours.map((entry) => (
+              <tr>
+                <td>{entry.brand}</td>
+                <td>{entry.name}</td>
+                <td class={entry.family ? 'mono' : 'mono nil'}>
+                  {entry.family ?? 'states no colour'}
+                </td>
+                <td class={entry.skus ? '' : 'nil'}>{entry.skus}</td>
+                <td class={entry.applied ? '' : 'nil'}>
+                  {entry.applied
+                    ? 'applied'
+                    : entry.skus
+                      ? 'pending a re-run'
+                      : 'nothing matches'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    )}
 
     <section>
       <h2>Models with no colourway published</h2>
@@ -303,9 +503,13 @@ const catalogStamp = meta.generated_at ?? null;
           <button class="chip" id="rj-catalog" aria-pressed="false">
             catalog brands only<span>{inCatalogRejects}</span>
           </button>
+          <button class="chip" id="rj-unreviewed" aria-pressed="false">
+            unreviewed only<span>{rejected.length - decidedRejects}</span>
+          </button>
         </div>
         <input id="rj-q" type="search" placeholder="filter title, brand, type, tag…" />
         <span class="count" id="rj-count"><b>{rejected.length}</b> shown</span>
+        <button class="tbtn" id="rj-skeleton">Copy filtered as rulings</button>
       </div>
       <div class="tablewrap rjwrap">
         <table class="spectable brandtable rjtable">
@@ -317,11 +521,21 @@ const catalogStamp = meta.generated_at ?? null;
           </thead>
           <tbody>
             {rejected.map((r) => (
-              <tr data-reason={r.reason} data-cat={r.inCatalog ? '1' : '0'}>
+              <tr
+                data-reason={r.reason}
+                data-cat={r.inCatalog ? '1' : '0'}
+                data-ruled={r.decided ? '1' : '0'}
+                data-brand={r.brand_slug}
+                data-key={r.key}
+                class={r.decided ? 'ruled' : undefined}
+              >
                 <td>
                   {r.brand}
                   {!r.inCatalog && (
                     <span class="nil" title="brand not in the published catalog"> ∅</span>
+                  )}
+                  {r.decided && (
+                    <span class="nil" title="ruled on: correctly rejected"> ✓</span>
                   )}
                 </td>
                 <td class="rjtitle">
@@ -343,11 +557,97 @@ const catalogStamp = meta.generated_at ?? null;
           </tbody>
         </table>
       </div>
+      <div class="paste">
+        <div class="pastebar">
+          <em>Rulings for the rows you have filtered to</em>
+        </div>
+        <pre id="rj-skeleton-out" class="nil">Filter the table, then press “Copy filtered as rulings”.</pre>
+        <p class="note foot">
+          Values are <code>"?"</code> — replace each with a category (briefcase,
+          camera-bag, daypack, duffel, hiking-pack, hip-pack, luggage,
+          messenger, pouch, sling, tote, travel-backpack) to pull the product
+          into the index, or with <code>null</code> to record that it is
+          correctly rejected. A category ruling overrides the not-a-bag rules
+          outright and the model page will read
+          {' '}<code>category_source: override</code>.
+        </p>
+      </div>
       <p class="note foot">
         <span class="nil">∅</span> marks a brand with nothing in the published
-        catalog. Filtering is client-side over the whole list; with scripting
-        off the table is simply all {rejected.length} rows.
+        catalog, <span class="nil">✓</span> a row someone has already ruled on;
+        each title links to the product it was rejected from. Filtering is
+        client-side over the whole list, so with scripting off the table is
+        simply all {rejected.length} rows.
       </p>
+    </section>
+
+    {admitted.length > 0 && (
+      <section>
+        <h2>Products ruled back in</h2>
+        <p class="note">
+          From <code>data/category-overrides.json</code>. These are not in the
+          reject list any more — that is the ruling working — so they are read
+          back out of the file and matched against the catalog.
+        </p>
+        <table class="spectable brandtable">
+          <thead>
+            <tr><th>Brand</th><th>Product key</th><th>Category</th><th>In the index</th></tr>
+          </thead>
+          <tbody>
+            {admitted.map((entry) => (
+              <tr>
+                <td>{entry.brand}</td>
+                <td class="mono">{entry.key}</td>
+                <td class="mono">{entry.category}</td>
+                <td>
+                  {entry.bag
+                    ? <a href={bagHref(entry.bag)}>{entry.bag.name}</a>
+                    : <span class="nil">no match — stale, or not rebuilt yet</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    )}
+
+    <section>
+      <h2>Stale rulings</h2>
+      {!overrideReport ? (
+        <p class="note">
+          Not written yet — <code>normalize.py</code> has not run since the
+          override files appeared. It records which rulings it consulted; a
+          ruling nothing matched is the one kind of rot this page cannot see
+          from the built data alone, because the product it was about is gone.
+        </p>
+      ) : (
+        <>
+          <p class="note">
+            Rulings that matched nothing on the last pipeline run — a product
+            the brand stopped selling, a colourway they renamed. Prune them, or
+            they quietly become fiction.
+          </p>
+          <table class="spectable brandtable">
+            <thead>
+              <tr><th>File</th><th>Rulings</th><th>Used</th><th>Stale</th></tr>
+            </thead>
+            <tbody>
+              {Object.entries(overrideReport).map(([kind, report]) => (
+                <tr>
+                  <td class="mono">{report.file ?? kind}</td>
+                  <td>{report.entries ?? 0}</td>
+                  <td>{report.used ?? 0}</td>
+                  <td class={report.stale?.length ? '' : 'nil'}>
+                    {report.stale?.length
+                      ? report.stale.map((s) => `${s.brand}/${s.key}`).join(' · ')
+                      : 'none'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
     </section>
   </div>
 </Base>
@@ -363,12 +663,17 @@ const catalogStamp = meta.generated_at ?? null;
       el,
       reason: el.dataset.reason,
       inCatalog: el.dataset.cat === '1',
+      ruled: el.dataset.ruled === '1',
+      brand: el.dataset.brand,
+      key: el.dataset.key,
       text: el.textContent.toLowerCase(),
     }));
     const chips = [...document.querySelectorAll('.rjbar .chip[data-reason]')];
     const catalogOnly = document.getElementById('rj-catalog');
+    const unreviewedOnly = document.getElementById('rj-unreviewed');
     const query = document.getElementById('rj-q');
     const count = document.getElementById('rj-count');
+    let visible = rows;
 
     const apply = () => {
       const on = new Set(
@@ -377,20 +682,22 @@ const catalogStamp = meta.generated_at ?? null;
           .map((c) => c.dataset.reason),
       );
       const cat = catalogOnly.getAttribute('aria-pressed') === 'true';
+      const fresh = unreviewedOnly.getAttribute('aria-pressed') === 'true';
       const q = query.value.trim().toLowerCase();
-      let shown = 0;
+      visible = [];
       for (const row of rows) {
         const hit =
           on.has(row.reason) &&
           (!cat || row.inCatalog) &&
+          (!fresh || !row.ruled) &&
           (!q || row.text.includes(q));
         row.el.hidden = !hit;
-        if (hit) shown += 1;
+        if (hit) visible.push(row);
       }
-      count.innerHTML = `<b>${shown}</b> shown`;
+      count.innerHTML = `<b>${visible.length}</b> shown`;
     };
 
-    for (const chip of [...chips, catalogOnly]) {
+    for (const chip of [...chips, catalogOnly, unreviewedOnly]) {
       chip.addEventListener('click', () => {
         chip.setAttribute(
           'aria-pressed',
@@ -403,6 +710,43 @@ const catalogStamp = meta.generated_at ?? null;
     query.addEventListener('input', () => {
       clearTimeout(timer);
       timer = setTimeout(apply, 90);
+    });
+
+    /* The skeleton is built from what is on screen, so the filter *is* the
+       selection: narrow to one brand and one reason, then paste that. */
+    const out = document.getElementById('rj-skeleton-out');
+    const skeletonButton = document.getElementById('rj-skeleton');
+    skeletonButton.addEventListener('click', () => {
+      if (!visible.length) {
+        out.textContent = 'Nothing shown — widen the filter first.';
+        return;
+      }
+      const shape = {};
+      for (const row of visible) (shape[row.brand] ??= {})[row.key] = '?';
+      out.textContent = JSON.stringify(shape, null, 1);
+      out.classList.remove('nil');
+      copy(out.textContent, skeletonButton);
+    });
+  }
+
+  /* Clipboard writes need a secure context, which localhost has and a LAN
+     address does not. Say when it failed rather than leaving a button that
+     looks like it worked — the text is on screen and selectable either way. */
+  async function copy(text, button) {
+    const said = button.textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+      button.textContent = 'Copied';
+    } catch {
+      button.textContent = 'Select it and copy';
+    }
+    setTimeout(() => { button.textContent = said; }, 1600);
+  }
+
+  for (const button of document.querySelectorAll('[data-copy]')) {
+    button.addEventListener('click', () => {
+      const target = document.getElementById(button.dataset.copy);
+      if (target) copy(target.textContent, button);
     });
   }
 </script>
@@ -446,5 +790,25 @@ const catalogStamp = meta.generated_at ?? null;
   .rjtags {
     max-width: 190px; overflow: hidden; text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* A row someone has already ruled on stays in place — the list is an audit
+     trail, not a queue — but it should not compete for attention. */
+  .rjtable tbody tr.ruled td { opacity: .55; }
+
+  .warnrun { border-left: 2px solid var(--accent); }
+
+  .paste { border-top: 1px solid var(--line); }
+  .pastebar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 14px 6px;
+  }
+  .pastebar em {
+    font-style: normal; font-size: 9.5px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-mute);
+  }
+  .paste pre {
+    margin: 0; padding: 0 14px 12px; overflow-x: auto;
+    font-family: var(--mono); font-size: 11px; line-height: 1.55;
+    color: var(--ink-dim);
   }
 </style>

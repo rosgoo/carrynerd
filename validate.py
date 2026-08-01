@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-calipered quality gate — the thing standing between a bad parse and a live site.
+gearherd quality gate — the thing standing between a bad parse and a live site.
 
 The nightly workflow commits and deploys with nobody watching. That is fine
 right up until a regex change halves the index, at which point the pipeline
@@ -15,7 +15,8 @@ Two kinds of check:
 
   structural   Absolute truths about a well-formed catalogue — required fields,
                unique permalinks, values inside physically sane bounds. These
-               need no history and always run.
+               need no history and always run. The brand mark is checked here
+               too: the header logo and the favicon must be the same drawing.
   regression   Compared against the last committed data/bags.json, read
                straight out of git. That is the copy currently live, which is
                exactly the thing worth not regressing against. Skipped with a
@@ -30,11 +31,14 @@ Usage:
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BAGS = os.path.join(HERE, "data", "bags.json")
+LOGO = os.path.join(HERE, "src", "components", "Logo.astro")
+FAVICON = os.path.join(HERE, "public", "favicon.svg")
 
 REQUIRED = ("id", "brand", "brand_slug", "name", "category", "url", "slug")
 
@@ -150,6 +154,41 @@ def structural(payload, rep):
                  f"{len(no_variants)} bags have no variants — {sample(no_variants)}")
 
 
+def brandmark(rep):
+    """The header logo and the favicon have to be the same drawing.
+
+    They are two files with no link between them, so they drift silently: the
+    logo gets redrawn, the favicon keeps the old mark, and the only place that
+    shows up is a browser tab nobody looks at during review. That is exactly how
+    the caliper mark outlived the rename.
+
+    Compares the path geometry and ignores everything else, so the favicon is
+    free to keep its own background plate and its hardcoded hex fills while the
+    component inherits currentColor.
+    """
+    def paths(path):
+        try:
+            with open(path) as f:
+                return re.findall(r'\bd="([^"]+)"', f.read())
+        except FileNotFoundError:
+            rep.fail("brandmark", f"{os.path.relpath(path, HERE)} is missing")
+            return None
+
+    logo, icon = paths(LOGO), paths(FAVICON)
+    if logo is None or icon is None:
+        return
+    if not logo:
+        rep.fail("brandmark", "no path data in src/components/Logo.astro")
+        return
+
+    # Whitespace only — a reformat is not a drift.
+    norm = lambda ds: [" ".join(d.split()) for d in ds]
+    if norm(logo) != norm(icon):
+        rep.fail("brandmark",
+                 f"Logo.astro and favicon.svg are different drawings "
+                 f"({len(logo)} vs {len(icon)} path(s)) — update both")
+
+
 def baseline():
     """The last committed catalogue — i.e. the one currently deployed."""
     try:
@@ -220,6 +259,7 @@ def main():
 
     rep = Report()
     structural(payload, rep)
+    brandmark(rep)
 
     prev = baseline()
     if prev is None:

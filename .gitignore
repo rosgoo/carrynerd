@@ -23,6 +23,9 @@ dist/
 
 # Grove project metadata — local tooling config, not part of the build.
 .grove/
+# Codex hooks — same story, and the generated file hardcodes an absolute
+# checkout path and a session id, so it is machine-specific besides.
+.codex/
 
 # Development page cache — raw brand pages kept so parser changes can be
 # re-applied without re-crawling. Local working files, never published: they

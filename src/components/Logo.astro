@@ -1,14 +1,23 @@
 ---
-/* Vernier caliper, built from four straight-edged shapes so it holds together
-   at 14px in the header and as a favicon. No graduation ticks on the beam —
-   they are the first thing you notice on the real tool and the first thing that
-   turns to grey mush at this size.
+/* Bison, built from three shapes so it holds together at 14px in the header and
+   as a favicon.
 
-   What identifies it instead is the asymmetry: a small fixed nub on the left, a
-   tall sliding head on the right, and the beam running on past it. Symmetry was
-   tried first and read as a letter H. The two outside jaws taper slightly, but
-   only slightly — enough to point, not enough to leave a sub-pixel tip. The gap
-   between them is the subject of the mark, so nothing is drawn in it. */
+   The horns are the only curves in the mark: they sweep out from the skull and
+   hook up, drawn as thin slivers rather than outlines so they stay solid when
+   the whole thing is 14 pixels wide. Everything else is hard-cornered — the
+   shoulder hump and skull are one mass, tapering in two steps to the muzzle,
+   because drawing them as separate pieces left a seam that turned to grey mush
+   at small sizes.
+
+   The muzzle notch is a real hole, not a patch: it is the second subpath of the
+   body and the whole path is fill-rule="evenodd". Painting it in var(--bg)
+   instead — which is what the first version did — looks identical on the site
+   background and then fails everywhere else. On the white image plate, reversed
+   out of the accent, over a product photo, or in a single-colour favicon, a
+   --bg-coloured notch fills with dark grey and the head loses its muzzle.
+
+   Anything added here has to survive the 14px test first. That is the size it
+   actually ships at; the large renders are the easy case. */
 const { size = 16, class: className = '' } = Astro.props;
 ---
 <svg
@@ -20,13 +29,20 @@ const { size = 16, class: className = '' } = Astro.props;
   aria-hidden="true"
   focusable="false"
 >
-  <!-- beam: the rule, and the only stroke crossing the full width -->
-  <rect x="2" y="11.5" width="28" height="4" fill="currentColor" />
-  <!-- fixed jaw: inside nub above, outside jaw below. Its right face stays
-       plumb through both, because that is the measuring surface. -->
-  <rect x="2" y="8" width="3.5" height="3.5" fill="currentColor" />
-  <path d="M2 15.5h3.5V25H2.8z" fill="currentColor" />
-  <!-- slider: head and jaw are one rigid piece, so one path. Its left face is
-       the opposing measuring surface — one unbroken edge, top to tip. -->
-  <path d="M14 8h9.5v7.5h-6L16.8 25H14z" fill="currentColor" />
+  <!-- horns: sweep out from the skull, hook up -->
+  <path
+    d="M9 11.5C5.6 11.2 3.2 9.6 2.5 6.6c2 2.2 4 3.1 6.5 3.1"
+    fill="currentColor"
+  />
+  <path
+    d="M23 11.5c3.4-.3 5.8-1.9 6.5-4.9-2 2.2-4 3.1-6.5 3.1"
+    fill="currentColor"
+  />
+  <!-- shoulder hump and skull as one mass tapering to the muzzle, with the
+       muzzle notch cut out of it as a second subpath -->
+  <path
+    d="M9 9.8h14v6.4l-2.4 2.1v4.6l-2.1 2.4h-6.9l-2.1-2.4v-4.6L7.9 16.2V9.8H9zM13.4 22.1h5.2v2.3h-5.2z"
+    fill="currentColor"
+    fill-rule="evenodd"
+  />
 </svg>

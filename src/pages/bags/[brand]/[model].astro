@@ -4,6 +4,7 @@ import PriceHistory from '../../../components/PriceHistory.astro';
 import WatchForm from '../../../components/WatchForm.astro';
 import Offers from '../../../components/Offers.astro';
 import Measure from '../../../components/Measure.astro';
+import CarryOn from '../../../components/CarryOn.astro';
 import { bags, bagSlug, bagHref, priceSeries, priceChanges, trackingSince } from '../../../lib/catalog.js';
 import { catLabel, featureLabel, sourceLabel } from '../../../lib/labels.js';
 import { SITE_NAME } from '../../../lib/brand.js';
@@ -197,6 +198,8 @@ const description =
         Nothing here is estimated.
       </p>
     </section>
+
+    <CarryOn bag={bag} />
 
     {(bag.materials?.length || bag.features?.length) && (
       <section>
