@@ -1,0 +1,7 @@
+# Raw upstream catalogues — regenerable via fetch.py, and large.
+raw/
+# Run logs
+data/*.out
+__pycache__/
+*.pyc
+.DS_Store
