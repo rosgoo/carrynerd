@@ -32,6 +32,9 @@ const fallback = [...bags].sort(
       <button class="hbtn" id="railtoggle">Filters</button>
       <button class="hbtn" id="viewgrid" aria-pressed="true">Grid</button>
       <button class="hbtn" id="viewtable" aria-pressed="false">Table</button>
+      <button class="hbtn units" id="units" title="Show lengths in centimetres or inches">
+        <span class="u-cm">cm</span><span class="u-in">in</span>
+      </button>
       <button class="hbtn" id="theme" title="Toggle theme">Theme</button>
     </div>
   </header>
@@ -51,6 +54,14 @@ const fallback = [...bags].sort(
       <details class="fgroup" open>
         <summary>Volume — litres</summary>
         <div class="fbody">
+          {/* The slider's bounds come from the catalog at runtime, so the
+              track always spans what actually exists rather than a guess
+              baked in here. See initSliders() in browse.js. */}
+          <div class="dual" data-dual="vol">
+            <div class="track"><div class="fill"></div></div>
+            <input class="lo" type="range" aria-label="Minimum volume" />
+            <input class="hi" type="range" aria-label="Maximum volume" />
+          </div>
           <div class="rangerow">
             <input id="vol-min" type="number" placeholder="min" min="0" step="1" />
             <em>—</em>
@@ -62,6 +73,11 @@ const fallback = [...bags].sort(
       <details class="fgroup" open>
         <summary>Price — USD</summary>
         <div class="fbody">
+          <div class="dual" data-dual="price">
+            <div class="track"><div class="fill"></div></div>
+            <input class="lo" type="range" aria-label="Minimum price" />
+            <input class="hi" type="range" aria-label="Maximum price" />
+          </div>
           <div class="rangerow">
             <input id="price-min" type="number" placeholder="min" min="0" step="10" />
             <em>—</em>
@@ -73,6 +89,11 @@ const fallback = [...bags].sort(
       <details class="fgroup">
         <summary>Weight — grams</summary>
         <div class="fbody">
+          <div class="dual" data-dual="weight">
+            <div class="track"><div class="fill"></div></div>
+            <input class="lo" type="range" aria-label="Minimum weight" />
+            <input class="hi" type="range" aria-label="Maximum weight" />
+          </div>
           <div class="rangerow">
             <input id="weight-min" type="number" placeholder="min" min="0" step="50" />
             <em>—</em>
@@ -85,11 +106,14 @@ const fallback = [...bags].sort(
         <summary>Max linear dimension</summary>
         <div class="fbody">
           <div class="rangerow">
-            <input id="linear-max" type="number" placeholder="max total h+w+d (cm)" min="0" step="5" />
+            <input id="linear-max" type="number" min="0" step="5"
+                   placeholder="max total h+w+d (cm)"
+                   data-ph-cm="max total h+w+d (cm)"
+                   data-ph-in="max total h+w+d (in)" />
           </div>
           <div class="checks" style="margin-top:8px">
-            <button class="check" data-preset="carryon" aria-pressed="false"><i></i>Fits common carry-on (≤115cm linear)</button>
-            <button class="check" data-preset="underseat" aria-pressed="false"><i></i>Fits under seat (≤40×30×20)</button>
+            <button class="check" data-preset="carryon" aria-pressed="false"><i></i>Fits common carry-on (<span class="u-cm">≤115cm</span><span class="u-in">≤45in</span> linear)</button>
+            <button class="check" data-preset="underseat" aria-pressed="false"><i></i>Fits under seat (<span class="u-cm">≤40×30×20</span><span class="u-in">≤16×12×8</span>)</button>
           </div>
         </div>
       </details>

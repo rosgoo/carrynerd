@@ -38,7 +38,7 @@ env:
   # immediately, so pace hard. This is the number that keeps the crawl polite.
   DELAY: '65'
   SHARDS: '4'
-  GEARHERD_CONTACT: https://gearherd.com/bot
+  CALIPERED_CONTACT: https://calipered.com/bot
 
 jobs:
   fetch:
@@ -133,6 +133,17 @@ jobs:
       - name: Track prices
         run: python3 track_prices.py --events-out data/price-events.json
 
+      # Cached by image URL in data/image-bg.json, which is committed, so a
+      # normal night samples only the photos that changed. Runs after enrich
+      # because both rewrite bags.json, and allowed to fail for the same reason
+      # enrich is: a plate that stays white is a cosmetic loss, and it must not
+      # block the price commit.
+      - name: Sample product-photo backgrounds
+        continue-on-error: true
+        run: |
+          pip install --quiet -r requirements-image-bg.txt
+          python3 image_bg.py --delay ${{ env.DELAY }}
+
       # The gate. Runs before the commit, so a parser that ate half the index
       # fails the job instead of publishing and getting recrawled. Compares
       # against the last committed catalogue, which is the copy currently live.
@@ -167,8 +178,8 @@ jobs:
 
       - name: Commit the diff
         run: |
-          git config user.name  "gearherd-bot"
-          git config user.email "gearherd-bot@users.noreply.github.com"
+          git config user.name  "calipered-bot"
+          git config user.email "calipered-bot@users.noreply.github.com"
           # data/price-events.json is gitignored — it is a hand-off to the
           # matcher, not a record. The ledger is the record.
           git add data/

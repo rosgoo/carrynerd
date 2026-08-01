@@ -10,6 +10,9 @@ export function GET({ site }) {
     'Allow: /',
     // The alert endpoints are stateful and have nothing to index.
     'Disallow: /api/',
+    // Coverage audit pages: same data, addressed to whoever maintains the
+    // index. They carry noindex too — this only saves the crawl.
+    'Disallow: /internal/',
     '',
     `Sitemap: ${new URL('sitemap-index.xml', site).href}`,
     '',

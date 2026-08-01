@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-gearherd enricher — stage 2, fills in what the Shopify feed leaves out.
+calipered enricher — stage 2, fills in what the Shopify feed leaves out.
 
 /products.json gives us SKUs, colourways, prices, stock and weight, but brands
 keep dimensions and laptop fit in metafields that the feed does not expose.
@@ -70,6 +70,21 @@ def load_page(bag_id):
     except (OSError, EOFError):
         return None
 
+def interleave(items, key):
+    """Round-robin the items across their key groups, preserving order within
+    each group. [a1 a2 a3 b1 c1] -> [a1 b1 c1 a2 a3]."""
+    groups = {}
+    for item in items:
+        groups.setdefault(key(item), []).append(item)
+    out = []
+    while groups:
+        for k in list(groups):
+            out.append(groups[k].pop(0))
+            if not groups[k]:
+                del groups[k]
+    return out
+
+
 LD_RE = re.compile(
     r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
     re.S | re.I)
@@ -80,6 +95,66 @@ LD_RE = re.compile(
 SPEC_WINDOW = re.compile(
     r"(dimensions?|measurements?|specs?\b|specifications?|exterior|external)"
     r"(.{0,600})", re.I | re.S)
+
+# The marketing-copy problem, and the fix.
+#
+# Aer is the worst case and a useful yardstick: its schema.org description is
+# three sentences that say "premium materials and thoughtful product details"
+# and name not one of them, and its theme emits no spec JSON at all. Detecting
+# features from that yields nothing, which the filters then read as "this bag
+# has no laptop sleeve".
+#
+# But the facts *are* on the page — just further down, under a "Product
+# Details / Features" heading, as a plain bulleted list naming CORDURA, YKK,
+# the laptop pocket and its 16" fit, the water bottle pocket, the luggage
+# passthrough. The old parser missed them only because it took a fixed 600
+# characters after the first spec-ish word and stopped.
+#
+# So: anchor on the headings that introduce a product's own detail prose, and
+# read forward until the page stops talking about this product. That boundary
+# is what keeps the scope honest — the standing objection to just using the
+# whole page is that a "You may also like" rail would smear one bag's features
+# across every other bag in the store, and SCOPE_END is what prevents it.
+SCOPE_END = re.compile(
+    r"\b(you may also like|you might also like|related products?|"
+    r"you'?ll also love|recommended for you|complete the look|"
+    r"shop the look|customers also (?:bought|viewed)|frequently bought|"
+    r"pairs? well with|more from|similar items?|others? also|"
+    r"customer reviews?|write a review|based on \d+ reviews?|"
+    r"join our newsletter|sign up|subscribe|follow us|"
+    r"all rights reserved)\b", re.I)
+
+
+def _squash(s):
+    return re.sub(r"\s+", " ", s or "").strip()
+
+
+def product_scope(text, description, before=400, after=3000):
+    """The part of a stripped page that is about THIS product.
+
+    Anchored on the product's own schema.org description, because that string
+    is unique to the product and sits exactly where the detail block follows
+    it. Anchoring on headings instead does not survive contact with real
+    stores: Baboon inlines its entire catalogue into every product page — 3 MB
+    of stripped text — so heading anchors returned the same 16 KB to every
+    product and handed a dopp kit a laptop sleeve and a 17" laptop fit.
+
+    Returns "" when the description cannot be located, which is the honest
+    answer: better an empty scope and a known gap than confident wrong specs.
+    """
+    probe = _squash(description)[:80]
+    if len(probe) < 30:
+        return ""
+    flat = _squash(text)
+    at = flat.find(probe)
+    if at < 0:
+        return ""
+    chunk = flat[max(0, at - before):at + len(_squash(description)) + after]
+    end = SCOPE_END.search(chunk)
+    if end:
+        chunk = chunk[:end.start()]
+    return chunk
+
 
 JSON_BLOCK = re.compile(
     r'<script[^>]+type=["\']application/json["\'][^>]*>(.*?)</script>',
@@ -172,18 +247,19 @@ def parse_product_page(html_text):
     text = strip_html(html_text)
     window = SPEC_WINDOW.search(text)
     scoped = window.group(0) if window else ""
+    detail = product_scope(text, found.get("ld_description", ""))
 
     # Feature and material detection previously ran only against `body_html`,
     # which for brands like Aer is three sentences of marketing copy with no
     # feature vocabulary in it — so those bags landed with empty feature lists
     # that the filters then read as "does not have it".
     #
-    # Deliberately NOT the whole page. Site chrome, nav and related-product
-    # rails would leak one bag's features onto every other bag in the store.
-    # The product's own description plus the spec block is the honest scope.
+    # Deliberately NOT the whole page: `detail` is bounded by SCOPE_END so
+    # related-product rails cannot leak one bag's features onto another.
     product_text = "\n".join(filter(None, [
         found.get("ld_description", ""),
         scoped,
+        detail,
         found.get("spec_text", ""),
     ]))
     if product_text.strip():
@@ -191,7 +267,14 @@ def parse_product_page(html_text):
         found["materials"] = detect(product_text, MATERIALS)
         found["features_source"] = "product-page"
 
-    for source in (scoped, found.get("ld_description", ""), text):
+    # The last resort is the whole page, and it is only safe on a page that is
+    # actually about one product. Baboon's pages carry the entire catalogue
+    # inline, and reading those end-to-end is how a dopp kit and a drawstring
+    # pouch both ended up recorded as fitting a 17" laptop — a number lifted
+    # from a backpack elsewhere in the same HTML. Above this size the page is a
+    # catalogue, not a product, and the scoped sources are all we trust.
+    whole_page = text if len(text) < 60_000 else ""
+    for source in (scoped, detail, found.get("ld_description", ""), whole_page):
         if not source:
             continue
         if "dims_cm" not in found:
@@ -238,6 +321,14 @@ def main():
                     help="keep the raw page in data/page-cache for --reparse")
     ap.add_argument("--reparse", action="store_true",
                     help="re-run the parser over cached pages, no network")
+    ap.add_argument("--give-up-after", type=int, default=8,
+                    help="stop after N consecutive 429/5xx across different "
+                         "stores — an IP block, not a blip; continuing "
+                         "extends it")
+    ap.add_argument("--cool-off", type=int, default=4,
+                    help="drop a single store from the run after N "
+                         "consecutive failures; the rest of the crawl "
+                         "carries on without it")
     args = ap.parse_args()
 
     if not os.path.exists(BAGS):
@@ -277,24 +368,93 @@ def main():
         targets = [b for b in bags
                    if (not args.brand or b["brand_slug"] == args.brand)
                    and b["id"] not in cache
+                   # Only Shopify bags get a page crawl. Other platforms
+                   # (bellroy, campsaver) arrive with their specs in the feed,
+                   # and their pages are not Shopify-shaped anyway.
+                   and (b.get("source") or "shopify").startswith("shopify")
                    and (b.get("dims_cm") is None or b.get("laptop_in") is None)]
+        # Round-robin across brands rather than finishing one store before
+        # starting the next. Two reasons, and the first is the one that bit:
+        # grouped order means 32 consecutive requests to one store, so a single
+        # throttled store stalls the entire crawl behind it — a run against 33
+        # brands spent twelve minutes on Baboon and never reached brand two.
+        # Interleaved, each store sees a request roughly every (delay × brands)
+        # seconds instead of every `delay`, which is also markedly politer.
+        targets = interleave(targets, lambda b: b["brand_slug"])
         if args.limit:
             targets = targets[:args.limit]
 
-        print(f"{len(targets)} products to enrich "
+        print(f"{len(targets)} products to enrich across "
+              f"{len({b['brand_slug'] for b in targets})} brands "
               f"({len(cache)} already cached)", flush=True)
 
         pacer = Pacer(args.delay)
         transient = 0
-        for i, bag in enumerate(targets, 1):
+        # Two circuit breakers, because "one store is angry" and "our IP is
+        # blocked" need opposite responses and the old loop conflated them.
+        #
+        # Per-brand: a 429 puts just that store on ice until its Retry-After
+        # elapses; we keep working through the others meanwhile. The old code
+        # slept 60s globally on any 429, so one throttled store cost every
+        # brand its throughput. After --cool-off strikes a brand is dropped
+        # from the run entirely and reported.
+        #
+        # Global: with interleaved order, consecutive failures are consecutive
+        # *different* stores, so a streak really does mean the IP is blocked
+        # rather than one store objecting. That is when to stop knocking —
+        # each 429 served while blocked is what extends the block.
+        streak = 0
+        cooling = {}     # brand -> epoch seconds it may be tried again
+        strikes = {}     # brand -> consecutive transient failures
+        cooled_out = {}  # brand -> status that retired it
+        deferred = []
+        i = 0
+        queue = list(targets)
+        while queue:
+            bag = queue.pop(0)
+            slug = bag["brand_slug"]
+            if slug in cooled_out:
+                continue
+            if time.time() < cooling.get(slug, 0):
+                deferred.append(bag)
+                continue
+            i += 1
             pacer.wait()
             status, headers, body = get(bag["url"], timeout=25)
-            if status == 429:
-                wait_s = float(headers.get("Retry-After", 60) or 60)
-                print(f"  rate-limited, sleeping {wait_s:.0f}s", flush=True)
-                time.sleep(wait_s + 2)
-                pacer.wait()
-                status, headers, body = get(bag["url"], timeout=25)
+            if status in (429, 0) or 500 <= status < 600:
+                if status == 429:
+                    wait_s = float(headers.get("Retry-After", 60) or 60)
+                    cooling[slug] = time.time() + wait_s + 2
+                else:
+                    cooling[slug] = time.time() + 30
+                strikes[slug] = strikes.get(slug, 0) + 1
+                streak += 1
+                if strikes[slug] >= args.cool_off:
+                    cooled_out[slug] = status
+                    print(f"  dropping {slug}: {strikes[slug]} consecutive "
+                          f"failures (status {status})", flush=True)
+                if streak >= args.give_up_after:
+                    with open(CACHE, "w") as f:
+                        json.dump(cache, f)
+                    print(f"\n  ABORTING: {streak} consecutive transient "
+                          f"failures across different stores (last status "
+                          f"{status}) at product {i}. That is an IP-wide "
+                          f"block, not one store objecting — knocking harder "
+                          f"makes it last longer. {len(cache)} products are "
+                          f"cached; rerun later to resume.", flush=True)
+                    break
+                # Not lost: try it again on the deferred pass once the store's
+                # cooldown has elapsed.
+                deferred.append(bag)
+            else:
+                streak = 0
+                strikes[slug] = 0
+            if not queue and deferred:
+                # Second pass over everything a cooling store owed us. Only
+                # once — anything still failing after this is a brand problem
+                # for the next run, not something to keep circling on.
+                queue, deferred = deferred, []
+                print(f"  retrying {len(queue)} deferred products", flush=True)
             if status != 200:
                 # Only cache *permanent* answers. A 404 means the page is gone
                 # and re-asking tomorrow is rude and pointless; a 429 or a 5xx
@@ -311,7 +471,7 @@ def main():
                 if args.cache_pages:
                     save_page(bag["id"], text)
                 cache[bag["id"]] = parse_product_page(text)
-            if i % 10 == 0 or i == len(targets):
+            if i % 10 == 0 or not queue:
                 with open(CACHE, "w") as f:
                     json.dump(cache, f)
                 hit = sum(1 for v in cache.values() if v.get("dims_cm"))
@@ -322,6 +482,10 @@ def main():
         if transient:
             print(f"  {transient} transient failures (429/5xx) left uncached "
                   f"— rerun to pick them up", flush=True)
+        if cooled_out:
+            print("  stores dropped this run (throttling us, try later): "
+                  + ", ".join(f"{k} [{v}]" for k, v in cooled_out.items()),
+                  flush=True)
 
     # Merge. Enrichment fills gaps and does not overwrite feed data, with one
     # exception: Shopify's `grams` is a shipping field, and plenty of stores

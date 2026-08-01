@@ -1,0 +1,10 @@
+# Only image_bg.py needs this, and only when it is sampling. It reads the
+# background colour out of each product photo so the plate behind it can match,
+# which means decoding a JPEG — the one thing the standard library cannot do.
+#
+# Kept out of the crawl pipeline deliberately: fetch.py, normalize.py,
+# enrich.py and track_prices.py stay stdlib-only so they run on any laptop with
+# no virtualenv. Without Pillow installed, image_bg.py says so and exits; the
+# catalog still builds, and every plate falls back to white plus the CSS edge
+# feather.
+Pillow>=10.0

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-gearherd fetcher — pulls public Shopify product catalogs.
+calipered fetcher — pulls public Shopify product catalogs.
 
 Only touches endpoints that stores publish for anyone: /products.json (the
 storefront JSON feed Shopify serves by default) and /robots.txt. No login, no
@@ -55,8 +55,8 @@ LOG_PART = os.path.join(HERE, "data", "fetch-log.part-{}.json")
 
 # Identify the crawler honestly and give operators a way to reach you.
 # Put a real contact URL here before running this at any scale.
-CONTACT = os.environ.get("GEARHERD_CONTACT", "https://example.com/gearherd-bot")
-UA = f"gearherd/0.1 (product catalog indexer; +{CONTACT})"
+CONTACT = os.environ.get("CALIPERED_CONTACT", "https://example.com/calipered-bot")
+UA = f"calipered/0.1 (product catalog indexer; +{CONTACT})"
 
 PAGE_LIMIT = 250
 MAX_PAGES = 12
@@ -81,14 +81,18 @@ def get(url, timeout=30):
 
 def robots_allows(domain, path="/products.json"):
     """
-    Minimal robots.txt check for User-agent: * — good enough for a feed we only
-    hit once per brand. Returns (allowed: bool, note: str).
+    Minimal robots.txt check. A group addressed to our own UA outranks the
+    `User-agent: *` group — CampSaver blocks named product scrapers (Indix,
+    TheFind) while allowing *, so a site that ever adds a group for our UA is
+    speaking to us specifically and gets obeyed over the general rule.
+    Returns (allowed: bool, note: str).
     """
+    ua_name = UA.split("/", 1)[0].lower()
     status, _, body = get(f"https://{domain}/robots.txt", timeout=20)
     if status != 200:
         return True, f"robots.txt status {status}; proceeding"
     lines = body.decode("utf-8", "replace").splitlines()
-    applies, disallows = False, []
+    group, rules = None, {"*": [], ua_name: []}
     for raw in lines:
         line = raw.split("#", 1)[0].strip()
         if not line or ":" not in line:
@@ -96,9 +100,11 @@ def robots_allows(domain, path="/products.json"):
         field, value = (p.strip() for p in line.split(":", 1))
         field = field.lower()
         if field == "user-agent":
-            applies = value == "*"
-        elif field == "disallow" and applies and value:
-            disallows.append(value)
+            v = value.lower()
+            group = v if v in rules else (ua_name if ua_name in v else None)
+        elif field == "disallow" and group and value:
+            rules[group].append(value)
+    disallows = rules[ua_name] if rules[ua_name] else rules["*"]
     for rule in disallows:
         if path.startswith(rule):
             return False, f"robots.txt disallows {rule}"
@@ -182,6 +188,187 @@ def fetch_brand(brand, pacer):
 
     result["status"] = "ok"
     result["products"] = products
+    return result
+
+
+# --- non-Shopify platforms ----------------------------------------------------
+#
+# Same rules as the Shopify path: only endpoints served to anyone, no login,
+# no challenge circumvention, honest UA. Each fetcher writes the source's own
+# shape into raw/ untouched — normalize.py owns the mapping, so a parser fix
+# never costs a refetch.
+
+def fetch_bellroy(brand, pacer):
+    """
+    Bellroy's storefront is not Shopify, but its product data comes from the
+    same public unauthenticated API its own frontend calls on every page view:
+    /api/v1/customer/context hands out the currency and price-list identifiers,
+    then {products host}/v2/products returns the whole catalog in one response
+    — richer than Shopify plus enrichment (internal AND external dims, net
+    weight, material composition, GTINs). Two requests per run, politer than
+    paginating a products.json. The identifiers can rotate, so they are fetched
+    fresh every time and never cached. Mapping notes: Notes/gearherd/bellroy-api.md.
+    """
+    domain = brand["domain"]
+    result = {
+        "slug": brand["slug"], "name": brand["name"], "domain": domain,
+        "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "platform": "bellroy", "status": None, "note": "", "products": [],
+    }
+
+    pacer.wait()
+    allowed, note = robots_allows(domain, "/api/v1/customer/context")
+    if not allowed:
+        result["status"], result["note"] = "skipped", note
+        return result
+
+    pacer.wait()
+    status, _, body = get(f"https://{domain}/api/v1/customer/context")
+    if status != 200:
+        result["status"], result["note"] = f"http_{status}", "customer/context"
+        return result
+    try:
+        commerce = json.loads(body)["commerce_information"]
+        currency = commerce["currency_identifier"]
+        price_list = commerce["price_list_identifier"]
+    except (json.JSONDecodeError, KeyError) as e:
+        result["status"], result["note"] = "bad_json", f"context: {e}"
+        return result
+
+    # The host is Bellroy's own product service, named in the page config the
+    # frontend boots from (applications["product-detail"].sources.products).
+    query = urllib.parse.urlencode({
+        "currency_identifier": currency,
+        "channel": domain,
+        "price_role_identifier": price_list,
+    })
+    pacer.wait()
+    status, _, body = get(
+        f"https://production.products.boobook-services.com/v2/products?{query}",
+        timeout=60)
+    if status != 200:
+        result["status"], result["note"] = f"http_{status}", "v2/products"
+        return result
+    try:
+        result["products"] = json.loads(body).get("products", [])
+    except json.JSONDecodeError:
+        result["status"] = "bad_json"
+        return result
+
+    result["status"] = "ok"
+    return result
+
+
+# CampSaver is an aggregator, not a brand: one adapter reaches every brand it
+# stocks that has no feed of its own. Discovery goes through the orderable-
+# product sitemaps (robots.txt allows them; the /api/ search endpoints its own
+# grid uses are disallowed, so those are off-limits and unused). Product pages
+# carry schema.org Product JSON-LD with per-variant offers (price, stock,
+# GTIN) and spec text in the description.
+#
+# URL slugs decide what is worth a page fetch. The positive list errs open and
+# the negative list trims the obvious non-carry noise (backpacking guidebooks,
+# sleeping bags, stove carry-cases); normalize.py's classifier is the real
+# gate, this filter only spends requests.
+#
+# When the wallet vertical opens (Notes/gearherd/wallets-later.md): add
+# wallet|billfold|card-holder to YES, drop `wallet` from NO, rerun — the
+# fetch is incremental, so the top-up costs only the new pages.
+CAMPSAVER_SLUG_YES = re.compile(
+    r"backpack|back-pack|daypack|day-pack|rucksack|duffel|duffle|sling|"
+    r"crossbody|tote|messenger|briefcase|hip-pack|waist-pack|fanny|lumbar|"
+    r"travel-pack|carry-on|luggage|suitcase|dopp|toiletry|pouch|organizer",
+    re.I)
+CAMPSAVER_SLUG_NO = re.compile(
+    r"sleeping|bivy|guide|book|map|dvd|strap|buckle|repair|rain-?cover|"
+    r"pack-cover|liner|towel|stove|oven|grill|griddle|tent|chair|table|"
+    r"cooler(?!-bag)|holster|shaker|press|tether|harness|carrier|litter|"
+    r"stuff-sack|compression|dry-bag|dry-sack|cube|insert|divider|wallet|"
+    r"first-aid|hydration|reservoir|bottle|filter|shovel|trowel",
+    re.I)
+
+
+def fetch_campsaver(brand, pacer, limit=0, force=False):
+    domain = brand["domain"]
+    result = {
+        "slug": brand["slug"], "name": brand["name"], "domain": domain,
+        "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "platform": "campsaver", "status": None, "note": "", "products": [],
+    }
+
+    pacer.wait()
+    allowed, note = robots_allows(domain, "/sitemap.product.orderable.index.xml")
+    if not allowed:
+        result["status"], result["note"] = "skipped", note
+        return result
+
+    # Incremental: a full candidate crawl is ~1-2k pages, so keep what earlier
+    # runs already fetched and only visit new URLs. --force refetches all.
+    seen = {}
+    prior = os.path.join(RAW, f"{brand['slug']}.json")
+    if not force and os.path.exists(prior):
+        try:
+            for p in json.load(open(prior)).get("products", []):
+                seen[p["url"]] = p
+        except (json.JSONDecodeError, KeyError):
+            seen = {}
+
+    def locs(xml_text):
+        return re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", xml_text)
+
+    pacer.wait()
+    status, _, body = get(f"https://{domain}/sitemap.product.orderable.index.xml")
+    if status != 200:
+        result["status"], result["note"] = f"http_{status}", "sitemap index"
+        return result
+    shards = locs(body.decode("utf-8", "replace"))
+
+    candidates = []
+    for shard_url in shards:
+        pacer.wait()
+        status, _, body = get(shard_url, timeout=60)
+        if status != 200:
+            continue
+        for url in locs(body.decode("utf-8", "replace")):
+            slug = url.rsplit("/", 1)[-1]
+            if CAMPSAVER_SLUG_YES.search(slug) and not CAMPSAVER_SLUG_NO.search(slug):
+                candidates.append(url)
+        # A test run should not pay for all 38 shards to fetch 8 pages.
+        if limit and len([u for u in candidates if u not in seen]) >= limit:
+            break
+
+    fresh = [u for u in candidates if u not in seen]
+    if limit:
+        fresh = fresh[:limit]
+    print(f"    {len(candidates)} candidate URLs, {len(seen)} cached, "
+          f"fetching {len(fresh)}", flush=True)
+
+    LD_RE = re.compile(
+        r'<script type="application/ld\+json">(.*?)</script>', re.S)
+    fetched = 0
+    for url in fresh:
+        pacer.wait()
+        status, _, body = get(url, timeout=30)
+        if status != 200:
+            continue
+        product, crumbs = None, []
+        for block in LD_RE.findall(body.decode("utf-8", "replace")):
+            try:
+                data = json.loads(block)
+            except json.JSONDecodeError:
+                continue
+            if data.get("@type") == "Product":
+                product = data
+            elif data.get("@type") == "BreadcrumbList":
+                crumbs = [e.get("item", {}).get("name") or e.get("name") or ""
+                          for e in data.get("itemListElement", [])]
+        if product:
+            seen[url] = {"url": url, "product": product, "breadcrumbs": crumbs}
+            fetched += 1
+
+    result["products"] = list(seen.values())
+    result["status"] = "ok"
+    result["note"] = f"{fetched} pages fetched this run"
     return result
 
 
@@ -376,6 +563,9 @@ def main():
                     help="fold shard logs into fetch-log.json and exit")
     ap.add_argument("--collections", action="store_true",
                     help="fetch collection membership (category ground truth)")
+    ap.add_argument("--limit", type=int, default=0,
+                    help="cap page fetches for crawl-style platforms "
+                         "(campsaver) — for test runs")
     args = ap.parse_args()
 
     os.makedirs(RAW, exist_ok=True)
@@ -402,6 +592,10 @@ def main():
             # classify means no point spending requests on their shelving.
             if not os.path.exists(os.path.join(RAW, f"{brand['slug']}.json")):
                 print(f"[{i}/{len(brands)}] {brand['name']}: no catalogue, skipping")
+                continue
+            # Collections are a Shopify endpoint; other platforms carry their
+            # category signal in the feed itself.
+            if brand.get("platform", "shopify") != "shopify":
                 continue
             print(f"[{i}/{len(brands)}] {brand['name']} collections ...",
                   flush=True)
@@ -441,7 +635,14 @@ def main():
 
         print(f"[{i}/{len(brands)}] {brand['name']} ({brand['domain']}) ...",
               flush=True)
-        res = fetch_brand(brand, pacer)
+        platform = brand.get("platform", "shopify")
+        if platform == "bellroy":
+            res = fetch_bellroy(brand, pacer)
+        elif platform == "campsaver":
+            res = fetch_campsaver(brand, pacer, limit=args.limit,
+                                  force=args.force)
+        else:
+            res = fetch_brand(brand, pacer)
         n = len(res["products"])
         if res["status"] == "ok" and n:
             with open(out, "w") as f:

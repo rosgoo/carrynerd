@@ -1,0 +1,22 @@
+---
+/* A length, shown in whichever unit the reader picked.
+ *
+ * Both renderings ship in the HTML and CSS reveals one, keyed off the
+ * `data-units` attribute the header toggle writes on <html>. That is why this
+ * works on a static page with no JavaScript running on it, and why switching
+ * units cannot flash the wrong number: the attribute is restored in <head>
+ * before first paint, same as the theme.
+ *
+ * `value` is what fmtDims()/fmtLinear() return — { cm, in } — or null.
+ */
+const { value, fallback = '—' } = Astro.props;
+---
+{
+  value ? (
+    <>
+      <span class="u-cm">{value.cm}</span><span class="u-in">{value.in}</span>
+    </>
+  ) : (
+    fallback
+  )
+}

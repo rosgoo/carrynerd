@@ -1,6 +1,7 @@
 ---
 import Base from '../../layouts/Base.astro';
 import WatchForm from '../../components/WatchForm.astro';
+import Measure from '../../components/Measure.astro';
 import { brands, bagHref } from '../../lib/catalog.js';
 import { catLabel } from '../../lib/labels.js';
 import { SITE_NAME } from '../../lib/brand.js';
@@ -68,7 +69,7 @@ const jsonLd = {
             <td>{catLabel(bag.category)}</td>
             <td class={bag.volume_l == null ? 'nil' : ''}>{fmtVolume(bag.volume_l) ?? '—'}</td>
             <td class={bag.weight_g == null ? 'nil' : ''}>{fmtWeight(bag.weight_g) ?? '—'}</td>
-            <td class={bag.dims_cm == null ? 'nil' : ''}>{fmtDims(bag.dims_cm) ?? '—'}</td>
+            <td class={bag.dims_cm == null ? 'nil' : ''}><Measure value={fmtDims(bag.dims_cm)} /></td>
             <td>{fmtPrice(bag.price_min)}</td>
           </tr>
         ))}

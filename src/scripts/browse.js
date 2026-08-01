@@ -1,4 +1,4 @@
-/* gearherd — the browse/compare island.
+/* calipered — the browse/compare island.
  *
  * Loads the whole catalog once and filters in memory. That is deliberate: at a
  * few thousand models it beats a round trip per keystroke, and it means the
@@ -43,6 +43,31 @@ const S = {
   presets: new Set(), stock: false, sale: false, sort: "brand",
 };
 
+/* ---------- units ---------- */
+
+/* Lengths render in both units at once and CSS reveals one, keyed off
+ * data-units on <html>. Same mechanism the static pages use, and for the same
+ * reason: switching units then costs no re-render and cannot flash the wrong
+ * number.
+ *
+ * Everything in S stays metric. The filter arithmetic, the shareable URL and
+ * the catalog all speak centimetres; inches exist only at the point a number
+ * meets an eye. A link someone sends means the same bags whichever unit either
+ * end happens to be reading in. */
+const CM_PER_IN = 2.54;
+const inches = () => document.documentElement.getAttribute("data-units") === "in";
+const toIn = cm => cm / CM_PER_IN;
+const dual = (cm, inch) =>
+  `<span class="u-cm">${cm}</span><span class="u-in">${inch}</span>`;
+
+const dualLen = (cm, suffix = false) => cm == null ? null
+  : dual(Math.round(cm) + (suffix ? " cm" : ""),
+         Math.round(toIn(cm)) + (suffix ? " in" : ""));
+
+const dualDims = (d, { sep = "×", digits = 0, suffix = false } = {}) => !d ? null
+  : dual(d.map(n => n.toFixed(digits)).join(sep) + (suffix ? " cm" : ""),
+         d.map(n => toIn(n).toFixed(digits)).join(sep) + (suffix ? " in" : ""));
+
 /* ---------- formatting ---------- */
 
 const nil = '<b class="nil">—</b>';
@@ -50,7 +75,7 @@ const fmtVol    = b => b.volume_l ? `${b.volume_l}<em style="font-size:8px">L</e
 const fmtWeight = b => b.weight_g ? (b.weight_g >= 1000
   ? `${(b.weight_g / 1000).toFixed(2)}<em style="font-size:8px">kg</em>`
   : `${b.weight_g}<em style="font-size:8px">g</em>`) : null;
-const fmtDims   = b => b.dims_cm ? b.dims_cm.map(n => Math.round(n)).join("×") : null;
+const fmtDims   = b => dualDims(b.dims_cm);
 const fmtLap    = b => b.laptop_in ? `${b.laptop_in}″` : null;
 const fmtPrice  = n => n == null ? "—" : "$" + (Number.isInteger(n) ? n : n.toFixed(2));
 const gpl = b => (b.weight_g && b.volume_l) ? b.weight_g / b.volume_l : null;
@@ -129,10 +154,20 @@ function nullsLast(x, y, dir) {
 // When a colour filter is on, the card leads with a variant that actually
 // matches it — the feed ships per-colourway photography, so this costs nothing.
 function shotFor(b) {
-  if (!S.colors.size) return { src: b.image, label: null };
+  if (!S.colors.size) return { src: b.image, bg: b.image_bg, label: null };
   const hit = (b.variants || []).find(
     v => v.image && S.colors.has(v.color_family));
-  return hit ? { src: hit.image, label: hit.color } : { src: b.image, label: null };
+  return hit ? { src: hit.image, bg: hit.image_bg, label: hit.color }
+             : { src: b.image, bg: b.image_bg, label: null };
+}
+
+// image_bg.py reads the colour each photo was actually shot on, for the photos
+// it can read confidently. Handing it to the plate is what stops an off-white
+// product shot drawing a rectangle on a #fff plate. Absent — a cut-out PNG, a
+// lifestyle shot, a background too dark for the chips to stay legible — the
+// plate keeps its default white and the CSS edge feather covers the seam.
+function plate(bg) {
+  return bg ? ` style="--shot-bg:${esc(bg)}"` : "";
 }
 
 function card(b) {
@@ -147,7 +182,7 @@ function card(b) {
     `<div class="spec"><em>${label}</em>${val ? `<b>${val}</b>` : nil}</div>`;
 
   return `<article class="card${on ? " sel" : ""}" data-id="${esc(b.id)}">
-    <div class="shot" data-detail>
+    <div class="shot" data-detail${plate(shot.bg)}>
       ${shot.src ? `<img loading="lazy" src="${esc(shot.src)}" alt="${esc(b.name)}${
           shot.label ? ` in ${esc(shot.label)}` : ""}">`
                 : '<span class="none">NO IMAGE</span>'}
@@ -189,8 +224,10 @@ function cssColor(name) {
 }
 
 function tableRows(list) {
-  const head = ["Brand", "Model", "Category", "Vol L", "Weight g", "H×W×D cm",
-                "Linear", "Laptop", "Price", "g/L", "$/L", "Colours"];
+  const head = ["Brand", "Model", "Category", "Vol L", "Weight g",
+                `H×W×D ${dual("cm", "in")}`,
+                `Linear ${dual("cm", "in")}`,
+                "Laptop", "Price", "g/L", "$/L", "Colours"];
   const rows = list.map(b => {
     const on = compare.has(b.id);
     const td = v => v == null ? '<td class="nil">—</td>' : `<td>${v}</td>`;
@@ -199,8 +236,8 @@ function tableRows(list) {
       <td class="name"><a href="${esc(bagHref(b))}">${esc(b.name)}</a></td>
       <td>${esc(CAT_LABELS[b.category] || b.category)}</td>
       ${td(b.volume_l)}${td(b.weight_g)}
-      ${td(b.dims_cm ? b.dims_cm.map(n => n.toFixed(0)).join("×") : null)}
-      ${td(b.linear_cm ? Math.round(b.linear_cm) : null)}
+      ${td(dualDims(b.dims_cm))}
+      ${td(dualLen(b.linear_cm))}
       ${td(b.laptop_in ? b.laptop_in + "″" : null)}
       ${td(b.price_min ? fmtPrice(b.price_min) : null)}
       ${td(gpl(b) ? gpl(b).toFixed(0) : null)}
@@ -336,8 +373,8 @@ function renderCompare() {
     ["Price",      b => fmtPrice(b.price_min), b => b.price_min, "min"],
     ["Volume",     b => b.volume_l ? b.volume_l + " L" : null, b => b.volume_l, "max"],
     ["Weight",     b => b.weight_g ? b.weight_g + " g" : null, b => b.weight_g, "min"],
-    ["Dimensions", b => b.dims_cm ? b.dims_cm.map(n => n.toFixed(0)).join(" × ") + " cm" : null, null],
-    ["Linear",     b => b.linear_cm ? Math.round(b.linear_cm) + " cm" : null, b => b.linear_cm, "min"],
+    ["Dimensions", b => dualDims(b.dims_cm, { sep: " × ", suffix: true }), null],
+    ["Linear",     b => dualLen(b.linear_cm, true), b => b.linear_cm, "min"],
     ["Grams / L",  b => gpl(b) ? gpl(b).toFixed(0) : null, b => gpl(b), "min"],
     ["Price / L",  b => ppl(b) ? "$" + ppl(b).toFixed(1) : null, b => ppl(b), "min"],
     ["Laptop",     b => b.laptop_in ? b.laptop_in + "″" : null, null],
@@ -349,7 +386,7 @@ function renderCompare() {
   ];
 
   const head = bags.map(b => `<th class="cmphead">
-    ${b.image ? `<img src="${esc(b.image)}" alt="">` : ""}
+    ${b.image ? `<img src="${esc(b.image)}" alt=""${plate(b.image_bg)}>` : ""}
     <div>${esc(b.name)}</div></th>`).join("");
 
   const body = rows.map(([label, get, metric, best]) => {
@@ -385,7 +422,8 @@ function openDetail(id) {
 
   const variants = (b.variants || []).map(v => `<tr>
       <td class="waycell">${v.image
-          ? `<img class="waythumb" loading="lazy" src="${esc(v.image)}" alt="">` : ""}${
+          ? `<img class="waythumb" loading="lazy" src="${esc(v.image)}" alt=""${
+              plate(v.image_bg)}>` : ""}${
         esc(v.color || v.title || "—")}</td>
       <td>${esc(v.sku || "—")}</td>
       <td>${v.price ? fmtPrice(v.price) : "—"}${
@@ -396,14 +434,15 @@ function openDetail(id) {
     </tr>`).join("");
 
   $("#detbody").innerHTML = `
-    ${b.image ? `<div class="shot" style="aspect-ratio:16/10;border-bottom:1px solid var(--line)">
+    ${b.image ? `<div class="shot" style="aspect-ratio:16/10;border-bottom:1px solid var(--line)${
+        b.image_bg ? `;--shot-bg:${esc(b.image_bg)}` : ""}">
       <img src="${esc(b.image)}" alt="${esc(b.name)}"></div>` : ""}
     ${row("Category", esc(CAT_LABELS[b.category] || b.category))}
     ${row("Price", b.price_min === b.price_max ? fmtPrice(b.price_min)
         : `${fmtPrice(b.price_min)} – ${fmtPrice(b.price_max)}`)}
     ${row("Volume", b.volume_l ? b.volume_l + " L" : null, b.volume_source)}
-    ${row("Dimensions", b.dims_cm ? b.dims_cm.map(n => n.toFixed(1)).join(" × ") + " cm" : null, b.dims_source)}
-    ${row("Linear", b.linear_cm ? Math.round(b.linear_cm) + " cm" : null)}
+    ${row("Dimensions", dualDims(b.dims_cm, { sep: " × ", digits: 1, suffix: true }), b.dims_source)}
+    ${row("Linear", dualLen(b.linear_cm, true))}
     ${row("Weight", b.weight_g ? b.weight_g + " g" : null, b.weight_source)}
     ${row("Grams / litre", gpl(b) ? gpl(b).toFixed(0) : null)}
     ${row("Laptop", b.laptop_in ? b.laptop_in + "″" : null)}
@@ -455,7 +494,8 @@ function loadURL() {
   $("#vol-min").value = S.volMin ?? ""; $("#vol-max").value = S.volMax ?? "";
   $("#price-min").value = S.priceMin ?? ""; $("#price-max").value = S.priceMax ?? "";
   $("#weight-min").value = S.weightMin ?? ""; $("#weight-max").value = S.weightMax ?? "";
-  $("#linear-max").value = S.linearMax ?? "";
+  syncUnits();
+  syncSliders();
   $("#f-stock").setAttribute("aria-pressed", S.stock);
   $("#f-sale").setAttribute("aria-pressed", S.sale);
   $("#viewgrid").setAttribute("aria-pressed", VIEW === "grid");
@@ -469,6 +509,91 @@ function syncFacetButtons() {
     el.setAttribute("aria-pressed", sets[el.dataset.f]?.has(el.dataset.v) || false));
   $$("[data-preset]").forEach(el =>
     el.setAttribute("aria-pressed", S.presets.has(el.dataset.preset)));
+}
+
+/* ---------- range sliders ---------- */
+
+/* A dual-handle slider is two stacked <input type="range">. Native range has
+ * no two-thumb mode, and stacking real inputs keeps keyboard control, focus
+ * order and screen-reader labels for free, which reimplementing dragging on a
+ * div would have thrown away. The CSS turns off pointer events on the tracks
+ * and back on for the thumbs — that is what keeps the lower thumb grabbable
+ * where the two overlap. */
+const DUALS = [
+  { key: "vol",    lo: "volMin",    hi: "volMax",    of: b => b.volume_l,  step: 1 },
+  { key: "price",  lo: "priceMin",  hi: "priceMax",  of: b => b.price_min, step: 5 },
+  { key: "weight", lo: "weightMin", hi: "weightMax", of: b => b.weight_g,  step: 25 },
+];
+
+/* Dragging fires `input` at pointer rate, and rebuilding 484 cards that often
+ * is exactly what makes a slider feel heavy. One render per frame is plenty. */
+let frame = 0;
+const schedule = () => {
+  if (frame) return;
+  frame = requestAnimationFrame(() => { frame = 0; render(); });
+};
+
+function paintFill(d) {
+  const span = (d.bound[1] - d.bound[0]) || 1;
+  const pct = v => ((Number(v) - d.bound[0]) / span) * 100;
+  d.el.fill.style.left = pct(d.el.lo.value) + "%";
+  d.el.fill.style.right = (100 - pct(d.el.hi.value)) + "%";
+}
+
+function initSliders() {
+  for (const d of DUALS) {
+    const root = $(`[data-dual="${d.key}"]`);
+    if (!root) continue;
+    const vals = DATA.bags.map(d.of).filter(v => v != null && isFinite(v));
+    // Bounds come from the catalog, not a constant, so the track always spans
+    // what actually exists. A handle parked at either end means "no bound"
+    // rather than "a bound that happens to equal the extreme" — that is what
+    // keeps an untouched slider out of the URL and out of the filter.
+    d.bound = [0, Math.max(d.step,
+      Math.ceil(Math.max(0, ...vals) / d.step) * d.step)];
+    d.el = { lo: $(".lo", root), hi: $(".hi", root), fill: $(".fill", root) };
+
+    for (const side of ["lo", "hi"]) {
+      Object.assign(d.el[side], {
+        min: d.bound[0], max: d.bound[1], step: d.step,
+      });
+      d.el[side].addEventListener("input", () => {
+        let lo = Number(d.el.lo.value), hi = Number(d.el.hi.value);
+        // Handles may meet but not cross; whichever one is moving pushes the
+        // other rather than being blocked by it.
+        if (lo > hi) side === "lo" ? (hi = lo) : (lo = hi);
+        d.el.lo.value = lo; d.el.hi.value = hi;
+        S[d.lo] = lo <= d.bound[0] ? null : lo;
+        S[d.hi] = hi >= d.bound[1] ? null : hi;
+        $(`#${d.key}-min`).value = S[d.lo] ?? "";
+        $(`#${d.key}-max`).value = S[d.hi] ?? "";
+        paintFill(d);
+        schedule();
+      });
+    }
+  }
+  syncSliders();
+}
+
+// State → handles. Used by the number boxes, by Clear, and on load, so a
+// shared URL arrives with the handles already where its query string says.
+function syncSliders() {
+  for (const d of DUALS) {
+    if (!d.el) continue;
+    d.el.lo.value = S[d.lo] ?? d.bound[0];
+    d.el.hi.value = S[d.hi] ?? d.bound[1];
+    paintFill(d);
+  }
+}
+
+// The linear filter is the one input holding a length, so it is the one that
+// converts. S.linearMax stays centimetres; only what the box shows changes.
+function syncUnits() {
+  const el = $("#linear-max");
+  if (!el) return;
+  el.placeholder = inches() ? el.dataset.phIn : el.dataset.phCm;
+  el.value = S.linearMax == null ? ""
+    : String(Math.round(inches() ? toIn(S.linearMax) : S.linearMax));
 }
 
 /* ---------- events ---------- */
@@ -520,12 +645,23 @@ function wire() {
 
   const num = (id, key) => $(id).addEventListener("input", e => {
     S[key] = e.target.value === "" ? null : Number(e.target.value);
+    syncSliders();
     render();
   });
   num("#vol-min", "volMin"); num("#vol-max", "volMax");
   num("#price-min", "priceMin"); num("#price-max", "priceMax");
   num("#weight-min", "weightMin"); num("#weight-max", "weightMax");
-  num("#linear-max", "linearMax");
+
+  $("#linear-max").addEventListener("input", e => {
+    const v = e.target.value === "" ? null : Number(e.target.value);
+    S.linearMax = v == null ? null
+      : Number((inches() ? v * CM_PER_IN : v).toFixed(1));
+    render();
+  });
+
+  // Only the length inputs need touching: every other length on the page ships
+  // in both units already and CSS is doing the switching.
+  document.addEventListener("unitchange", syncUnits);
 
   const toggle = (id, key) => $(id).addEventListener("click", e => {
     S[key] = !S[key];
@@ -588,10 +724,12 @@ function wire() {
     // Leave the server-rendered fallback list in place — it is every model on
     // the site, just without the filters. A degraded page beats a dead one.
     $("#count").textContent = "filters unavailable — showing all models";
-    console.error("gearherd: could not load /bags.json", err);
+    console.error("calipered: could not load /bags.json", err);
     return;
   }
   buildFacets();
+  // Before loadURL, which pushes any query-string bounds onto the handles.
+  initSliders();
   loadURL();
   wire();
   render();

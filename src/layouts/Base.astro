@@ -13,7 +13,7 @@ const {
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
 ---
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="dark" data-units="cm">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -29,13 +29,17 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
 {image && <meta property="og:image" content={image} />}
 <meta name="twitter:card" content={image ? 'summary_large_image' : 'summary'} />
 
-<!-- Restore the saved theme before first paint. Deferring this to the island
-     would flash dark-on-light for anyone who chose the light theme. -->
+<!-- Restore the saved theme and unit before first paint. Deferring either to
+     the island would flash — dark-on-light for anyone who chose the light
+     theme, and centimetres for anyone who chose inches, since every length on
+     the page ships in both units and CSS picks one. -->
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <script is:inline>
   try {
-    const saved = localStorage.getItem('gearherd-theme');
+    const saved = localStorage.getItem('calipered-theme');
     if (saved) document.documentElement.setAttribute('data-theme', saved);
+    const units = localStorage.getItem('calipered-units');
+    if (units) document.documentElement.setAttribute('data-units', units);
   } catch {}
 </script>
 <slot name="head" />
@@ -50,6 +54,9 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
     <nav class="hbtns">
       <a class="hbtn" href="/">Browse</a>
       <a class="hbtn" href="/brands/">Brands</a>
+      <button class="hbtn units" id="units" title="Show lengths in centimetres or inches">
+        <span class="u-cm">cm</span><span class="u-in">in</span>
+      </button>
       <button class="hbtn" id="theme" title="Toggle theme">Theme</button>
     </nav>
   </header>
@@ -64,17 +71,25 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
 </footer>
 
 <script>
-  // The theme toggle is the one behaviour every page shares.
-  document.getElementById('theme')?.addEventListener('click', () => {
-    const next =
-      document.documentElement.getAttribute('data-theme') === 'dark'
-        ? 'light'
-        : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    try {
-      localStorage.setItem('gearherd-theme', next);
-    } catch {}
-  });
+  // Theme and units are the two behaviours every page shares. Both are one
+  // attribute on <html> that CSS reads, so neither needs the page re-rendered
+  // — which is what lets them work on the static model pages, where no island
+  // is mounted at all.
+  const swap = (id, attr, key, values, event) =>
+    document.getElementById(id)?.addEventListener('click', () => {
+      const root = document.documentElement;
+      const next = root.getAttribute(attr) === values[0] ? values[1] : values[0];
+      root.setAttribute(attr, next);
+      try {
+        localStorage.setItem(key, next);
+      } catch {}
+      if (event) document.dispatchEvent(new CustomEvent(event, { detail: next }));
+    });
+
+  swap('theme', 'data-theme', 'calipered-theme', ['dark', 'light']);
+  // The browse island keeps two lengths in <input>s, which CSS cannot rewrite.
+  // It listens for this and converts them.
+  swap('units', 'data-units', 'calipered-units', ['cm', 'in'], 'unitchange');
 </script>
 </body>
 </html>

@@ -1,0 +1,450 @@
+---
+import Base from '../../layouts/Base.astro';
+import { bags, bagHref, meta } from '../../lib/catalog.js';
+import { SITE_NAME } from '../../lib/brand.js';
+import rejectedPayload from '../../../data/rejected.json';
+
+/* The working list behind the coverage banners.
+ *
+ * Two audits, one page, because they are the same question asked at two points
+ * in the pipeline: what did we decline to claim? Colour classification is the
+ * gap inside the index; the reject list is the gap at its edge — the products
+ * normalize.py refused to admit at all.
+ *
+ * Unlinked, noindex and out of the sitemap. A working list, not a page.
+ */
+
+/* ---------- colour classification ---------- */
+
+const rows = [];
+for (const bag of bags) {
+  const seen = new Set();
+  for (const v of bag.variants ?? []) {
+    if (v.color_family) continue;
+    const name = (v.color ?? '').trim();
+    seen.add(name);
+    rows.push({ bag, name, sku: v.sku, title: v.title });
+  }
+  /* A merged model can carry a colourway recovered from a sibling product's
+     title with no variant of its own. Those names are not classified per-SKU,
+     so they are only visible here — and only safely: when the bag has no
+     families at all, every name on it failed by definition. */
+  if (!(bag.color_families ?? []).length) {
+    for (const c of bag.colors ?? []) {
+      const name = (c ?? '').trim();
+      if (name && !seen.has(name)) rows.push({ bag, name, sku: null, title: null });
+    }
+  }
+}
+
+// Names that state no colour, grouped. Case-folded: "X-Pac" and "X-PAC" are
+// one problem, not two.
+const byName = new Map();
+for (const row of rows.filter((r) => r.name)) {
+  const key = row.name.toLowerCase();
+  let entry = byName.get(key);
+  if (!entry) byName.set(key, (entry = { name: row.name, skus: 0, bags: new Map() }));
+  entry.skus += 1;
+  entry.bags.set(row.bag.id, row.bag);
+}
+const names = [...byName.values()].sort(
+  (a, b) => b.skus - a.skus || a.name.localeCompare(b.name),
+);
+
+// Models the brand ships without any colourway.
+const silent = bags
+  .filter((b) => !(b.colors ?? []).length && !(b.variants ?? []).some((v) => v.color))
+  .map((b) => ({
+    bag: b,
+    options: [
+      ...new Set(
+        (b.variants ?? [])
+          .map((v) => (v.title ?? '').trim())
+          .filter((t) => t && t !== 'Default Title'),
+      ),
+    ],
+  }))
+  .sort(
+    (a, b) =>
+      a.bag.brand.localeCompare(b.bag.brand) || a.bag.name.localeCompare(b.bag.name),
+  );
+
+// The banner's own number: bags no colour filter can ever return.
+const invisible = bags.filter((b) => !(b.color_families ?? []).length);
+const namedInvisible = invisible.length - silent.length;
+
+// Models that do answer a colour filter but still hold an unclassified SKU —
+// reachable, but not under the colourway a reader would be looking for.
+const partial = bags.filter(
+  (b) =>
+    (b.color_families ?? []).length &&
+    (b.variants ?? []).some((v) => v.color && !v.color_family),
+);
+
+const skuTotal = bags.reduce((n, b) => n + (b.variant_count ?? 0), 0);
+const namedSkus = names.reduce((n, e) => n + e.skus, 0);
+
+const modelLinks = (list) =>
+  [...list].sort(
+    (a, b) => a.brand.localeCompare(b.brand) || a.name.localeCompare(b.name),
+  );
+
+/* ---------- rejected products ---------- */
+
+const REASON_NOTES = {
+  unclassified:
+    'looks like carry, but no category pattern matched its title, its shelving or its tags',
+  'unclassified:known-bag':
+    'the brand’s own shelving says it is a bag and we still could not say which kind — the genuine misses',
+  'not-a-bag': 'the title or product_type matched the exclusion list',
+  'not-a-bag:collection': 'the brand shelved it somewhere that is not carry',
+  'not-a-bag:product-type': 'the store filed it under a type that is not carry',
+};
+
+const brandNames = new Map(bags.map((b) => [b.brand_slug, b.brand]));
+const rejected = (rejectedPayload.rejected ?? [])
+  .map((r) => ({
+    ...r,
+    brand: brandNames.get(r.brand_slug) ?? r.brand_slug,
+    inCatalog: brandNames.has(r.brand_slug),
+  }))
+  .sort(
+    (a, b) =>
+      a.brand.localeCompare(b.brand) ||
+      a.reason.localeCompare(b.reason) ||
+      (a.title ?? '').localeCompare(b.title ?? ''),
+  );
+
+const reasonCount = new Map();
+for (const r of rejected) reasonCount.set(r.reason, (reasonCount.get(r.reason) ?? 0) + 1);
+const rejectReasons = [...reasonCount.keys()].sort(
+  (a, b) => reasonCount.get(b) - reasonCount.get(a),
+);
+const inCatalogRejects = rejected.filter((r) => r.inCatalog).length;
+const otherBrands = new Set(
+  rejected.filter((r) => !r.inCatalog).map((r) => r.brand_slug),
+);
+
+/* The two files are written by different steps of the same night: the reject
+   list covers everything the crawl saw, the catalog only the brands we
+   publish. Say which, rather than letting the totals quietly disagree with the
+   meta block. */
+const stamp = (s) => (s ? s.replace('T', ' ').replace('Z', ' UTC') : '—');
+const rejectStamp = rejectedPayload.generated_at ?? null;
+const catalogStamp = meta.generated_at ?? null;
+---
+<Base
+  title={`Coverage audit — internal — ${SITE_NAME}`}
+  description="Internal audit of unclassified colourways and rejected products."
+  noindex={true}
+>
+  <div class="page">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/">Bags</a> <span>/</span> <b>Internal · coverage audit</b>
+      <span>·</span> <a href="#colours">Colours</a>
+      <span>·</span> <a href="#rejects">Rejects</a>
+    </nav>
+    <h1>Coverage audit</h1>
+    <p class="note">
+      What the index declined to claim, at both ends of the pipeline: the
+      colourways inside it that map to no colour, and the products that never
+      got in. Read-only — it is generated from <code>data/bags.json</code> and
+      {' '}<code>data/rejected.json</code> at build time, so a fix is a change
+      to <code>normalize.py</code> and a re-run, not an edit here.
+    </p>
+
+    <section>
+      <h2 id="colours">Colour classification</h2>
+      <p class="note">
+        Every SKU whose colourway name mapped to no colour family, which is
+        what the browse banner is counting when a colour filter is on.
+        {' '}<b>{invisible.length}</b> of {bags.length} models answer no colour
+        filter at all: <b>{namedInvisible}</b> publish a name that states no
+        colour, and <b>{silent.length}</b> publish no colourway at all. A
+        further <b>{partial.length}</b> models are filterable but still hold an
+        unclassified SKU. Nothing here is a wrong colour — it is the set we
+        have not claimed a colour for.
+      </p>
+    </section>
+
+    <section>
+      <h2>Names that state no colour</h2>
+      <p class="note">
+        <b>{names.length}</b> distinct names across <b>{namedSkus}</b> SKUs of
+        {' '}{skuTotal}. A name here is a gap only if it really does name a
+        colour — a material ("X-Pac", "Heritage Suede") or a collab name
+        correctly maps to nothing, and stripping it is the point. Fixes go in
+        {' '}<code>COLOUR_FAMILIES</code> in <code>normalize.py</code>.
+      </p>
+      {names.length === 0 ? (
+        <p class="note">Nothing unclassified. Every colourway name maps to a family.</p>
+      ) : (
+        <table class="spectable brandtable">
+          <thead>
+            <tr><th>Colourway</th><th>SKUs</th><th>Models</th></tr>
+          </thead>
+          <tbody>
+            {names.map((entry) => (
+              <tr>
+                <td>{entry.name}</td>
+                <td>{entry.skus}</td>
+                <td class="modelcell">
+                  {modelLinks(entry.bags.values()).map((bag, i) => (
+                    <>
+                      {i > 0 && <span class="nil">, </span>}
+                      <a href={bagHref(bag)}>{bag.brand} {bag.name}</a>
+                      {!(bag.color_families ?? []).length && (
+                        <span class="nil" title="answers no colour filter"> ∅</span>
+                      )}
+                    </>
+                  ))}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p class="note foot">
+        <span class="nil">∅</span> marks a model with no colour family at all —
+        it is missing from every colour filter, not just this colourway.
+      </p>
+    </section>
+
+    <section>
+      <h2>Models with no colourway published</h2>
+      <p class="note">
+        <b>{silent.length}</b> models whose feed states no colour on any
+        variant. There is nothing to classify: the brand never said. Listed so
+        the count above reconciles, and so a brand that turns out to publish
+        colours somewhere else on the page is visible as a fetch gap rather
+        than a classifier one.
+      </p>
+      {silent.length > 0 && (
+        <table class="spectable brandtable">
+          <thead>
+            <tr><th>Model</th><th>SKUs</th><th>Variant options</th><th>Source</th></tr>
+          </thead>
+          <tbody>
+            {silent.map(({ bag, options }) => (
+              <tr>
+                <td><a href={bagHref(bag)}>{bag.brand} {bag.name}</a></td>
+                <td>{bag.variant_count ?? 0}</td>
+                <td class="mono">{options.length ? options.join(' · ') : '—'}</td>
+                <td class="mono"><a href={bag.url} rel="nofollow noopener">feed</a></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+
+    {partial.length > 0 && (
+      <section>
+        <h2>Partially classified models</h2>
+        <p class="note">
+          These answer a colour filter on their other colourways, so the banner
+          never mentions them — but the SKUs listed above under this model
+          cannot be reached by colour.
+        </p>
+        <table class="spectable brandtable">
+          <thead>
+            <tr><th>Model</th><th>Families</th><th>Unclassified SKUs</th></tr>
+          </thead>
+          <tbody>
+            {partial.map((bag) => (
+              <tr>
+                <td><a href={bagHref(bag)}>{bag.brand} {bag.name}</a></td>
+                <td class="mono">{(bag.color_families ?? []).join(' · ')}</td>
+                <td class="mono">
+                  {[
+                    ...new Set(
+                      (bag.variants ?? [])
+                        .filter((v) => v.color && !v.color_family)
+                        .map((v) => v.color.trim()),
+                    ),
+                  ].join(' · ')}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    )}
+
+    <section>
+      <h2 id="rejects">Rejected products</h2>
+      <p class="note">
+        <b>{rejected.length}</b> products <code>normalize.py</code> declined to
+        index, with the reason it recorded. <b>{inCatalogRejects}</b> belong to
+        the {meta.brand_count ?? 0} brands the published catalog covers — that
+        is exactly the number in its <code>meta.rejected</code> block. The
+        other <b>{rejected.length - inCatalogRejects}</b> are from
+        {' '}{otherBrands.size} brands the index does not show yet: the reject
+        list is written by the crawl, and the crawl is wider than the catalog
+        we publish. Reject list <b>{stamp(rejectStamp)}</b>, catalog
+        {' '}<b>{stamp(catalogStamp)}</b>.
+      </p>
+      <ul class="note reasons">
+        {rejectReasons.map((reason) => (
+          <li>
+            <code>{reason}</code> <b>{reasonCount.get(reason)}</b>
+            {REASON_NOTES[reason] && <> — {REASON_NOTES[reason]}</>}
+          </li>
+        ))}
+      </ul>
+
+      <div class="rjbar">
+        <div class="chips">
+          {rejectReasons.map((reason) => (
+            <button class="chip" data-reason={reason} aria-pressed="true">
+              {reason}<span>{reasonCount.get(reason)}</span>
+            </button>
+          ))}
+          <button class="chip" id="rj-catalog" aria-pressed="false">
+            catalog brands only<span>{inCatalogRejects}</span>
+          </button>
+        </div>
+        <input id="rj-q" type="search" placeholder="filter title, brand, type, tag…" />
+        <span class="count" id="rj-count"><b>{rejected.length}</b> shown</span>
+      </div>
+      <div class="tablewrap rjwrap">
+        <table class="spectable brandtable rjtable">
+          <thead>
+            <tr>
+              <th>Brand</th><th>Title</th><th>product_type</th><th>Tags</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rejected.map((r) => (
+              <tr data-reason={r.reason} data-cat={r.inCatalog ? '1' : '0'}>
+                <td>
+                  {r.brand}
+                  {!r.inCatalog && (
+                    <span class="nil" title="brand not in the published catalog"> ∅</span>
+                  )}
+                </td>
+                <td class="rjtitle">
+                  {r.url
+                    ? <a href={r.url} rel="nofollow noopener">{r.title ?? r.url}</a>
+                    : (r.title ?? '—')}
+                </td>
+                <td class="mono">{r.product_type || '—'}</td>
+                <td class="mono rjtags">
+                  {(r.tags ?? []).length
+                    ? r.tags.length > 5
+                      ? `${r.tags.slice(0, 5).join(' · ')} +${r.tags.length - 5}`
+                      : r.tags.join(' · ')
+                    : '—'}
+                </td>
+                <td class="mono">{r.reason}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p class="note foot">
+        <span class="nil">∅</span> marks a brand with nothing in the published
+        catalog. Filtering is client-side over the whole list; with scripting
+        off the table is simply all {rejected.length} rows.
+      </p>
+    </section>
+  </div>
+</Base>
+
+<script>
+  /* Filtering over a table that is already fully rendered. The list is a few
+     thousand static rows, so shipping it whole and hiding rows beats
+     fetch-and-render: it works with scripting off, and there is no second copy
+     of the data to keep in step. */
+  const table = document.querySelector('.rjtable');
+  if (table) {
+    const rows = [...table.tBodies[0].rows].map((el) => ({
+      el,
+      reason: el.dataset.reason,
+      inCatalog: el.dataset.cat === '1',
+      text: el.textContent.toLowerCase(),
+    }));
+    const chips = [...document.querySelectorAll('.rjbar .chip[data-reason]')];
+    const catalogOnly = document.getElementById('rj-catalog');
+    const query = document.getElementById('rj-q');
+    const count = document.getElementById('rj-count');
+
+    const apply = () => {
+      const on = new Set(
+        chips
+          .filter((c) => c.getAttribute('aria-pressed') === 'true')
+          .map((c) => c.dataset.reason),
+      );
+      const cat = catalogOnly.getAttribute('aria-pressed') === 'true';
+      const q = query.value.trim().toLowerCase();
+      let shown = 0;
+      for (const row of rows) {
+        const hit =
+          on.has(row.reason) &&
+          (!cat || row.inCatalog) &&
+          (!q || row.text.includes(q));
+        row.el.hidden = !hit;
+        if (hit) shown += 1;
+      }
+      count.innerHTML = `<b>${shown}</b> shown`;
+    };
+
+    for (const chip of [...chips, catalogOnly]) {
+      chip.addEventListener('click', () => {
+        chip.setAttribute(
+          'aria-pressed',
+          chip.getAttribute('aria-pressed') === 'true' ? 'false' : 'true',
+        );
+        apply();
+      });
+    }
+    let timer;
+    query.addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = setTimeout(apply, 90);
+    });
+  }
+</script>
+
+<style>
+  /* The model column is a prose list of links, not a figure — let it wrap and
+     drop the tabular font the spec tables use. */
+  .modelcell { font-family: inherit; white-space: normal; line-height: 1.7; }
+  .modelcell a { margin-right: 1px; }
+  code { font-family: var(--mono); font-size: .92em; color: var(--ink-dim); }
+
+  .reasons { list-style: none; margin: 0; padding: 0 14px 12px; }
+  .reasons li { padding: 2px 0; }
+  .reasons b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  .rjbar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 14px; border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .rjbar .chips { flex-wrap: wrap; }
+  .rjbar input {
+    flex: 1; min-width: 180px; background: var(--panel);
+    border: 1px solid var(--line-2); color: var(--ink);
+    padding: 4px 8px; font-size: 11px;
+  }
+  .rjbar input:focus { border-color: var(--accent); outline: none; }
+
+  /* The reject list is long by design — cap it and scroll, rather than making
+     every visit a several-thousand-row page scroll. */
+  .rjwrap { max-height: 72vh; overflow-y: auto; padding-bottom: 0; }
+  .rjtable thead th { position: sticky; top: 0; z-index: 1; }
+  /* The filter hides rows with [hidden]; the UA rule for it is weak enough
+     that any author `display` on a row would beat it. Say it outright. */
+  .rjtable tbody tr[hidden] { display: none; }
+  /* Six columns of mostly-short strings: tighten the spec-table padding so the
+     reason and the link stay on screen at a laptop width instead of hiding
+     behind a horizontal scroll. */
+  .rjtable th, .rjtable td { padding: 5px 10px; }
+  .rjtitle { font-family: inherit; white-space: normal; min-width: 170px; }
+  .rjtags {
+    max-width: 190px; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+</style>

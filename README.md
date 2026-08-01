@@ -1,4 +1,4 @@
-# gearherd
+# calipered
 
 A searchable, comparable index of bags — normalised across brands from public
 product feeds.
@@ -47,6 +47,7 @@ python3 fetch.py                # pull catalogues       (~3 requests/brand)
 python3 fetch.py --collections  # category ground truth (~10 requests/brand)
 python3 normalize.py            # build data/bags.json
 python3 enrich.py               # fill dimensions       (~1 request/product)
+python3 image_bg.py             # plate colours         (~1 thumbnail/image)
 python3 validate.py             # quality gate — exits 1 on a bad parse
 
 npm install
@@ -59,11 +60,15 @@ brand restructures its site, not nightly.
 Order matters: `normalize.py` rebuilds `data/bags.json` from `raw/`, so run
 `enrich.py` after it. Enrichment caches every page it reads in
 `data/enrich-cache.json`, so re-running after a fresh normalize is instant and
-costs no requests.
+costs no requests. `image_bg.py` works the same way against
+`data/image-bg.json`, keyed by image URL, and also rewrites `data/bags.json` —
+so it goes after enrich, not before.
 
 The crawl scripts are stdlib-only and stay that way — they have to run
-anywhere. `npm` is for the site, and `alerts/requirements.txt` (one package) is
-for the alert matcher.
+anywhere. `npm` is for the site; the two optional stages have one package each,
+`alerts/requirements.txt` for the alert matcher and
+`requirements-image-bg.txt` for the plate sampler, which needs an image decoder
+the standard library does not have. Skip it and every plate stays white.
 
 ## Quality gate
 
@@ -112,7 +117,7 @@ Set a real contact URL before running at any scale — it goes in the
 User-Agent so store operators can reach you:
 
 ```bash
-export GEARHERD_CONTACT="https://yoursite.com/bot"
+export CALIPERED_CONTACT="https://yoursite.com/bot"
 ```
 
 ## Where the data comes from
@@ -127,6 +132,15 @@ HTML. Checks `robots.txt` first and skips stores that disallow the path.
 does not expose, so stage two reads each product page once for its
 schema.org `Product` block and its spec table. This is the expensive stage;
 it is cached and resumable.
+
+**`image_bg.py`** — brands all shoot on white, but not the same white: Aer's
+house background is `#f2f2f2`, which draws a visible grey rectangle on a `#fff`
+plate. This stage samples the four corners of each photo and, when they agree,
+records the colour so the plate can match it. It reads a 96px CDN render rather
+than the full image, so the whole catalog costs a few megabytes. Photos it
+cannot read confidently — cut-out PNGs, lifestyle shots, anything too dark for
+the chips to stay legible on — keep the white plate and the CSS edge feather
+that covers the seam either way.
 
 ## What normalisation actually has to fix
 
@@ -161,7 +175,7 @@ for that. So:
 
 - **A real HTML page per model** at `/bags/<brand>/<model>/` — spec table with
   provenance on every value, colourways with their own SKUs, price history, and
-  schema.org `Product` markup. (Ironic, but gearherd is the site actually filling
+  schema.org `Product` markup. (Ironic, but calipered is the site actually filling
   in `width`/`height`/`depth`, which is why nobody's `Product` block is worth
   reading.)
 - **Brand pages** at `/brands/<brand>/`, and a sitemap, so every model page has

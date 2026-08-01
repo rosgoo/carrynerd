@@ -1,4 +1,6 @@
-# Only the alert matcher has a dependency. The crawl pipeline (fetch.py,
-# normalize.py, enrich.py, track_prices.py) is stdlib-only and stays that way —
-# it has to run anywhere, including a laptop with no virtualenv.
+# The crawl pipeline (fetch.py, normalize.py, enrich.py, track_prices.py) is
+# stdlib-only and stays that way — it has to run anywhere, including a laptop
+# with no virtualenv. Two things outside it have dependencies: this matcher,
+# and image_bg.py, which needs an image decoder (../requirements-image-bg.txt).
+# Both are optional stages; neither can stop the catalog from building.
 psycopg[binary]>=3.2

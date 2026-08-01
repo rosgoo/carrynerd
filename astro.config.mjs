@@ -10,10 +10,14 @@ export default defineConfig({
   // Canonical URLs, sitemap entries and JSON-LD all key off this. The name is
   // not settled — see the open decisions in the handoff — so it reads from the
   // environment and the placeholder is the only thing to change once it is.
-  site: process.env.SITE_URL ?? 'https://gearherd.com',
+  site: process.env.SITE_URL ?? 'https://calipered.com',
   output: 'static',
   adapter: vercel(),
-  integrations: [sitemap()],
+  // /internal/ is the working list behind the coverage banners — real pages,
+  // built from the same data, but addressed to whoever is maintaining the
+  // index rather than to a reader. Nothing links to them and they carry
+  // noindex; keeping them out of the sitemap is the third leg of that.
+  integrations: [sitemap({ filter: (page) => !new URL(page).pathname.startsWith('/internal/') })],
   build: { format: 'directory' },
   devToolbar: { enabled: false },
 });

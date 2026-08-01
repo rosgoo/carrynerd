@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>gearherd — identity working doc</title>
+<style>
+  /* Palette lifted verbatim from src/styles/app.css so this doc and the site
+     never drift. If you change one, change both. */
+  :root {
+    --bg:#191c1d; --panel:#202425; --raised:#282d2e;
+    --line:#343a3b; --line-2:#474e4f;
+    --ink:#e8eae8; --ink-dim:#949c9a; --ink-mute:#6b7472;
+    --accent:#ff5a1f; --accent-ink:#141617;
+    --ok:#5fd38d; --warn:#ffc046;
+    --grid:rgba(255,255,255,.032);
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo,
+            Consolas, "Liberation Mono", monospace;
+  }
+  :root[data-theme="light"] {
+    --bg:#f4f3f0; --panel:#fbfaf8; --raised:#ffffff;
+    --line:#d9d6cf; --line-2:#bcb8ae;
+    --ink:#16181a; --ink-dim:#5e6360; --ink-mute:#8e938f;
+    --accent:#e8430a; --accent-ink:#ffffff;
+    --ok:#17804a; --warn:#9a6600;
+    --grid:rgba(0,0,0,.035);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--mono); font-size: 13px; line-height: 1.55;
+    /* the site's grid backdrop, so marks are judged on the surface they ship on */
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 0 24px 96px; }
+
+  header.top {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; align-items: center; gap: 12px;
+    height: 52px; padding: 0 24px; margin: 0 -24px 40px;
+    background: var(--bg); border-bottom: 1px solid var(--line);
+  }
+  header.top .id { display: flex; align-items: center; gap: 9px; font-weight: 600; letter-spacing: .04em; }
+  header.top .id svg { display: block; color: var(--accent); }
+  header.top .meta { margin-left: auto; color: var(--ink-mute); font-size: 11px; }
+  .toggle {
+    font: inherit; font-size: 11px; cursor: pointer;
+    background: var(--panel); color: var(--ink-dim);
+    border: 1px solid var(--line-2); padding: 4px 9px;
+  }
+  .toggle:hover { color: var(--accent); border-color: var(--accent); }
+
+  h1 { font-size: 22px; letter-spacing: -.01em; margin: 0 0 6px; font-weight: 600; }
+  h2 {
+    font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--ink-mute); font-weight: 600;
+    margin: 56px 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--line);
+  }
+  h2 span { color: var(--accent); }
+  p { margin: 0 0 12px; max-width: 68ch; color: var(--ink-dim); }
+  p.lead { color: var(--ink); }
+  code { color: var(--accent); }
+  a { color: var(--accent); }
+
+  /* ---- the hero: current mark, tested where it actually has to survive ---- */
+  .hero { display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+  .hero > div { background: var(--panel); padding: 28px; }
+  .hero .big { display: flex; align-items: center; gap: 22px; }
+  .hero .big svg { color: var(--accent); flex-shrink: 0; }
+  .hero .name { font-size: 40px; font-weight: 600; letter-spacing: -.02em; }
+  .hero .name em { font-style: normal; color: var(--accent); }
+  .star { color: var(--accent); }
+
+  /* size ladder — the only test that matters for a favicon */
+  .ladder { display: flex; align-items: flex-end; gap: 20px; margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line); }
+  .ladder figure { margin: 0; text-align: center; }
+  .ladder svg { color: var(--accent); display: block; margin: 0 auto 7px; }
+  .ladder figcaption { font-size: 10px; color: var(--ink-mute); }
+
+  .tests { display: flex; flex-direction: column; gap: 14px; }
+  .swatchtest { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--line); font-size: 10px; color: var(--ink-mute); }
+  .swatchtest svg { flex-shrink: 0; }
+  .on-accent { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .on-accent svg { color: var(--accent-ink); }
+  .on-white  { background: #fff; color: #6b6f6d; }
+  .on-white svg { color: #e8430a; }
+  .on-ink    { background: var(--raised); }
+  .on-ink svg { color: var(--ink); }
+
+  /* ---- candidate grid ---- */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+  .card { background: var(--panel); padding: 22px; display: flex; flex-direction: column; }
+  .card.current { background: var(--raised); box-shadow: inset 3px 0 0 var(--accent); }
+  .card .mark { display: flex; align-items: center; gap: 16px; min-height: 56px; }
+  .card .mark svg { color: var(--accent); flex-shrink: 0; }
+  .card .word { font-size: 21px; font-weight: 600; letter-spacing: -.01em; }
+  .card .tiny { display: flex; align-items: center; gap: 12px; margin: 16px 0 14px; padding: 9px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .card .tiny svg { color: var(--ink); }
+  .card .tiny b { font-size: 10px; color: var(--ink-mute); font-weight: 400; margin-left: auto; }
+  .card .note { font-size: 11.5px; color: var(--ink-dim); line-height: 1.6; margin: 0 0 12px; }
+  .card .verdict { margin-top: auto; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; padding-top: 12px; }
+  .v-keep { color: var(--ok); }
+  .v-live { color: var(--warn); }
+  .v-cut  { color: var(--ink-mute); }
+
+  /* ---- tables ---- */
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-mute); font-weight: 600; padding: 0 12px 8px 0; border-bottom: 1px solid var(--line-2); }
+  td { padding: 10px 12px 10px 0; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--ink-dim); }
+  td:first-child { color: var(--ink); font-weight: 600; }
+  td.risk-hi { color: var(--warn); }
+  td.risk-lo { color: var(--ok); }
+
+  .pal { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px,1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+  .pal div { background: var(--panel); padding: 12px; }
+  .pal i { display: block; height: 42px; border: 1px solid var(--line-2); margin-bottom: 8px; }
+  .pal b { display: block; font-size: 11px; font-weight: 600; }
+  .pal span { font-size: 10px; color: var(--ink-mute); }
+
+  ul.notes { margin: 0; padding-left: 18px; color: var(--ink-dim); max-width: 68ch; }
+  ul.notes li { margin-bottom: 9px; }
+  ul.notes b { color: var(--ink); font-weight: 600; }
+
+  @media (max-width: 760px) {
+    .hero { grid-template-columns: 1fr; }
+    .hero .name { font-size: 30px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ======================================================================
+     MARK LIBRARY
+     Every mark lives once, here, on a 32x32 grid, filled with currentColor
+     so it inherits from CSS. Everything below is a <use> of one of these.
+     Copy a symbol's contents straight into src/components/Logo.astro.
+     ====================================================================== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+
+    <!-- gearherd — bison. Shipping version. Horns sweep out from the skull and
+         hook up; the hump and skull are one solid mass tapering to the muzzle;
+         the muzzle notch is knocked out in --bg. -->
+    <symbol id="m-bison" viewBox="0 0 32 32">
+      <path d="M9 11.5C5.6 11.2 3.2 9.6 2.5 6.6c2 2.2 4 3.1 6.5 3.1" fill="currentColor"/>
+      <path d="M23 11.5c3.4-.3 5.8-1.9 6.5-4.9-2 2.2-4 3.1-6.5 3.1" fill="currentColor"/>
+      <path d="M9 9.8h14v6.4l-2.4 2.1v4.6l-2.1 2.4h-6.9l-2.1-2.4v-4.6L7.9 16.2V9.8H9z" fill="currentColor"/>
+      <path d="M13.4 22.1h5.2v2.3h-5.2z" fill="var(--bg)"/>
+    </symbol>
+
+    <!-- gearherd — bison, knockout-safe. Identical silhouette, but the body and
+         the muzzle notch are one path with fill-rule="evenodd", so the notch is
+         a real hole instead of a --bg-coloured patch. Survives on the accent
+         swatch, on a product photo, and as a single-colour favicon. -->
+    <symbol id="m-bison-eo" viewBox="0 0 32 32">
+      <path d="M9 11.5C5.6 11.2 3.2 9.6 2.5 6.6c2 2.2 4 3.1 6.5 3.1" fill="currentColor"/>
+      <path d="M23 11.5c3.4-.3 5.8-1.9 6.5-4.9-2 2.2-4 3.1-6.5 3.1" fill="currentColor"/>
+      <path fill-rule="evenodd" fill="currentColor"
+            d="M9 9.8h14v6.4l-2.4 2.1v4.6l-2.1 2.4h-6.9l-2.1-2.4v-4.6L7.9 16.2V9.8H9zM13.4 22.1h5.2v2.3h-5.2z"/>
+    </symbol>
+
+    <!-- calipered — vernier caliper. The mark this project shipped under before
+         the rename. Kept here as the control: it is the most distinctive thing
+         we have ever drawn and it is the only one that isn't an animal head. -->
+    <symbol id="m-caliper" viewBox="0 0 32 32">
+      <rect x="2" y="11.5" width="28" height="4" fill="currentColor"/>
+      <rect x="2" y="8" width="3.5" height="3.5" fill="currentColor"/>
+      <path d="M2 15.5h3.5V25H2.8z" fill="currentColor"/>
+      <path d="M14 8h9.5v7.5h-6L16.8 25H14z" fill="currentColor"/>
+    </symbol>
+
+    <!-- muskox — the horns fuse into a solid boss across the brow, drop outside
+         the face, and hook up at the tips. Same construction grammar as the
+         bison: thin curved slivers for horn, hard corners for mass. -->
+    <symbol id="m-muskox" viewBox="0 0 32 32">
+      <path d="M8.2 8.4h15.6v4.4H8.2z" fill="currentColor"/>
+      <path d="M8.2 12.8C4.6 13.8 2.6 16.4 2.6 19.9c0 1.9 1 3.2 2.6 3.6-.9-2.7 0-4.7 3-5.8z" fill="currentColor"/>
+      <path d="M23.8 12.8c3.6 1 5.6 3.6 5.6 7.1 0 1.9-1 3.2-2.6 3.6.9-2.7 0-4.7-3-5.8z" fill="currentColor"/>
+      <path d="M10.2 12.8h11.6v5.6l-1.8 2v4.2l-1.8 2.2h-4.4l-1.8-2.2v-4.2l-1.8-2z" fill="currentColor"/>
+    </symbol>
+
+    <!-- bighorn — narrow skull, two big curls sweeping out from the brow and
+         hooking back in under the jaw. Each curl is 240° of a stroked circle
+         (r=6, circumference 37.70, so 25.13 on / 12.57 off), cut with
+         stroke-dasharray rather than hand-built as a filled spiral: uniform
+         thickness, mathematically exact, and it survives 14px where a tapered
+         spiral turns to mush. The right curl is a true mirror of the left, not a
+         second drawing, so they can never drift apart.
+
+         Three other constructions were drawn and thrown away, and the reasons
+         are worth keeping: curls tucked under a broad brow with the opening
+         turned outward read as headphones; a profile head with one big curl
+         merges into an unreadable blob at any size; and the horn alone, drawn as
+         a two-turn spiral, reads as a shell. What makes this one work is that
+         the opening faces down and inward, so the gap lands where the jaw would
+         be and the eye completes the hook by itself. -->
+    <symbol id="m-bighorn" viewBox="0 0 32 32">
+      <path d="M12 6h8v12l-1.6 2.1v4l-2.4 2.8-2.4-2.8v-4L12 18z" fill="currentColor"/>
+      <g fill="none" stroke="currentColor" stroke-width="3.3">
+        <circle cx="7" cy="17.5" r="6" stroke-dasharray="25.13 12.57" transform="rotate(120 7 17.5)"/>
+        <g transform="translate(32,0) scale(-1,1)">
+          <circle cx="7" cy="17.5" r="6" stroke-dasharray="25.13 12.57" transform="rotate(120 7 17.5)"/>
+        </g>
+      </g>
+    </symbol>
+
+    <!-- aurochs — the extinct wild ox. Long lyre horns rising off the poll,
+         sweeping wide, and turning forward at the tips. The widest mark in the
+         set; it needs horizontal room a square favicon does not have. -->
+    <symbol id="m-aurochs" viewBox="0 0 32 32">
+      <path d="M10.4 10.8C5.2 10.2 1.8 6.9 1 1.8c1.7 4.4 5 7 9.4 7.3z" fill="currentColor"/>
+      <path d="M21.6 10.8c5.2-.6 8.6-3.9 9.4-9-1.7 4.4-5 7-9.4 7.3z" fill="currentColor"/>
+      <path d="M10.4 9.6h11.2v6.6l-1.9 2.1v5l-1.9 2.4h-3.6l-1.9-2.4v-5l-1.9-2.1z" fill="currentColor"/>
+    </symbol>
+
+    <!-- block — no animal at all. This is what the header ships with today:
+         .brand i, an 11px accent square. Included because it is the incumbent
+         and because it is the only option with zero drawing risk. -->
+    <symbol id="m-block" viewBox="0 0 32 32">
+      <rect x="6" y="6" width="20" height="20" fill="currentColor"/>
+    </symbol>
+
+  </defs>
+</svg>
+
+
+<header class="top">
+  <span class="id"><svg width="15" height="15"><use href="#m-bison"/></svg>gearherd</span>
+  <button class="toggle" id="themeBtn" type="button">light / dark</button>
+  <span class="meta">identity working doc &middot; internal</span>
+</header>
+
+<div class="wrap">
+
+  <h1>Identity working doc</h1>
+  <p class="lead">Every candidate name and mark in one place, rendered at the sizes they
+  actually have to survive. Marks are drawn on the same 32&times;32 grid in the same
+  construction grammar &mdash; thin curved slivers for horn, hard corners for mass, one
+  flat fill, no strokes on the silhouette &mdash; so they are comparable rather than
+  merely different. Palette is imported verbatim from <code>src/styles/app.css</code>.</p>
+  <p>Not linked from the site and not in <code>public/</code>, so it never ships. Open it
+  straight off disk. Toggle the theme &mdash; a mark that only works on dark grey is not
+  finished.</p>
+
+
+  <h2><span>01</span> &nbsp;Current mark</h2>
+
+  <div class="hero">
+    <div>
+      <div class="big">
+        <svg width="76" height="76"><use href="#m-bison"/></svg>
+        <span class="name">gearherd</span>
+      </div>
+      <div class="ladder">
+        <figure><svg width="64" height="64"><use href="#m-bison"/></svg><figcaption>64 &middot; about page</figcaption></figure>
+        <figure><svg width="32" height="32"><use href="#m-bison"/></svg><figcaption>32 &middot; favicon @2x</figcaption></figure>
+        <figure><svg width="20" height="20"><use href="#m-bison"/></svg><figcaption>20</figcaption></figure>
+        <figure><svg width="16" height="16"><use href="#m-bison"/></svg><figcaption>16 &middot; favicon</figcaption></figure>
+        <figure><svg width="14" height="14"><use href="#m-bison"/></svg><figcaption>14 &middot; header</figcaption></figure>
+      </div>
+    </div>
+    <div class="tests">
+      <div class="swatchtest on-ink"><svg width="26" height="26"><use href="#m-bison"/></svg>on --raised, ink</div>
+      <div class="swatchtest on-white"><svg width="26" height="26"><use href="#m-bison"/></svg>on the white image plate</div>
+      <div class="swatchtest on-accent"><svg width="26" height="26"><use href="#m-bison"/></svg>reversed out of accent</div>
+    </div>
+  </div>
+
+  <p style="margin-top:16px"><b style="color:var(--warn)">One defect, worth fixing before this goes any further.</b>
+  The muzzle notch is painted <code>var(--bg)</code> rather than cut out of the
+  silhouette. On <code>--bg</code> it is invisible, which is why it has never shown up
+  &mdash; but look at the two lower swatches on the right: on the white image plate and
+  reversed out of the accent, the notch fills with dark grey and the head loses its
+  muzzle. It will do the same on any product photo, in any email client that
+  ignores custom properties, and in a single-colour favicon.
+  The fix is one line and does not change the drawing at all &mdash; merge the notch into
+  the body path and set <code>fill-rule="evenodd"</code>, so it becomes a real hole.
+  That variant is <code>#m-bison-eo</code>, second in the grid below.</p>
+
+
+  <h2><span>02</span> &nbsp;Candidates</h2>
+
+  <div class="grid">
+
+    <div class="card current">
+      <div class="mark"><svg width="46" height="46"><use href="#m-bison"/></svg><span class="word">gearherd</span></div>
+      <div class="tiny">
+        <svg width="20" height="20"><use href="#m-bison"/></svg>
+        <svg width="16" height="16"><use href="#m-bison"/></svg>
+        <svg width="14" height="14"><use href="#m-bison"/></svg>
+        <b>current</b>
+      </div>
+      <p class="note">The American icon. Hump-plus-low-horn is one of the most legible
+      profiles there is, and it is the only animal here that reads at 14px without
+      squinting. Cost of that legibility: it is everywhere &mdash; state seals, banks,
+      breweries, at least three outdoor brands. You will never own it.</p>
+      <div class="verdict v-keep">&#9733; incumbent &middot; fix the notch, then keep</div>
+    </div>
+
+    <div class="card">
+      <div class="mark"><svg width="46" height="46"><use href="#m-bison-eo"/></svg><span class="word">gearherd</span></div>
+      <div class="tiny">
+        <svg width="20" height="20"><use href="#m-bison-eo"/></svg>
+        <svg width="16" height="16"><use href="#m-bison-eo"/></svg>
+        <svg width="14" height="14"><use href="#m-bison-eo"/></svg>
+        <b>drop-in</b>
+      </div>
+      <p class="note">Same bison, pixel for pixel, with the muzzle cut out instead of
+      painted over. Works reversed, works on photography, works as a one-colour
+      favicon. There is no argument for shipping the other one.</p>
+      <div class="verdict v-keep">ship this instead</div>
+    </div>
+
+    <div class="card">
+      <div class="mark"><svg width="46" height="46"><use href="#m-caliper"/></svg><span class="word">calipered</span></div>
+      <div class="tiny">
+        <svg width="20" height="20"><use href="#m-caliper"/></svg>
+        <svg width="16" height="16"><use href="#m-caliper"/></svg>
+        <svg width="14" height="14"><use href="#m-caliper"/></svg>
+        <b>previous</b>
+      </div>
+      <p class="note">What the project shipped under before the rename, and still the
+      most distinctive mark we have &mdash; nobody else in this category has a caliper.
+      It says <i>measured, spec-sheet, comparison</i>, which is literally what the site
+      does. What it does not say is <i>herd</i>, so it cannot follow the new name.</p>
+      <div class="verdict v-cut">superseded &middot; keep the aesthetic, not the mark</div>
+    </div>
+
+    <div class="card">
+      <div class="mark"><svg width="46" height="46"><use href="#m-muskox"/></svg><span class="word">muskox</span></div>
+      <div class="tiny">
+        <svg width="20" height="20"><use href="#m-muskox"/></svg>
+        <svg width="16" height="16"><use href="#m-muskox"/></svg>
+        <svg width="14" height="14"><use href="#m-muskox"/></svg>
+        <b>strongest alt</b>
+      </div>
+      <p class="note">Same weight and cold-durability read as the bison with almost no
+      competition &mdash; the horn boss is a helmet, which is a better metaphor for gear
+      than a hump. And musk oxen circle up around the young when threatened, which is
+      an actual brand story rather than a vibe. Risk: the boss-plus-hook silhouette is
+      the first thing to go soft below 16px.</p>
+      <div class="verdict v-live">live option &middot; needs a 14px pass</div>
+    </div>
+
+    <div class="card">
+      <div class="mark"><svg width="46" height="46"><use href="#m-bighorn"/></svg><span class="word">bighorn</span></div>
+      <div class="tiny">
+        <svg width="20" height="20"><use href="#m-bighorn"/></svg>
+        <svg width="16" height="16"><use href="#m-bighorn"/></svg>
+        <svg width="14" height="14"><use href="#m-bighorn"/></svg>
+        <b>best shape</b>
+      </div>
+      <p class="note">The curl is the best single shape in the animal kingdom for a
+      logo, and drawn as two exact 240&deg; arcs it inherits the drafted, instrument-made
+      quality the caliper had &mdash; it is the only mark here a compass could reproduce.
+      The name is the problem, not the mark: Bighorn is taken hard &mdash; outfitters, a
+      Ram trim level, a dozen gun brands. Worth stealing the mark for another name.</p>
+      <div class="verdict v-live">mark yes &middot; name probably not</div>
+    </div>
+
+    <div class="card">
+      <div class="mark"><svg width="46" height="46"><use href="#m-aurochs"/></svg><span class="word">aurochs</span></div>
+      <div class="tiny">
+        <svg width="20" height="20"><use href="#m-aurochs"/></svg>
+        <svg width="16" height="16"><use href="#m-aurochs"/></svg>
+        <svg width="14" height="14"><use href="#m-aurochs"/></svg>
+        <b>widest</b>
+      </div>
+      <p class="note">Extinct wild ox, ancestor of every cow alive, hunted out in 1627 &mdash;
+      mythic in a way the others aren't, and nobody in gear is using it. Two problems:
+      the lyre horns want horizontal room that a square favicon does not have, and
+      roughly nobody can pronounce or spell it on first contact.</p>
+      <div class="verdict v-cut">park it &middot; great story, bad ergonomics</div>
+    </div>
+
+    <div class="card">
+      <div class="mark"><svg width="46" height="46"><use href="#m-block"/></svg><span class="word">gearherd</span></div>
+      <div class="tiny">
+        <svg width="20" height="20"><use href="#m-block"/></svg>
+        <svg width="16" height="16"><use href="#m-block"/></svg>
+        <svg width="14" height="14"><use href="#m-block"/></svg>
+        <b>incumbent header</b>
+      </div>
+      <p class="note">No animal. This is what <code>.brand i</code> already renders in the
+      header today &mdash; an 11px accent square. Zero drawing risk, perfectly on-brand for a
+      spec-sheet aesthetic, and it never mushes. It is also completely anonymous, and
+      the name is doing all the work.</p>
+      <div class="verdict v-cut">fallback only</div>
+    </div>
+
+  </div>
+
+
+  <h2><span>03</span> &nbsp;Name shortlist</h2>
+
+  <table>
+    <thead>
+      <tr><th style="width:15%">Name</th><th style="width:19%">Collective noun</th><th style="width:41%">Read</th><th style="width:25%">Risk</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>gearherd</td><td>herd &mdash; bison, correct</td>
+        <td>Says exactly what the site is: a herd of gear. Compound reads instantly, one word, lowercase sets well in mono.</td>
+        <td class="risk-lo">Low. "Herd/heard" homophone is a mild spoken-word tax.</td>
+      </tr>
+      <tr>
+        <td>muskox</td><td>herd &mdash; correct</td>
+        <td>Short, hard consonants, obviously an animal. Loses the explicit gear reference.</td>
+        <td class="risk-lo">Low. Barely used in this category.</td>
+      </tr>
+      <tr>
+        <td>bighorn</td><td>herd &mdash; correct</td>
+        <td>Rugged, familiar, and the mark is the best of the set.</td>
+        <td class="risk-hi">High. Heavily contested &mdash; outfitters, trucks, firearms.</td>
+      </tr>
+      <tr>
+        <td>aurochs</td><td>herd &mdash; correct</td>
+        <td>Mythic and entirely unclaimed. Extinct-animal names age well.</td>
+        <td class="risk-hi">High. Unspellable on hearing; wide mark fights a square icon.</td>
+      </tr>
+      <tr>
+        <td>drove</td><td>drove &mdash; driven cattle/oxen</td>
+        <td>Short, real collective noun, quietly implies movement and volume.</td>
+        <td class="risk-hi">High. Collides head-on with the past tense of "drive".</td>
+      </tr>
+      <tr>
+        <td>sounder</td><td>sounder &mdash; wild boar</td>
+        <td>Great word, great animal.</td>
+        <td class="risk-hi">Disqualified &mdash; a sounder is not a herd, and "sounder" reads as audio.</td>
+      </tr>
+      <tr>
+        <td>calipered</td><td>&mdash;</td>
+        <td>The previous name. Precise, technical, matched the whole visual system.</td>
+        <td class="risk-hi">Retired. No herd, no animal, past-tense verb as a noun.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p style="margin-top:20px"><b style="color:var(--ink)">Herd animals considered and cut:</b>
+  elk and stag (antlers are gorgeous and utterly saturated in outdoor branding),
+  longhorn (great symmetric mark, reads as Texas first and gear second),
+  yak (best gear-hauling story of any animal here, weakest silhouette),
+  caribou (owned by a coffee chain), wildebeest (the collective noun is a
+  <i>confusion</i>, which is funny and off-message), gaur, water buffalo, ox.
+  <b style="color:var(--ink)">Miscast as herd animals:</b> wild boar travel in a
+  <i>sounder</i>, and moose are essentially solitary &mdash; both get used for herd
+  branding constantly and both are wrong.</p>
+
+
+  <h2><span>04</span> &nbsp;Palette</h2>
+
+  <p>Both themes, straight out of <code>app.css</code>. The accent is the only saturated
+  colour in the system and the mark is the only place it appears at size &mdash; which is
+  why the mark has to hold up in a single flat fill and cannot rely on a second tone.</p>
+
+  <div class="pal">
+    <div><i style="background:var(--accent)"></i><b>--accent</b><span>#ff5a1f / #e8430a</span></div>
+    <div><i style="background:var(--bg)"></i><b>--bg</b><span>#191c1d / #f4f3f0</span></div>
+    <div><i style="background:var(--panel)"></i><b>--panel</b><span>#202425 / #fbfaf8</span></div>
+    <div><i style="background:var(--raised)"></i><b>--raised</b><span>#282d2e / #ffffff</span></div>
+    <div><i style="background:var(--line-2)"></i><b>--line-2</b><span>#474e4f / #bcb8ae</span></div>
+    <div><i style="background:var(--ink)"></i><b>--ink</b><span>#e8eae8 / #16181a</span></div>
+    <div><i style="background:var(--ink-mute)"></i><b>--ink-mute</b><span>#6b7472 / #8e938f</span></div>
+    <div><i style="background:var(--ok)"></i><b>--ok</b><span>#5fd38d / #17804a</span></div>
+    <div><i style="background:var(--warn)"></i><b>--warn</b><span>#ffc046 / #9a6600</span></div>
+  </div>
+
+
+  <h2><span>05</span> &nbsp;Rules and open questions</h2>
+
+  <ul class="notes">
+    <li><b>The 14px test comes first.</b> The header renders the mark at 14px and the
+    favicon at 16px. Anything that does not survive there is decoration, not identity.
+    Judge every candidate in the <code>.tiny</code> strip above before looking at the
+    46px version.</li>
+    <li><b>One flat fill, no strokes on the silhouette.</b> Strokes scale badly and
+    hairlines disappear at favicon size. The bighorn arcs are the one sanctioned
+    exception, and only because uniform-width arcs are exactly what a stroke is good
+    at.</li>
+    <li><b>No knockouts in <code>var(--bg)</code>.</b> Cut holes with
+    <code>fill-rule="evenodd"</code> instead. See section 01 &mdash; this is the live bug.</li>
+    <li><b>The mark inherits <code>currentColor</code>.</b> <code>.brand svg</code> sets
+    <code>color: var(--accent)</code>; nothing inside the mark should hardcode a colour.</li>
+    <li><b>Open:</b> does the wordmark keep the caliper-era letterspacing, or tighten
+    now that the name is a compound? Currently untouched.</li>
+    <li><b>Open:</b> if the bison stays, is there anything left of the caliper worth
+    keeping &mdash; a beam rule under the wordmark, say &mdash; or does the rename mean a clean
+    break?</li>
+    <li><b>Open:</b> the favicon at <code>public/favicon.svg</code> is modified in the
+    working tree and has not been reconciled with whatever ships in
+    <code>Logo.astro</code>. They must be the same drawing.</li>
+  </ul>
+
+</div>
+
+<script>
+  // Persisted so a reload doesn't bounce you back to dark mid-comparison.
+  var root = document.documentElement;
+  var saved = null;
+  try { saved = localStorage.getItem('gh-identity-theme'); } catch (e) {}
+  if (saved) root.setAttribute('data-theme', saved);
+  document.getElementById('themeBtn').addEventListener('click', function () {
+    var next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('gh-identity-theme', next); } catch (e) {}
+  });
+</script>
+
+</body>
+</html>

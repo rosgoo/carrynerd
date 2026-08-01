@@ -124,10 +124,10 @@ def main():
     for name, entry in brands.items():
         if name in SEEDED:
             entry["domain"] = SEEDED[name]
-            entry["sources"].append("gearherd-seed")
+            entry["sources"].append("calipered-seed")
     for name, domain in SEEDED.items():
         if name not in brands:
-            brands[name] = {"name": name, "sources": ["gearherd-seed"],
+            brands[name] = {"name": name, "sources": ["calipered-seed"],
                             "aliases": set(), "domain": domain}
 
     out = []
@@ -147,7 +147,7 @@ def main():
                 "packhacker": "packhacker.com/travel-gear listing page",
                 "carryology": "Carry Awards VIII + XI finalist/winner pages",
                 "huckberry": "brand pages confirmed via search",
-                "gearherd-seed": "domains already wired into fetch.py",
+                "calipered-seed": "domains already wired into fetch.py",
             },
             "source_totals": {k: len(v) for k, v in sources.items()},
             "excluded_non_carry": sorted(dropped),

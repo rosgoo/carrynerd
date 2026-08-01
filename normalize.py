@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-gearherd normalizer — turns raw Shopify catalogs into one comparable schema.
+calipered normalizer — turns raw Shopify catalogs into one comparable schema.
 
 The hard part of a bag directory is not fetching, it is that no two brands
 describe a bag the same way. Volume shows up in the title ("Travel Pack 45L"),
@@ -46,16 +46,28 @@ G_PER_OZ = 28.3495
 CATEGORIES = [
     ("sling",            r"\bslings?\b|\bcrossbody\b|\bchest (?:packs?|bags?)\b"),
     ("hip-pack",         r"\b(?:hip packs?|fanny packs?|waist packs?|bum bags?|belt bags?)\b"),
-    ("duffel",           r"\bduff?les?\b|\bduffels?\b|\bgym bags?\b"),
+    # go-bag: Baboon's entire flagship line (32L/40L/60L) is named this and
+    # nothing else, so the whole range sat in `unclassified` while the brand
+    # showed as indexed. A store's own coinage beats a generic noun.
+    ("duffel",           r"\bduff?les?\b|\bduffels?\b|\bgym bags?\b|\bgo-?bags?\b"),
     ("luggage",          r"\b(?:suitcases?|carry[- ]ons?(?: luggage)?|spinners?|rollers?|check[- ]in)\b"),
     ("tote",             r"\btotes?\b|\bshoppers?\b"),
     ("messenger",        r"\bmessengers?\b|\bcouriers?\b|\bsatchels?\b"),
-    ("briefcase",        r"\b(?:briefcases?|attach[eé]s?|portfolios?)\b"),
+    ("briefcase",        r"\b(?:briefcases?|attach[eé]s?|portfolios?|folios?)\b"),
     ("camera-bag",       r"\bcamera (?:bags?|backpacks?)\b|\bphoto (?:bags?|packs?)\b"),
     ("hiking-pack",      r"\b(?:hiking|backpacking|trekking|mountaineering|thru[- ]hik)\w*\b"),
     ("travel-backpack",  r"\btravel (?:packs?|backpacks?)\b|\bcarry[- ]on backpacks?\b"),
     ("daypack",          r"\b(?:daypacks?|day packs?|rucksacks?|backpacks?|packs?)\b"),
-    ("pouch",            r"\b(?:pouch(?:es)?|dopp|kit bags?|toiletry|organi[sz]er cases?)\b"),
+    # The long tail of soft carry that is not a backpack. "kit" is qualified
+    # rather than bare because "Sewing Kit" and "Rift Camera Kit" are contents,
+    # not containers — only the toiletry/tech senses name a bag.
+    ("pouch",            r"\b(?:pouch(?:es)?|dopp|kit bags?|toiletry|"
+                         r"organi[sz]er cases?|organi[sz]ers?|"
+                         r"(?:travel|wash|shave|shaving|grooming|tech|split|"
+                         r"pro|simple)\s+kits?|"
+                         r"zip bags?|pencil cases?|cosmetic cases?|"
+                         r"jewel(?:le)?ry cases?|laptop (?:cases?|sleeves?)|"
+                         r"stuff sacks?|caddy|caddies)\b"),
 ]
 
 # Things a bag catalogue should not contain. Same plural rule, same reason —
@@ -311,6 +323,47 @@ def find_laptop_in(text):
     return None
 
 
+# Negative signal from the store's own product_type, and *only* product_type.
+#
+# `unclassified` had grown to 1,786 products, which made it useless as an audit
+# list — the genuine misses (a tech organiser, a laptop folio) were buried under
+# flannel shirts, down mittens, seatbelt buckles and Béis charms. Those are not
+# classification failures; they are things the brand told us are apparel or
+# hardware and we simply were not listening.
+#
+# Matched against product_type rather than the title because the title lies more
+# often: "Kadet Organizer" reads like clothing to nobody, but "Fuego Down Scarf"
+# and "Rough Runner" are unambiguous once the brand files them under Apparel.
+#
+# Deliberately NOT triggered by a bare "Accessories". Brands file genuine
+# pouches, dopp kits and tech cases there — Aer's Zip Bag and Travel Kit are
+# both product_type Accessories — so treating that word as disqualifying would
+# throw away real index entries to tidy a counter.
+NOT_A_BAG_TYPE = re.compile(
+    r"\b(apparel|outerwear|sportswear|activewear|swimwear|underwear|"
+    r"fleece|insulation|baselayer|base layer|tops?|bottoms?|shirts?|"
+    r"tees?|hoodies?|jackets?|vests?|trousers?|leggings?|dress(?:es)?|"
+    r"footwear|shoes?|boots?|trainers?|runners?|sandals?|"
+    r"headwear|eyewear|jewell?ery|charms?|"
+    r"parts?|hardware|buckles?|components?|spares?|repairs?|"
+    r"beauty|skincare|fragrance|grooming|"
+    r"cooking|hydration|shelters?|sleep(?:ing)?|tents?|"
+    r"gift cards?|events?|resale)\b",
+    re.I,
+)
+
+# …unless the same product_type also names a carry item. Shopify product_type
+# is frequently a breadcrumb rather than a single word, and Béis files its
+# Cosmetic Case and Jewelry Case under "Beauty, Cosmetic Case" — a soft case is
+# a pouch by any other name, and the leading "Beauty" alone was enough to throw
+# eight real products out of the index.
+BAGGISH_TYPE = re.compile(
+    r"\b(bags?|packs?|backpacks?|pouch(?:es)?|cases?|totes?|slings?|"
+    r"duffels?|luggage|folios?|organi[sz]ers?|sleeves?|carriers?)\b",
+    re.I,
+)
+
+
 def classify(title, product_type, tags):
     """
     Returns (category, source). The title is the strongest signal available —
@@ -346,7 +399,7 @@ def option_index(options, pattern):
     return None
 
 
-def build(product, brand, hint=None):
+def build_shopify(product, brand, hint=None):
     title = product.get("title") or ""
     tags = product.get("tags") or []
     ptype = product.get("product_type") or ""
@@ -361,6 +414,11 @@ def build(product, brand, hint=None):
         return None, "not-a-bag:collection"
     if NOT_A_BAG.search(title) or NOT_A_BAG.search(ptype):
         return None, "not-a-bag"
+    # Only after the title has had its say: a "Camera Bag" filed under a
+    # store's "Photo Accessories" shelf is still a camera bag.
+    if (NOT_A_BAG_TYPE.search(ptype) and not BAGGISH_TYPE.search(ptype)
+            and not classify(title, "", [])[0]):
+        return None, "not-a-bag:product-type"
 
     # Precedence: the product's own title, then the store's shelving, then
     # tags. A title is specific and deliberate; a shelf is deliberate but
@@ -496,6 +554,334 @@ def build(product, brand, hint=None):
         "tags": tags,
         "updated_at": product.get("updated_at"),
         "source": "shopify:products.json",
+        "fetched_at": brand.get("fetched_at"),
+    }, None
+
+
+# --- other platforms ----------------------------------------------------------
+#
+# One builder per source, all converging on the exact dict build_shopify
+# returns. raw/ keeps each source's own shape (so a mapping fix is free, no
+# refetch); this is the only place that knows what those shapes are.
+
+def slugify(text):
+    return re.sub(r"-+", "-",
+                  re.sub(r"[^a-z0-9]+", "-", (text or "").lower())).strip("-")
+
+
+# Bellroy's /v2/products API — one item per SKU (colourway × material), specs
+# under attributes.dimensions with every value wrapped in a single-item list.
+# Field notes and the endpoint recipe: Notes/gearherd/bellroy-api.md.
+
+BELLROY_IMG = ("https://bellroy-product-images.imgix.net/"
+               "bellroy_dot_com_gallery_image/{currency}/{sku}/0?auto=format")
+
+# Their shelving, pre-classified. Title still wins — a "Venture Travel Pack"
+# shelved under `backpack` is a travel backpack — this is the fallback.
+BELLROY_CATEGORY = {
+    "backpack": "daypack",
+    "tote_bag": "tote",
+    "bucket_bag": "tote",
+    "cooler_bag": "tote",
+    "duffel": "duffel",
+    "crossbody_bag": "sling",
+    "messenger": "messenger",
+    "laptop_case": "pouch",
+    "pouch": "pouch",
+    "folio": "briefcase",
+    "luggage": "luggage",
+}
+
+# Real products, not bags. Their shelf name is trusted the same way a Shopify
+# product_type is — it is the brand speaking, not a keyword guess.
+# Wallets are out of *scope*, not garbage — raw/ keeps them fully specced, and
+# the planned wallet vertical flips this set (Notes/gearherd/wallets-later.md).
+BELLROY_NOT_A_BAG = {"phone_case", "wallet", "tech_accessory", "key_holder",
+                     "passport_holder"}
+
+# product_type is even blunter than the shelf: {Bag, Wheeled Luggage,
+# Accessory} carry, the rest (Wallet, Phone Case, Marketing) never do. This is
+# what catches "Card Pack" — a promo deck of cards whose title reads as a
+# daypack and which has no shelf at all, only product_type: Marketing.
+BELLROY_BAG_TYPES = {"Bag", "Wheeled Luggage", "Accessory"}
+
+# Feature tokens that map straight onto ours; anything unmapped still gets a
+# chance via detect() over the humanised token text.
+BELLROY_FEATURE = {
+    "water_resistant": "water_resistant",
+    "laptop_sleeve": "laptop_sleeve",
+    "sternum_strap": "sternum_strap",
+    "trolley_sleeve": "luggage_passthrough",
+    "water_bottle_holder": "water_bottle",
+    "expandable": "expandable",
+}
+
+
+def _bellroy_val(dims, key):
+    v = dims.get(key)
+    return v[0] if isinstance(v, list) and v else None
+
+
+def _bellroy_num(dims, key):
+    v = _bellroy_val(dims, key)
+    try:
+        return float(v) if v is not None else None
+    except ValueError:
+        return None
+
+
+def group_bellroy(products):
+    """One model per (name, size); the feed's item is a single SKU."""
+    groups = {}
+    for item in products or []:
+        a = item.get("attributes") or {}
+        dims = a.get("dimensions") or {}
+        key = (a.get("name"), _bellroy_val(dims, "size"))
+        groups.setdefault(key, []).append(a)
+    return list(groups.values())
+
+
+def build_bellroy(skus, brand, hint=None):
+    rep = skus[0]
+    dims = rep.get("dimensions") or {}
+    name = rep.get("name") or ""
+    size = _bellroy_val(dims, "size")
+
+    # "26l" -> "26L", "16in" -> '16"' (their size axis doubles as laptop fit).
+    pretty_size = None
+    if size:
+        pretty_size = re.sub(r"^(\d+(?:\.\d+)?)IN$", r'\1"', size.upper())
+
+    # "Venture Travel Pack" + 26L -> "Venture Travel Pack 26L"; sized names
+    # like "Laptop Caddy 14\"" already carry it and are left alone.
+    title = name
+    if pretty_size and re.sub(r"[^a-z0-9]", "", size.lower()) not in \
+            re.sub(r"[^a-z0-9]", "", name.lower()):
+        title = f"{name} {pretty_size}"
+
+    subcat = _bellroy_val(dims, "filter_sub_category") or ""
+    ptype = _bellroy_val(dims, "product_type")
+    if ptype and ptype not in BELLROY_BAG_TYPES:
+        return None, "not-a-bag:bellroy-type"
+    if NOT_A_BAG.search(title):
+        return None, "not-a-bag"
+    if subcat in BELLROY_NOT_A_BAG:
+        return None, "not-a-bag:bellroy-shelf"
+    category, cat_src = classify(title, "", [])
+    if not category and subcat in BELLROY_CATEGORY:
+        category, cat_src = BELLROY_CATEGORY[subcat], "bellroy-shelf"
+    if not category:
+        return None, "unclassified"
+
+    axes = [v for v in (_bellroy_num(dims, "product_dim_h_cm"),
+                        _bellroy_num(dims, "product_dim_l_cm"),
+                        _bellroy_num(dims, "product_dim_d_cm")) if v]
+    dims_cm = sorted(axes, reverse=True) if len(axes) >= 2 else None
+
+    # `or None`: a zero is the feed saying "not applicable", not a measurement.
+    volume = _bellroy_num(dims, "capacity_litres") or None
+    vol_src = "bellroy-api:capacity_litres" if volume else None
+    if volume is None:
+        ml = _bellroy_num(dims, "product_volume_ml") or None
+        if ml:
+            volume, vol_src = round(ml / 1000.0, 1), "bellroy-api:product_volume_ml"
+
+    weight = _bellroy_num(dims, "net_weight_g") or None
+    weight = int(weight) if weight else None
+
+    laptop = None
+    for token in dims.get("filter_device_storage") or []:
+        m = re.match(r"laptop_(\d+)_inch", token)
+        if m:
+            laptop = max(laptop or 0, float(m.group(1)))
+
+    # Features and materials vary per SKU (a leather edition beside a woven
+    # one), so union across the whole group like the Shopify path does.
+    feat_tokens, mat_text = set(), []
+    for a in skus:
+        d2 = a.get("dimensions") or {}
+        for key in ("filter_feature", "product_feature", "table_features"):
+            feat_tokens.update(d2.get(key) or [])
+        mat_text.extend(t.replace("_", " ") for t in d2.get("material") or [])
+        mat_text.extend(k.replace("material_composition_", "").replace("_", " ")
+                        for k in d2 if k.startswith("material_composition_"))
+    features = sorted(
+        {BELLROY_FEATURE[t] for t in feat_tokens if t in BELLROY_FEATURE}
+        | set(detect(" ".join(t.replace("_", " ") for t in feat_tokens),
+                     FEATURES)))
+    materials = sorted(set(detect(" ".join(mat_text), MATERIALS)))
+
+    variants, colors, prices = [], [], []
+    for a in skus:
+        d2 = a.get("dimensions") or {}
+        color = (_bellroy_val(d2, "color") or "").replace("_", " ").title() or None
+        price_obj = a.get("price") or {}
+        cents = price_obj.get("price_in_cents")
+        price = round(cents / 100.0, 2) if isinstance(cents, (int, float)) else None
+        currency = (price_obj.get("currency_code") or "usd").upper()
+        material = (_bellroy_val(d2, "material") or "").replace("_", " ").title()
+        if price:
+            prices.append(price)
+        if color and color not in colors:
+            colors.append(color)
+        variants.append({
+            "sku": a.get("sku"),
+            "title": " / ".join(x for x in (color, material or None) if x) or None,
+            "color": color,
+            "color_family": colour_family(color),
+            "size": pretty_size,
+            "price": price,
+            "compare_at": None,
+            # The feed lists only live products and carries no stock counts;
+            # "listed for sale" is what it states, so that is what is stored.
+            "available": True,
+            "grams": None,
+            "barcode": a.get("barcode"),
+            "image": BELLROY_IMG.format(currency=currency, sku=a.get("sku")),
+        })
+
+    path = (rep.get("canonical_uri") or "").split("?")[0]
+    return {
+        "id": f"{brand['slug']}__{slugify(title)}",
+        "brand": brand["name"],
+        "brand_slug": brand["slug"],
+        "name": title,
+        "category": category,
+        "category_source": cat_src,
+        "url": f"https://{brand['domain']}{path}",
+        "image": variants[0]["image"] if variants else None,
+        "volume_l": volume,
+        "volume_source": vol_src,
+        "dims_cm": dims_cm,
+        "dims_source": "bellroy-api:product_dim" if dims_cm else None,
+        "linear_cm": round(sum(dims_cm), 1) if dims_cm else None,
+        "weight_g": weight,
+        "weight_source": "bellroy-api:net_weight_g" if weight else None,
+        "laptop_in": laptop,
+        "price_min": round(min(prices), 2) if prices else None,
+        "price_max": round(max(prices), 2) if prices else None,
+        "on_sale": False,
+        "in_stock": True,
+        "colors": colors,
+        "sizes": [pretty_size] if pretty_size else [],
+        "variant_count": len(variants),
+        "variants": variants,
+        "color_families": sorted({f for f in (
+            [colour_family(c) for c in colors]) if f}),
+        "materials": materials,
+        "features": features,
+        "tags": [],
+        "updated_at": None,
+        "source": "bellroy:v2-products",
+        "fetched_at": brand.get("fetched_at"),
+    }, None
+
+
+# CampSaver — schema.org Product JSON-LD from an aggregator's product pages.
+# One page per model; offers[] is the variant level (price, stock, GTIN). The
+# spec facts live as labelled text inside `description`, which is what the
+# existing extraction helpers already parse.
+
+CUIN_RE = re.compile(r"([\d,]{3,7})\s*(?:cu\.?\s*in\b|cubic\s*inch)", re.I)
+CUIN_TO_L = 0.0163871
+
+
+def build_campsaver(item, brand, hint=None):
+    ld = item.get("product") or {}
+    crumbs = [c for c in (item.get("breadcrumbs") or []) if c]
+    title = (ld.get("name") or "").strip()
+    if not title:
+        return None, "no-title"
+    brand_name = ((ld.get("brand") or {}).get("name")
+                  or ld.get("manufacturer") or "").strip()
+    if not brand_name:
+        return None, "no-brand"
+
+    crumb_text = " ".join(crumbs)
+    if NOT_A_BAG.search(title):
+        return None, "not-a-bag"
+    # Breadcrumbs are the retailer's shelving — same standing as a Shopify
+    # product_type, same guard against a shelf name that also names a bag.
+    if (NOT_A_BAG_TYPE.search(crumb_text) and not BAGGISH_TYPE.search(crumb_text)
+            and not classify(title, "", [])[0]):
+        return None, "not-a-bag:breadcrumb"
+    category, cat_src = classify(title, crumb_text, [])
+    if not category:
+        return None, "unclassified"
+
+    desc = strip_html(ld.get("description") or "")
+    dims_cm, dims_src = find_dims_cm(desc)
+    volume = find_volume(desc)
+    vol_src = "campsaver:description" if volume else None
+    if volume is None:
+        m = CUIN_RE.search(desc)
+        if m:
+            v = float(m.group(1).replace(",", "")) * CUIN_TO_L
+            if 0.5 <= v <= 150:
+                volume, vol_src = round(v, 1), "campsaver:cubic-inches"
+    weight = find_weight_g(desc)
+
+    offers = ld.get("offers") or []
+    if isinstance(offers, dict):
+        offers = [offers]
+    variants, prices = [], []
+    for o in offers:
+        try:
+            price = float(o.get("price")) or None
+        except (TypeError, ValueError):
+            price = None
+        if price:
+            prices.append(price)
+        variants.append({
+            "sku": o.get("sku"),
+            "title": None,
+            "color": None,
+            "color_family": None,
+            "size": None,
+            "price": price,
+            "compare_at": None,
+            "available": (o.get("availability") or "").endswith("InStock"),
+            "grams": None,
+            "barcode": o.get("gtin13") or o.get("gtin"),
+            "image": None,
+        })
+
+    image = ld.get("image")
+    if isinstance(image, list):
+        image = image[0] if image else None
+
+    blob = f"{title}\n{desc}"
+    return {
+        "id": f"campsaver__{slugify(re.sub(r'[.]html$', '', (item.get('url') or '').rsplit('/', 1)[-1]))}",
+        "brand": brand_name,
+        "brand_slug": slugify(brand_name),
+        "name": title,
+        "category": category,
+        "category_source": cat_src,
+        "url": item.get("url") or ld.get("url"),
+        "image": image,
+        "volume_l": volume,
+        "volume_source": vol_src,
+        "dims_cm": dims_cm,
+        "dims_source": f"campsaver:{dims_src}" if dims_src else None,
+        "linear_cm": round(sum(dims_cm), 1) if dims_cm else None,
+        "weight_g": weight,
+        "weight_source": "campsaver:description" if weight else None,
+        "laptop_in": find_laptop_in(blob),
+        "price_min": round(min(prices), 2) if prices else None,
+        "price_max": round(max(prices), 2) if prices else None,
+        "on_sale": False,
+        "in_stock": any(v["available"] for v in variants),
+        "colors": [],
+        "sizes": [],
+        "variant_count": len(variants),
+        "variants": variants,
+        "color_families": [],
+        "materials": sorted(set(detect(blob, MATERIALS))),
+        "features": detect(blob, FEATURES),
+        "tags": [],
+        "updated_at": None,
+        "source": "campsaver:jsonld",
         "fetched_at": brand.get("fetched_at"),
     }, None
 
@@ -637,6 +1023,7 @@ def main():
         sys.exit("no raw catalogs — run fetch.py first")
 
     bags, rejects, quarantine = [], {}, []
+    direct_brand_names = set()
     for path in files:
         with open(path) as f:
             payload = json.load(f)
@@ -644,19 +1031,52 @@ def main():
             "slug": payload["slug"], "name": payload["name"],
             "domain": payload["domain"], "fetched_at": payload.get("fetched_at"),
         }
+        platform = payload.get("platform") or "shopify"
+        if platform != "campsaver":
+            direct_brand_names.add(brand["name"].lower())
+
         # Optional — produced by `fetch.py --collections`. Absent for brands
         # whose shelving has not been crawled, and the keyword path still works.
         hints = {}
         hint_path = os.path.join(COLLECTIONS, f"{payload['slug']}.json")
-        if os.path.exists(hint_path):
+        if platform == "shopify" and os.path.exists(hint_path):
             try:
                 with open(hint_path) as f:
                     hints = json.load(f).get("products", {})
             except (json.JSONDecodeError, KeyError):
                 hints = {}
 
-        for product in payload.get("products", []):
-            bag, why = build(product, brand, hints.get(str(product.get("id"))))
+        if platform == "bellroy":
+            items, builder = group_bellroy(payload.get("products", [])), build_bellroy
+        elif platform == "campsaver":
+            items, builder = payload.get("products", []), build_campsaver
+        else:
+            items, builder = payload.get("products", []), build_shopify
+
+        def describe(product):
+            """(title, type, tags, url) for the quarantine row, per shape."""
+            if platform == "bellroy":
+                a = product[0]
+                d2 = a.get("dimensions") or {}
+                return (a.get("name"),
+                        _bellroy_val(d2, "filter_sub_category"), [],
+                        f"https://{brand['domain']}"
+                        f"{(a.get('canonical_uri') or '').split('?')[0]}")
+            if platform == "campsaver":
+                ld = product.get("product") or {}
+                return (ld.get("name"),
+                        " > ".join(product.get("breadcrumbs") or []) or None,
+                        [], product.get("url"))
+            return (product.get("title"),
+                    product.get("product_type") or None,
+                    (product.get("tags") or [])[:6],
+                    f"https://{brand['domain']}/products/"
+                    f"{product.get('handle') or ''}")
+
+        for product in items:
+            hint = (hints.get(str(product.get("id")))
+                    if platform == "shopify" else None)
+            bag, why = builder(product, brand, hint)
             if bag:
                 bags.append(bag)
             else:
@@ -665,15 +1085,28 @@ def main():
                 # were dropped; it does not tell you that they were all one
                 # brand whose titles use a plural the classifier could not
                 # match. Keeping the rows makes the classifier auditable.
+                title, ptype, tags, url = describe(product)
                 quarantine.append({
                     "brand_slug": brand["slug"],
                     "reason": why,
-                    "title": product.get("title"),
-                    "product_type": product.get("product_type") or None,
-                    "tags": (product.get("tags") or [])[:6],
-                    "url": f"https://{brand['domain']}/products/"
-                           f"{product.get('handle') or ''}",
+                    "title": title,
+                    "product_type": ptype,
+                    "tags": tags,
+                    "url": url,
                 })
+
+    # Aggregator entries only fill brands with no direct source. A retailer's
+    # listing of a brand fetched first-hand would shadow it — same model,
+    # thinner specs, a retailer's price — so direct always wins.
+    kept = []
+    for bag in bags:
+        if (bag["source"].startswith("campsaver:")
+                and bag["brand"].lower() in direct_brand_names):
+            rejects["aggregator:direct-source-exists"] = \
+                rejects.get("aggregator:direct-source-exists", 0) + 1
+        else:
+            kept.append(bag)
+    bags = kept
 
     before = len(bags)
     bags = merge_models(bags)

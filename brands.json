@@ -202,7 +202,8 @@
   {
     "slug": "bellroy",
     "name": "Bellroy",
-    "domain": "bellroy.com"
+    "domain": "bellroy.com",
+    "platform": "bellroy"
   },
   {
     "slug": "osprey",
@@ -358,5 +359,11 @@
     "slug": "stubble-and-co",
     "name": "Stubble & Co",
     "domain": "stubbleandco.com"
+  },
+  {
+    "slug": "campsaver",
+    "name": "CampSaver",
+    "domain": "www.campsaver.com",
+    "platform": "campsaver"
   }
 ]
