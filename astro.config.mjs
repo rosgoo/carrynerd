@@ -10,7 +10,7 @@ export default defineConfig({
   // Canonical URLs, sitemap entries and JSON-LD all key off this. The name is
   // not settled — see the open decisions in the handoff — so it reads from the
   // environment and the placeholder is the only thing to change once it is.
-  site: process.env.SITE_URL ?? 'https://bagdex.com',
+  site: process.env.SITE_URL ?? 'https://gearherd.com',
   output: 'static',
   adapter: vercel(),
   integrations: [sitemap()],

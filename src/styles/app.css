@@ -1,4 +1,4 @@
-/* bagdex — technical spec-sheet aesthetic: hairline rules, hard corners,
+/* gearherd — technical spec-sheet aesthetic: hairline rules, hard corners,
    monospace figures, one hi-vis accent. Nothing rounded, nothing soft. */
 
 :root {
@@ -663,3 +663,10 @@ td.instock { color: var(--ok); }
 .offers .spectable td:last-child { text-align: right; }
 .offers .spectable a { color: var(--accent); text-decoration: none; }
 .offers .spectable a:hover { text-decoration: underline; }
+
+/* The model name is the way to its page, from either view. Underline on hover
+   only — 480 permanently underlined names would read as noise in a dense grid. */
+a.cname { display: block; text-decoration: none; }
+.card:hover a.cname { text-decoration: underline; text-underline-offset: 2px; }
+td.name a { text-decoration: none; }
+td.name a:hover { color: var(--accent); text-decoration: underline; }

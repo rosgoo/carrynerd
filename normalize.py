@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-bagdex normalizer — turns raw Shopify catalogs into one comparable schema.
+gearherd normalizer — turns raw Shopify catalogs into one comparable schema.
 
 The hard part of a bag directory is not fetching, it is that no two brands
 describe a bag the same way. Volume shows up in the title ("Travel Pack 45L"),

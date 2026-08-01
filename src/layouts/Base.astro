@@ -34,7 +34,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <script is:inline>
   try {
-    const saved = localStorage.getItem('bagdex-theme');
+    const saved = localStorage.getItem('gearherd-theme');
     if (saved) document.documentElement.setAttribute('data-theme', saved);
   } catch {}
 </script>
@@ -61,10 +61,6 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
   <a href="/brands/">Brands</a>
   <a href="/privacy/">Privacy</a>
   <a href="/bot/">About the crawler</a>
-  <span>
-    Specs are extracted from brands' published product feeds, not hand-checked.
-    Nothing is estimated — verify against the brand before buying.
-  </span>
 </footer>
 
 <script>
@@ -76,7 +72,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
         : 'dark';
     document.documentElement.setAttribute('data-theme', next);
     try {
-      localStorage.setItem('bagdex-theme', next);
+      localStorage.setItem('gearherd-theme', next);
     } catch {}
   });
 </script>

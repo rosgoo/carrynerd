@@ -1,4 +1,4 @@
--- bagdex alerts — the only runtime database in the system.
+-- gearherd alerts — the only runtime database in the system.
 --
 -- Email addresses are the one piece of state that cannot live in git: the data
 -- plane is public and fully version-controlled, and an address committed once

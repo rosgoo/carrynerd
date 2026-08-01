@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-bagdex enricher — stage 2, fills in what the Shopify feed leaves out.
+gearherd enricher — stage 2, fills in what the Shopify feed leaves out.
 
 /products.json gives us SKUs, colourways, prices, stock and weight, but brands
 keep dimensions and laptop fit in metafields that the feed does not expose.

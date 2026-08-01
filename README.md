@@ -1,4 +1,4 @@
-# bagdex
+# gearherd
 
 A searchable, comparable index of bags — normalised across brands from public
 product feeds.
@@ -112,7 +112,7 @@ Set a real contact URL before running at any scale — it goes in the
 User-Agent so store operators can reach you:
 
 ```bash
-export BAGDEX_CONTACT="https://yoursite.com/bot"
+export GEARHERD_CONTACT="https://yoursite.com/bot"
 ```
 
 ## Where the data comes from
@@ -161,7 +161,7 @@ for that. So:
 
 - **A real HTML page per model** at `/bags/<brand>/<model>/` — spec table with
   provenance on every value, colourways with their own SKUs, price history, and
-  schema.org `Product` markup. (Ironic, but bagdex is the site actually filling
+  schema.org `Product` markup. (Ironic, but gearherd is the site actually filling
   in `width`/`height`/`depth`, which is why nobody's `Product` block is worth
   reading.)
 - **Brand pages** at `/brands/<brand>/`, and a sitemap, so every model page has

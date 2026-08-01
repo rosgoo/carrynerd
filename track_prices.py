@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-bagdex price tracker — the one asset that cannot be backfilled.
+gearherd price tracker — the one asset that cannot be backfilled.
 
 Specs can be re-scraped at any time; a price you did not record on the day it
 changed is gone forever. So this runs after every normalize and records what

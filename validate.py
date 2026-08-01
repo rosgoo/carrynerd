@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-bagdex quality gate — the thing standing between a bad parse and a live site.
+gearherd quality gate — the thing standing between a bad parse and a live site.
 
 The nightly workflow commits and deploys with nobody watching. That is fine
 right up until a regex change halves the index, at which point the pipeline

@@ -8,7 +8,7 @@ import { catLabel, featureLabel, sourceLabel } from '../../../lib/labels.js';
 import { SITE_NAME } from '../../../lib/brand.js';
 import {
   fmtPrice, fmtPriceRange, fmtWeight, fmtDims, fmtVolume, fmtLaptop,
-  fmtLinear, fmtDate, gramsPerLitre, pricePerLitre,
+  fmtLinear, gramsPerLitre, pricePerLitre,
 } from '../../../lib/format.js';
 
 export function getStaticPaths() {
@@ -183,9 +183,8 @@ const description =
         </tbody>
       </table>
       <p class="note">
-        Nothing on this page is estimated. A “—” means we could not establish
-        the value from the brand’s own published data, and every value that is
-        here records where it came from. Verify against the brand before buying.
+        A “—” means we could not establish the value, not that it is zero.
+        Nothing here is estimated.
       </p>
     </section>
 
@@ -262,9 +261,5 @@ const description =
       </section>
     )}
 
-    <p class="note foot">
-      Source: {bag.source ?? '—'} · fetched {fmtDate(bag.fetched_at) ?? '—'}
-      {bag.merged_from > 1 && ` · merged from ${bag.merged_from} storefront products`}
-    </p>
   </div>
 </Base>

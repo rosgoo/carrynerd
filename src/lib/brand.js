@@ -6,8 +6,12 @@
  * an existing outdoor retailer, and "herd" connotes herd mentality, which cuts
  * against an audience that prides itself on doing its own research.
  *
- * Changing the name means changing this file and `site` in astro.config.mjs.
- * Nothing else hardcodes it.
+ * Changing the name means changing this file and `site` in astro.config.mjs,
+ * plus the places outside the Astro build that cannot import from here:
+ * the Python pipeline's User-Agent and docstrings, alerts/ (match.py,
+ * schema.sql), src/lib/email.ts, the nightly workflow's GEARHERD_CONTACT and
+ * bot identity, the `gearherd-theme` localStorage key in Base.astro, and
+ * README.md. Grep for the name; it is not confined to this file.
  */
 
 export const SITE_NAME = 'gearherd';

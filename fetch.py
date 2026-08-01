@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-bagdex fetcher — pulls public Shopify product catalogs.
+gearherd fetcher — pulls public Shopify product catalogs.
 
 Only touches endpoints that stores publish for anyone: /products.json (the
 storefront JSON feed Shopify serves by default) and /robots.txt. No login, no
@@ -55,8 +55,8 @@ LOG_PART = os.path.join(HERE, "data", "fetch-log.part-{}.json")
 
 # Identify the crawler honestly and give operators a way to reach you.
 # Put a real contact URL here before running this at any scale.
-CONTACT = os.environ.get("BAGDEX_CONTACT", "https://example.com/bagdex-bot")
-UA = f"bagdex/0.1 (product catalog indexer; +{CONTACT})"
+CONTACT = os.environ.get("GEARHERD_CONTACT", "https://example.com/gearherd-bot")
+UA = f"gearherd/0.1 (product catalog indexer; +{CONTACT})"
 
 PAGE_LIMIT = 250
 MAX_PAGES = 12

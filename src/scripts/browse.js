@@ -1,4 +1,4 @@
-/* bagdex — the browse/compare island.
+/* gearherd — the browse/compare island.
  *
  * Loads the whole catalog once and filters in memory. That is deliberate: at a
  * few thousand models it beats a round trip per keystroke, and it means the
@@ -157,7 +157,7 @@ function card(b) {
     </div>
     <div class="cbody" data-detail>
       <div class="cbrand">${esc(b.brand)}</div>
-      <div class="cname">${esc(b.name)}</div>
+      <a class="cname" href="${esc(bagHref(b))}">${esc(b.name)}</a>
     </div>
     <div class="specs">
       ${cell("Vol", fmtVol(b))}${cell("Weight", fmtWeight(b))}
@@ -196,7 +196,7 @@ function tableRows(list) {
     const td = v => v == null ? '<td class="nil">—</td>' : `<td>${v}</td>`;
     return `<tr class="${on ? "sel" : ""}" data-id="${esc(b.id)}">
       <td>${esc(b.brand)}</td>
-      <td class="name" data-detail>${esc(b.name)}</td>
+      <td class="name"><a href="${esc(bagHref(b))}">${esc(b.name)}</a></td>
       <td>${esc(CAT_LABELS[b.category] || b.category)}</td>
       ${td(b.volume_l)}${td(b.weight_g)}
       ${td(b.dims_cm ? b.dims_cm.map(n => n.toFixed(0)).join("×") : null)}
@@ -311,10 +311,6 @@ function buildFacets() {
     `<span><b>${DATA.meta.brand_count ?? "—"}</b> BRANDS</span>` +
     `<span><b>${DATA.meta.sku_count ?? "—"}</b> SKUS</span>`;
 
-  $("#srcnote").innerHTML =
-    `Built from public Shopify product feeds and schema.org Product data.
-     Specs are extracted, not hand-checked — verify against the brand before
-     buying. Prices as fetched, USD.`;
 }
 
 /* ---------- compare ---------- */
@@ -420,7 +416,6 @@ function openDetail(id) {
       <thead><tr><th>Colourway</th><th>SKU</th><th>Price</th><th>Stock</th></tr></thead>
       <tbody>${variants}</tbody></table>` : ""}
     <div class="note">
-      Source: ${esc(b.source || "—")} · fetched ${esc((b.fetched_at || "").slice(0, 10))}<br>
       <a href="${esc(b.url)}" target="_blank" rel="noopener nofollow">Open on ${esc(b.brand)} ↗</a>
     </div>
     <a class="btn detfull" href="${esc(bagHref(b))}">Full specs &amp; price history →</a>`;
@@ -486,6 +481,10 @@ function wire() {
   });
 
   document.addEventListener("click", e => {
+    // A link is a link. The card still opens the drawer, but the model name
+    // navigates, so there are two ways through and neither fights the other.
+    if (e.target.closest("a[href]")) return;
+
     const facet = e.target.closest("[data-f]");
     if (facet) {
       const set = facetSets()[facet.dataset.f];
@@ -589,7 +588,7 @@ function wire() {
     // Leave the server-rendered fallback list in place — it is every model on
     // the site, just without the filters. A degraded page beats a dead one.
     $("#count").textContent = "filters unavailable — showing all models";
-    console.error("bagdex: could not load /bags.json", err);
+    console.error("gearherd: could not load /bags.json", err);
     return;
   }
   buildFacets();
