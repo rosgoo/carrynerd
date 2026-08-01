@@ -1,0 +1,4 @@
+# Only the alert matcher has a dependency. The crawl pipeline (fetch.py,
+# normalize.py, enrich.py, track_prices.py) is stdlib-only and stays that way —
+# it has to run anywhere, including a laptop with no virtualenv.
+psycopg[binary]>=3.2

@@ -1,0 +1,71 @@
+---
+import '../styles/app.css';
+
+const {
+  title,
+  description = 'A searchable, comparable index of bags normalised across brands from public product feeds.',
+  image = null,
+  noindex = false,
+} = Astro.props;
+
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
+---
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{title}</title>
+<meta name="description" content={description} />
+<link rel="canonical" href={canonical} />
+{noindex && <meta name="robots" content="noindex,nofollow" />}
+
+<meta property="og:type" content="website" />
+<meta property="og:title" content={title} />
+<meta property="og:description" content={description} />
+<meta property="og:url" content={canonical} />
+{image && <meta property="og:image" content={image} />}
+<meta name="twitter:card" content={image ? 'summary_large_image' : 'summary'} />
+
+<!-- Restore the saved theme before first paint. Deferring this to the island
+     would flash dark-on-light for anyone who chose the light theme. -->
+<script is:inline>
+  try {
+    const saved = localStorage.getItem('bagdex-theme');
+    if (saved) document.documentElement.setAttribute('data-theme', saved);
+  } catch {}
+</script>
+<slot name="head" />
+</head>
+<body>
+
+<slot name="header">
+  <header>
+    <a class="brand" href="/"><i></i>BAGDEX</a>
+    <div class="stats"></div>
+    <div class="spacer"></div>
+    <nav class="hbtns">
+      <a class="hbtn" href="/">Browse</a>
+      <a class="hbtn" href="/brands/">Brands</a>
+      <button class="hbtn" id="theme" title="Toggle theme">Theme</button>
+    </nav>
+  </header>
+</slot>
+
+<slot />
+
+<script>
+  // The theme toggle is the one behaviour every page shares.
+  document.getElementById('theme')?.addEventListener('click', () => {
+    const next =
+      document.documentElement.getAttribute('data-theme') === 'dark'
+        ? 'light'
+        : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try {
+      localStorage.setItem('bagdex-theme', next);
+    } catch {}
+  });
+</script>
+</body>
+</html>

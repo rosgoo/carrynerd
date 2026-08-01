@@ -1,0 +1,87 @@
+---
+import { fmtPrice, fmtDate } from '../lib/format.js';
+
+/* The ledger is a change log, not a daily sample, so the series is sparse by
+   construction — one point per actual move. Drawing it as a step line rather
+   than a smooth curve is the honest rendering: the price held flat between
+   recorded changes, it did not drift. */
+const { series = [], changes = [], since = null } = Astro.props;
+
+const W = 640;
+const H = 140;
+const PAD = { top: 12, right: 12, bottom: 22, left: 44 };
+
+const prices = series.map((p) => p.price);
+const lo = Math.min(...prices);
+const hi = Math.max(...prices);
+// A flat series would divide by zero; give it a band to sit in the middle of.
+const span = hi - lo || Math.max(hi * 0.1, 1);
+const base = hi === lo ? lo - span / 2 : lo;
+
+const plotW = W - PAD.left - PAD.right;
+const plotH = H - PAD.top - PAD.bottom;
+
+const x = (i) => PAD.left + (series.length < 2 ? plotW / 2 : (i / (series.length - 1)) * plotW);
+const y = (p) => PAD.top + plotH - ((p - base) / span) * plotH;
+
+// Step path: hold the previous price until the day it changed.
+const path = series
+  .map((pt, i) =>
+    i === 0 ? `M${x(0)},${y(pt.price)}` : `H${x(i)}V${y(pt.price)}`,
+  )
+  .join(' ');
+
+const ticks = hi === lo ? [hi] : [lo, (lo + hi) / 2, hi];
+---
+<section class="pricehist">
+  <h2>Price history</h2>
+
+  {series.length >= 2 ? (
+    <>
+      <svg viewBox={`0 0 ${W} ${H}`} class="sparkfull" role="img"
+           aria-label={`Price history: ${series.length} recorded changes between ${fmtPrice(lo)} and ${fmtPrice(hi)}`}>
+        {ticks.map((t) => (
+          <>
+            <line x1={PAD.left} x2={W - PAD.right} y1={y(t)} y2={y(t)} class="gridline" />
+            <text x={PAD.left - 6} y={y(t) + 3} class="axis" text-anchor="end">{fmtPrice(Math.round(t))}</text>
+          </>
+        ))}
+        <path d={path} class="sparkline" />
+        {series.map((pt, i) => <circle cx={x(i)} cy={y(pt.price)} r="2.5" class="sparkdot" />)}
+        <text x={PAD.left} y={H - 6} class="axis">{series[0].date}</text>
+        <text x={W - PAD.right} y={H - 6} class="axis" text-anchor="end">{series.at(-1).date}</text>
+      </svg>
+      <p class="note">
+        Lowest recorded {fmtPrice(lo)} · highest {fmtPrice(hi)} ·
+        {series.length} recorded changes since {fmtDate(since)}.
+      </p>
+    </>
+  ) : (
+    <p class="note empty-hist">
+      Tracking since {fmtDate(since) ?? 'the first crawl'} — no price change
+      recorded yet. The ledger only appends when something actually moves, so
+      a gap here means the price held, not that we stopped looking.
+    </p>
+  )}
+
+  {changes.length > 0 && (
+    <table class="vartable">
+      <thead>
+        <tr><th>Date</th><th>Colourway</th><th>Was</th><th>Now</th><th>Change</th></tr>
+      </thead>
+      <tbody>
+        {changes.slice(0, 20).map((row) => (
+          <tr>
+            <td>{row.ts.slice(0, 10)}</td>
+            <td>{row.color || row.sku || '—'}</td>
+            <td>{fmtPrice(row.prev_price)}</td>
+            <td>{fmtPrice(row.price)}</td>
+            <td class={row.direction === 'down' ? 'down' : 'up'}>
+              {row.direction === 'down' ? '▼' : '▲'} {fmtPrice(Math.abs(row.delta ?? 0))}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )}
+</section>

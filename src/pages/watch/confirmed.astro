@@ -1,0 +1,31 @@
+---
+import Base from '../../layouts/Base.astro';
+---
+<Base title="Watch confirmed — bagdex" noindex={true}>
+  <div class="midpage">
+    <h1>Watch confirmed</h1>
+    <p>
+      That's it. The crawl runs nightly, and you'll hear from us the first time
+      the price actually moves down — not on a schedule, and not for anything
+      else.
+    </p>
+    <p>
+      Every email carries a one-click unsubscribe that deletes the watch and
+      your address outright. You can also
+      <a href="#" id="unsub-now">unsubscribe right now</a>.
+    </p>
+    <p><a class="btn" href="/">Back to the index</a></p>
+  </div>
+
+  <script>
+    // The unsub token arrives in the query string so this page can offer the
+    // escape hatch without asking anyone to log in to anything.
+    const token = new URLSearchParams(location.search).get('u');
+    const link = document.getElementById('unsub-now');
+    if (token && link) {
+      link.setAttribute('href', `/api/unsubscribe?token=${encodeURIComponent(token)}`);
+    } else {
+      link?.closest('p')?.remove();
+    }
+  </script>
+</Base>

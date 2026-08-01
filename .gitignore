@@ -1,12 +1,25 @@
-# Raw upstream catalogues — regenerable via fetch.py, and large.
+# Raw upstream catalogues — regenerable via fetch.py, and large. Deliberately
+# not committed: they are minified single-line JSON that churns nightly, so git
+# would store a fresh multi-MB blob every day for no diffing benefit. The
+# nightly workflow passes them between jobs as artifacts and caches them across
+# runs instead. data/ is the part that earns version control.
 raw/
 # Run logs
 data/*.out
+# This run's price drops, handed to the alert matcher. Not a durable artifact —
+# price-history.jsonl is the ledger.
+data/price-events.json
 __pycache__/
 *.pyc
 .DS_Store
 
-# SQLite artifacts — rebuilt from price-history.jsonl via `db.py sync`
-data/*.db
-data/*.db-wal
-data/*.db-shm
+# Astro / Vercel
+node_modules/
+dist/
+.astro/
+.vercel/
+.env
+.env.*.local
+
+# Grove project metadata — local tooling config, not part of the build.
+.grove/

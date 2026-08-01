@@ -1,0 +1,172 @@
+# The data plane. Runs the pipeline nightly and commits the diff — git is the
+# database history, the backup and the audit log, for nothing.
+#
+# Two jobs because they have wildly different cost profiles:
+#
+#   fetch     /products.json only, ~3 requests per brand. Sharded across a
+#             small matrix so the whole brand list finishes inside one run.
+#   assemble  normalize, an incremental enrichment delta, price tracking, and
+#             the alert matcher. Single runner, single commit.
+#
+# The expensive first enrichment pass is NOT here. It is thousands of product
+# pages and it belongs on a home machine with a residential IP and no six-hour
+# job cap — see the README. This only ever picks up the nightly delta.
+#
+# Pushing to main is what triggers the site rebuild: Vercel's git integration
+# deploys the commit. There is no deploy hook to keep in sync.
+
+name: nightly
+
+on:
+  schedule:
+    # 03:20 UTC. Off the hour on purpose — the top of the hour is when every
+    # other cron on GitHub fires and runners queue.
+    - cron: '20 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  # Never let two nights overlap; the second would fight the first for the
+  # commit and double-count price changes.
+  group: nightly
+  cancel-in-progress: false
+
+env:
+  # Datacenter IPs get `local_rate_limited` from Shopify's edge almost
+  # immediately, so pace hard. This is the number that keeps the crawl polite.
+  DELAY: '65'
+  SHARDS: '4'
+  BAGDEX_CONTACT: https://bagdex.com/bot
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      # Splitting the brand *list* across runners is capacity. Each shard is an
+      # ordinary polite client: it paces at DELAY, honours Retry-After, and
+      # never retries a block that another shard hit. Raise this as the brand
+      # list grows — never in response to a 429.
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Yesterday's catalogues. --max-age refetches anything older than 20h, so
+      # this is not a way to skip work; it is what lets a brand that fails
+      # tonight keep its last good catalogue instead of vanishing from the
+      # index for a day.
+      - name: Restore raw catalogues
+        uses: actions/cache/restore@v4
+        with:
+          path: raw
+          key: raw-${{ github.run_id }}
+          restore-keys: raw-
+
+      - name: Fetch shard ${{ matrix.shard }}
+        run: |
+          python3 fetch.py \
+            --shard ${{ matrix.shard }}/${{ env.SHARDS }} \
+            --delay ${{ env.DELAY }} \
+            --max-age 20
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: raw-shard-${{ matrix.shard }}
+          path: |
+            raw/
+            data/fetch-log.part-*.json
+          retention-days: 2
+          if-no-files-found: warn
+
+  assemble:
+    needs: fetch
+    # A dead shard must not cost us the whole night. Whatever did come back
+    # gets normalized over the cached remainder.
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Restore raw catalogues
+        uses: actions/cache/restore@v4
+        with:
+          path: raw
+          key: raw-${{ github.run_id }}
+          restore-keys: raw-
+
+      # Shard artifacts land on top of the cached copies, so a brand only goes
+      # stale if its shard failed — and then it is yesterday's data, not a hole.
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: raw-shard-*
+          merge-multiple: true
+          path: .
+
+      - name: Merge shard fetch logs
+        run: python3 fetch.py --merge-logs
+
+      - name: Normalize
+        run: python3 normalize.py
+
+      # Incremental by construction: enrich.py skips anything already in
+      # data/enrich-cache.json, which is committed, so this only ever sees
+      # genuinely new SKUs. Capped and allowed to fail — product pages from a
+      # datacenter IP are the throttled path, and a slow night here must not
+      # block the price commit, which is the part that cannot be backfilled.
+      - name: Enrich new products
+        continue-on-error: true
+        run: python3 enrich.py --limit 60 --delay ${{ env.DELAY }}
+
+      - name: Track prices
+        run: python3 track_prices.py --events-out data/price-events.json
+
+      - name: Install alert matcher dependencies
+        run: pip install --quiet -r alerts/requirements.txt
+
+      # Runs here rather than on its own schedule because track_prices.py has
+      # just worked out exactly which prices moved. A separate cron would have
+      # to re-derive that from the ledger by timestamp comparison.
+      # Exits cleanly when DATABASE_URL is unset, so this stays green until
+      # Neon is wired up.
+      - name: Match price alerts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ALERT_FROM: ${{ vars.ALERT_FROM }}
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: python3 alerts/match.py --events data/price-events.json
+
+      - name: Save raw catalogues
+        uses: actions/cache/save@v4
+        # Cache keys are immutable, so this only ever writes a fresh run-id key.
+        if: always()
+        with:
+          path: raw
+          key: raw-${{ github.run_id }}
+
+      - name: Commit the diff
+        run: |
+          git config user.name  "bagdex-bot"
+          git config user.email "bagdex-bot@users.noreply.github.com"
+          # data/price-events.json is gitignored — it is a hand-off to the
+          # matcher, not a record. The ledger is the record.
+          git add data/
+          if git diff --cached --quiet; then
+            echo "nothing moved tonight"
+            exit 0
+          fi
+          git commit -m "data: nightly crawl $(date -u +%Y-%m-%d)"
+          git push

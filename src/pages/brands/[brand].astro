@@ -1,0 +1,79 @@
+---
+import Base from '../../layouts/Base.astro';
+import WatchForm from '../../components/WatchForm.astro';
+import { brands, bagHref } from '../../lib/catalog.js';
+import { catLabel } from '../../lib/labels.js';
+import { fmtPrice, fmtVolume, fmtWeight, fmtDims } from '../../lib/format.js';
+
+export function getStaticPaths() {
+  return brands.map((brand) => ({ params: { brand: brand.slug }, props: { brand } }));
+}
+
+const { brand } = Astro.props;
+const prices = brand.bags.map((b) => b.price_min).filter((p) => p != null);
+const cats = [...new Set(brand.bags.map((b) => b.category))].map(catLabel);
+
+const title = `${brand.name} bags — every model, specs & prices | bagdex`;
+const description =
+  `All ${brand.bags.length} ${brand.name} models in the index` +
+  (prices.length ? `, from ${fmtPrice(Math.min(...prices))}` : '') +
+  `. Volume, weight and dimensions normalised for comparison.`;
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: `${brand.name} bags`,
+  description,
+  url: new URL(`/brands/${brand.slug}/`, Astro.site).href,
+  mainEntity: {
+    '@type': 'ItemList',
+    numberOfItems: brand.bags.length,
+    itemListElement: brand.bags.map((bag, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: `${bag.brand} ${bag.name}`,
+      url: new URL(bagHref(bag), Astro.site).href,
+    })),
+  },
+};
+---
+<Base title={title} description={description}>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  </Fragment>
+
+  <div class="page">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/">Bags</a> <span>/</span>
+      <a href="/brands/">Brands</a> <span>/</span>
+      <b>{brand.name}</b>
+    </nav>
+
+    <h1>{brand.name}</h1>
+    <p class="note">
+      {brand.bags.length} {brand.bags.length === 1 ? 'model' : 'models'}
+      {cats.length > 0 && ` · ${cats.join(', ')}`}
+      {prices.length > 0 && ` · ${fmtPrice(Math.min(...prices))}–${fmtPrice(Math.max(...prices))}`}
+    </p>
+
+    <table class="spectable brandtable">
+      <thead>
+        <tr><th>Model</th><th>Category</th><th>Volume</th><th>Weight</th><th>H×W×D</th><th>Price</th></tr>
+      </thead>
+      <tbody>
+        {brand.bags.map((bag) => (
+          <tr>
+            <td><a href={bagHref(bag)}>{bag.name}</a></td>
+            <td>{catLabel(bag.category)}</td>
+            <td class={bag.volume_l == null ? 'nil' : ''}>{fmtVolume(bag.volume_l) ?? '—'}</td>
+            <td class={bag.weight_g == null ? 'nil' : ''}>{fmtWeight(bag.weight_g) ?? '—'}</td>
+            <td class={bag.dims_cm == null ? 'nil' : ''}>{fmtDims(bag.dims_cm) ?? '—'}</td>
+            <td>{fmtPrice(bag.price_min)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+
+    <WatchForm brandSlug={brand.slug} name={`anything from ${brand.name}`} />
+  </div>
+</Base>

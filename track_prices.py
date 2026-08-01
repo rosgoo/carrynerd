@@ -21,6 +21,13 @@ It also writes back onto data/bags.json so the site can surface drops:
 Usage:
     python3 track_prices.py              # record changes since last run
     python3 track_prices.py --dry-run    # show what would be recorded
+    python3 track_prices.py --events-out data/price-events.json
+
+`--events-out` writes just the changes from *this* run, joined against the bag
+they belong to. That file is what the alert matcher consumes: it needs "what
+moved tonight", and re-deriving that by tailing the ledger would mean trusting
+a timestamp comparison to be exact. The ledger stays the durable record; this
+is a hand-off, not an artifact, and the workflow throws it away afterwards.
 """
 
 import argparse
@@ -55,6 +62,8 @@ def variant_key(bag, variant, index):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--events-out", default="",
+                    help="write this run's changes here for the alert matcher")
     args = ap.parse_args()
 
     payload = load_json(BAGS, None)
@@ -154,6 +163,33 @@ def main():
         bag["previous_price"] = prev
         bag["at_lowest"] = bool(
             prices and lows and round(min(prices), 2) <= round(min(lows), 2))
+
+    # Written after annotation so events carry the freshly computed
+    # `lowest_ever` — "cheapest it has ever been" is the line that makes an
+    # alert email worth opening.
+    if args.events_out:
+        by_id = {bag["id"]: bag for bag in bags}
+        events = []
+        for row in rows:
+            # Only rows with a `direction`. The first run baselines every SKU,
+            # and a baseline is not a price movement.
+            if not row.get("direction"):
+                continue
+            bag = by_id.get(row["bag_id"]) or {}
+            events.append({
+                **row,
+                "brand_slug": bag.get("brand_slug"),
+                "category": bag.get("category"),
+                "url": bag.get("url"),
+                "image": bag.get("image"),
+                "lowest_ever": bag.get("lowest_ever"),
+                "at_lowest": bag.get("at_lowest"),
+            })
+        out_dir = os.path.dirname(os.path.abspath(args.events_out))
+        os.makedirs(out_dir, exist_ok=True)
+        with open(args.events_out, "w") as f:
+            json.dump({"generated_at": now, "events": events}, f, indent=2)
+        print(f"{len(events)} price/stock events -> {args.events_out}")
 
     payload["meta"]["price_tracking"] = {
         "history_file": "data/price-history.jsonl",

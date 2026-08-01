@@ -1,0 +1,59 @@
+---
+/* Price-drop signup. Posts to /api/watch, which writes a *pending* row and
+   sends a confirmation email — nothing is ever sent to an address that has not
+   completed double opt-in. */
+const { bagId = null, brandSlug = null, name } = Astro.props;
+---
+<form class="watch" data-watch>
+  {bagId && <input type="hidden" name="bag_id" value={bagId} />}
+  {brandSlug && <input type="hidden" name="brand_slug" value={brandSlug} />}
+  <h3>Watch the price</h3>
+  <p>
+    Tell us where to write when {name} drops. We confirm by email first and
+    every message carries a one-click unsubscribe.
+  </p>
+  <div class="watchrow">
+    <input type="email" name="email" required placeholder="you@example.com"
+           autocomplete="email" aria-label="Email address" />
+    <input type="number" name="max_price" min="0" step="10"
+           placeholder="under $" aria-label="Only alert below this price" />
+    <button class="btn" type="submit">Watch</button>
+  </div>
+  <p class="watchmsg" role="status" aria-live="polite" hidden></p>
+</form>
+
+<script>
+  document.addEventListener('submit', async (e) => {
+    const form = e.target.closest('[data-watch]');
+    if (!form) return;
+    e.preventDefault();
+
+    const button = form.querySelector('button');
+    const msg = form.querySelector('.watchmsg');
+    const data = Object.fromEntries(new FormData(form));
+    if (!data.max_price) delete data.max_price;
+
+    button.disabled = true;
+    msg.hidden = false;
+    msg.className = 'watchmsg';
+    msg.textContent = 'Sending…';
+
+    try {
+      const res = await fetch('/api/watch', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || `error ${res.status}`);
+      msg.textContent =
+        'Check your inbox — the watch starts once you confirm the link.';
+      form.querySelector('input[name=email]').value = '';
+    } catch (err) {
+      msg.className = 'watchmsg bad';
+      msg.textContent = `Could not save that watch: ${err.message}`;
+    } finally {
+      button.disabled = false;
+    }
+  });
+</script>

@@ -1,0 +1,261 @@
+---
+import Base from '../../../layouts/Base.astro';
+import PriceHistory from '../../../components/PriceHistory.astro';
+import WatchForm from '../../../components/WatchForm.astro';
+import { bags, splitId, bagHref, priceSeries, priceChanges, trackingSince } from '../../../lib/catalog.js';
+import { catLabel, featureLabel, sourceLabel } from '../../../lib/labels.js';
+import {
+  fmtPrice, fmtPriceRange, fmtWeight, fmtDims, fmtVolume, fmtLaptop,
+  fmtLinear, fmtDate, gramsPerLitre, pricePerLitre,
+} from '../../../lib/format.js';
+
+export function getStaticPaths() {
+  return bags.map((bag) => {
+    const { brand, model } = splitId(bag.id);
+    return { params: { brand, model }, props: { bag } };
+  });
+}
+
+const { bag } = Astro.props;
+
+const series = priceSeries(bag.id);
+const changes = priceChanges(bag.id);
+
+// Related: same brand first, then same category elsewhere. Cheap internal
+// linking, and it is what a reader comparing two packs actually wants.
+const related = [
+  ...bags.filter((b) => b.id !== bag.id && b.brand_slug === bag.brand_slug && b.category === bag.category),
+  ...bags.filter((b) => b.id !== bag.id && b.brand_slug !== bag.brand_slug && b.category === bag.category),
+].slice(0, 8);
+
+const specs = [
+  ['Category', catLabel(bag.category), null],
+  ['Price', fmtPriceRange(bag.price_min, bag.price_max), null],
+  ['Volume', fmtVolume(bag.volume_l), bag.volume_source],
+  ['Dimensions', fmtDims(bag.dims_cm), bag.dims_source],
+  ['Linear (h+w+d)', fmtLinear(bag.linear_cm), bag.dims_source],
+  ['Weight', fmtWeight(bag.weight_g), bag.weight_source],
+  ['Grams per litre', gramsPerLitre(bag) ? gramsPerLitre(bag).toFixed(0) : null, null],
+  ['Price per litre', pricePerLitre(bag) ? `$${pricePerLitre(bag).toFixed(2)}` : null, null],
+  ['Laptop', fmtLaptop(bag.laptop_in), null],
+  ['Colourways', bag.colors?.length || null, null],
+  ['SKUs', bag.variant_count || null, null],
+  ['In stock', bag.in_stock ? 'Yes' : 'No', null],
+];
+
+const dims = bag.dims_cm ?? [];
+const quantity = (value, unitCode) =>
+  value == null ? undefined : { '@type': 'QuantitativeValue', value, unitCode };
+
+// dims_cm is sorted largest-axis-first because brands disagree about ordering,
+// so height/width/depth here is the sorted triple, not a claim about which way
+// up the bag was measured. For carry it is right nearly every time — bags are
+// taller than they are wide — and it is still strictly more than the zero
+// dimensions most storefronts publish.
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Product',
+  name: `${bag.brand} ${bag.name}`,
+  brand: { '@type': 'Brand', name: bag.brand },
+  category: catLabel(bag.category),
+  url: new URL(bagHref(bag), Astro.site).href,
+  ...(bag.image ? { image: [bag.image] } : {}),
+  ...(bag.gtin ? { gtin: bag.gtin } : {}),
+  height: quantity(dims[0], 'CMT'),
+  width: quantity(dims[1], 'CMT'),
+  depth: quantity(dims[2], 'CMT'),
+  weight: quantity(bag.weight_g, 'GRM'),
+  additionalProperty: [
+    bag.volume_l != null && { '@type': 'PropertyValue', name: 'Volume', value: bag.volume_l, unitCode: 'LTR' },
+    bag.laptop_in != null && { '@type': 'PropertyValue', name: 'Maximum laptop size', value: bag.laptop_in, unitCode: 'INH' },
+    bag.linear_cm != null && { '@type': 'PropertyValue', name: 'Linear dimension', value: Math.round(bag.linear_cm), unitCode: 'CMT' },
+  ].filter(Boolean),
+  ...(bag.price_min != null
+    ? {
+        offers: {
+          '@type': 'AggregateOffer',
+          priceCurrency: 'USD',
+          lowPrice: bag.price_min,
+          highPrice: bag.price_max ?? bag.price_min,
+          offerCount: bag.variant_count ?? 1,
+          availability: bag.in_stock
+            ? 'https://schema.org/InStock'
+            : 'https://schema.org/OutOfStock',
+          url: bag.url,
+        },
+      }
+    : {}),
+};
+
+const breadcrumbs = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Bags', item: new URL('/', Astro.site).href },
+    { '@type': 'ListItem', position: 2, name: bag.brand, item: new URL(`/brands/${bag.brand_slug}/`, Astro.site).href },
+    { '@type': 'ListItem', position: 3, name: bag.name },
+  ],
+};
+
+const title = `${bag.brand} ${bag.name} — specs, dimensions & price | bagdex`;
+const facts = [
+  fmtVolume(bag.volume_l),
+  fmtDims(bag.dims_cm),
+  fmtWeight(bag.weight_g),
+].filter(Boolean).join(', ');
+const description =
+  `${bag.brand} ${bag.name}${facts ? `: ${facts}` : ''}. ` +
+  `${fmtPriceRange(bag.price_min, bag.price_max)} across ${bag.variant_count ?? 0} SKUs. ` +
+  'Specs normalised from the brand’s own product feed, with sources shown.';
+---
+<Base title={title} description={description} image={bag.image}>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    <script type="application/ld+json" set:html={JSON.stringify(breadcrumbs)} />
+  </Fragment>
+
+  <div class="page">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/">Bags</a> <span>/</span>
+      <a href={`/brands/${bag.brand_slug}/`}>{bag.brand}</a> <span>/</span>
+      <b>{bag.name}</b>
+    </nav>
+
+    <div class="modelhead">
+      <div class="modelshot">
+        {bag.image
+          ? <img src={bag.image} alt={`${bag.brand} ${bag.name}`} width="640" height="640" loading="eager" />
+          : <span class="none">NO IMAGE</span>}
+      </div>
+
+      <div class="modelmeta">
+        <div class="cbrand">{bag.brand}</div>
+        <h1>{bag.name}</h1>
+
+        <div class="pricebox">
+          <strong>{fmtPriceRange(bag.price_min, bag.price_max)}</strong>
+          {bag.previous_price && bag.price_direction === 'down' && (
+            <span class="was">was {fmtPrice(bag.previous_price)}</span>
+          )}
+          {bag.at_lowest && <span class="tag lowest">Lowest recorded</span>}
+          {!bag.in_stock && <span class="tag oos">Out of stock</span>}
+          {bag.on_sale && <span class="tag sale">On sale</span>}
+        </div>
+        {bag.lowest_ever != null && bag.lowest_ever !== bag.price_min && (
+          <p class="note">Lowest we have recorded: {fmtPrice(bag.lowest_ever)}</p>
+        )}
+
+        <dl class="keyspecs">
+          {[
+            ['Volume', fmtVolume(bag.volume_l)],
+            ['Weight', fmtWeight(bag.weight_g)],
+            ['H×W×D', fmtDims(bag.dims_cm)],
+            ['Laptop', fmtLaptop(bag.laptop_in)],
+          ].map(([label, value]) => (
+            <div>
+              <dt>{label}</dt>
+              <dd class={value ? '' : 'nil'}>{value ?? '—'}</dd>
+            </div>
+          ))}
+        </dl>
+
+        <a class="btn buy" href={bag.url} target="_blank" rel="noopener nofollow">
+          View on {bag.brand} ↗
+        </a>
+      </div>
+    </div>
+
+    <section>
+      <h2>Specifications</h2>
+      <table class="spectable">
+        <tbody>
+          {specs.map(([label, value, source]) => (
+            <tr>
+              <th scope="row">{label}</th>
+              <td class={value == null ? 'nil' : ''}>
+                {value ?? '—'}
+                {sourceLabel(source) && <i class="prov">{sourceLabel(source)}</i>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p class="note">
+        Nothing on this page is estimated. A “—” means we could not establish
+        the value from the brand’s own published data, and every value that is
+        here records where it came from. Verify against the brand before buying.
+      </p>
+    </section>
+
+    {(bag.materials?.length || bag.features?.length) && (
+      <section>
+        <h2>Materials &amp; features</h2>
+        <div class="tagrow">
+          {(bag.materials ?? []).map((m) => <span class="tag">{m}</span>)}
+          {(bag.features ?? []).map((f) => <span class="tag">{featureLabel(f)}</span>)}
+        </div>
+        {!bag.features?.length && (
+          <p class="note">
+            No features detected. Read that as unknown rather than absent —
+            detection runs over the brand’s description text, and some brands
+            write three sentences of marketing copy with no feature vocabulary
+            in them at all.
+          </p>
+        )}
+      </section>
+    )}
+
+    {bag.variants?.length > 0 && (
+      <section>
+        <h2>Colourways &amp; SKUs</h2>
+        <table class="vartable">
+          <thead>
+            <tr><th>Colourway</th><th>SKU</th><th>Price</th><th>Stock</th></tr>
+          </thead>
+          <tbody>
+            {bag.variants.map((v) => (
+              <tr>
+                <td>{v.color || v.title || '—'}</td>
+                <td class="mono">{v.sku || '—'}</td>
+                <td>
+                  {fmtPrice(v.price)}
+                  {v.compare_at && v.price && v.compare_at > v.price && (
+                    <s> {fmtPrice(v.compare_at)}</s>
+                  )}
+                </td>
+                <td class={v.available ? 'instock' : 'nil'}>
+                  {v.available ? 'in stock' : 'out'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    )}
+
+    <PriceHistory series={series} changes={changes} since={trackingSince} />
+
+    <WatchForm bagId={bag.id} name={`the ${bag.name}`} />
+
+    {related.length > 0 && (
+      <section>
+        <h2>Similar</h2>
+        <ul class="related">
+          {related.map((b) => (
+            <li>
+              <a href={bagHref(b)}>
+                <b>{b.brand}</b> {b.name}
+                <em>{[fmtVolume(b.volume_l), fmtPrice(b.price_min)].filter(Boolean).join(' · ')}</em>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
+
+    <p class="note foot">
+      Source: {bag.source ?? '—'} · fetched {fmtDate(bag.fetched_at) ?? '—'}
+      {bag.merged_from > 1 && ` · merged from ${bag.merged_from} storefront products`}
+    </p>
+  </div>
+</Base>

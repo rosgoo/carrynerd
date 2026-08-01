@@ -1,0 +1,38 @@
+---
+import Base from '../../layouts/Base.astro';
+import { brands, meta } from '../../lib/catalog.js';
+import { fmtPrice } from '../../lib/format.js';
+
+const title = 'Brands — bagdex';
+const description =
+  `Every brand in the index: ${brands.length} makers, ` +
+  `${meta.bag_count ?? 0} models, ${meta.sku_count ?? 0} SKUs.`;
+---
+<Base title={title} description={description}>
+  <div class="page">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/">Bags</a> <span>/</span> <b>Brands</b>
+    </nav>
+    <h1>Brands</h1>
+    <p class="note">
+      {brands.length} brands with at least one model in the index. Coverage
+      grows as more storefronts are resolved and crawled.
+    </p>
+    <ul class="related brandlist">
+      {brands.map((brand) => {
+        const prices = brand.bags.map((b) => b.price_min).filter((p) => p != null);
+        return (
+          <li>
+            <a href={`/brands/${brand.slug}/`}>
+              <b>{brand.name}</b>
+              <em>
+                {brand.bags.length} {brand.bags.length === 1 ? 'model' : 'models'}
+                {prices.length > 0 && ` · from ${fmtPrice(Math.min(...prices))}`}
+              </em>
+            </a>
+          </li>
+        );
+      })}
+    </ul>
+  </div>
+</Base>

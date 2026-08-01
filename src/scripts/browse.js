@@ -1,24 +1,22 @@
-/* bagdex — client for data/bags.json. No dependencies, no build step. */
+/* bagdex — the browse/compare island.
+ *
+ * Loads the whole catalog once and filters in memory. That is deliberate: at a
+ * few thousand models it beats a round trip per keystroke, and it means the
+ * catalog needs no runtime service behind it. The per-model pages are static
+ * HTML generated at build time; this is the one interactive surface.
+ */
+
+import { CAT_LABELS, FEATURE_LABELS } from '../lib/labels.js';
 
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-const FEATURE_LABELS = {
-  laptop_sleeve: "Laptop sleeve", water_bottle: "Bottle pocket",
-  clamshell: "Clamshell opening", luggage_passthrough: "Luggage pass-through",
-  rfid: "RFID blocking", expandable: "Expandable", hip_belt: "Hip belt",
-  sternum_strap: "Sternum strap", molle: "MOLLE / PALS",
-  compression: "Compression straps", shoe_compartment: "Shoe compartment",
-  water_resistant: "Water resistant", carry_on: "Carry-on claimed",
-  lockable_zips: "Lockable zips",
-};
-const CAT_LABELS = {
-  "travel-backpack": "Travel pack", daypack: "Daypack", sling: "Sling",
-  duffel: "Duffel", tote: "Tote", messenger: "Messenger", briefcase: "Briefcase",
-  "hip-pack": "Hip pack", luggage: "Luggage", "camera-bag": "Camera",
-  "hiking-pack": "Hiking", pouch: "Pouch",
+// Mirrors bagHref() in src/lib/catalog.js — ids are `<brand>__<model>`.
+const bagHref = id => {
+  const at = id.indexOf("__");
+  return at < 0 ? "/" : `/bags/${id.slice(0, at)}/${id.slice(at + 2)}/`;
 };
 
 let DATA = { meta: {}, bags: [] };
@@ -358,7 +356,8 @@ function openDetail(id) {
     <div class="note">
       Source: ${esc(b.source || "—")} · fetched ${esc((b.fetched_at || "").slice(0, 10))}<br>
       <a href="${esc(b.url)}" target="_blank" rel="noopener nofollow">Open on ${esc(b.brand)} ↗</a>
-    </div>`;
+    </div>
+    <a class="btn detfull" href="${esc(bagHref(b.id))}">Full specs &amp; price history →</a>`;
   $("#detoverlay").classList.add("on");
 }
 
@@ -503,11 +502,8 @@ function wire() {
 
   $("#railtoggle").addEventListener("click", () => $("#rail").classList.toggle("on"));
 
-  $("#theme").addEventListener("click", () => {
-    const now = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
-    document.documentElement.setAttribute("data-theme", now);
-    try { localStorage.setItem("bagdex-theme", now); } catch {}
-  });
+  // The theme toggle lives in the layout now — every page has one, so wiring it
+  // here as well would bind it twice and cancel itself out.
 
   document.addEventListener("keydown", e => {
     if (e.key === "Escape") $$(".overlay").forEach(o => o.classList.remove("on"));
@@ -521,20 +517,14 @@ function wire() {
 
 (async function init() {
   try {
-    const saved = localStorage.getItem("bagdex-theme");
-    if (saved) document.documentElement.setAttribute("data-theme", saved);
-  } catch {}
-
-  try {
-    const res = await fetch("../data/bags.json", { cache: "no-cache" });
+    const res = await fetch("/bags.json", { cache: "no-cache" });
     if (!res.ok) throw new Error(res.status);
     DATA = await res.json();
   } catch (err) {
-    $("#results").innerHTML = `<div class="empty"><b>No index found</b>
-      Could not load <code>data/bags.json</code> (${esc(err.message)}).<br>
-      Run <code>python3 fetch.py</code> then <code>python3 normalize.py</code>,
-      and serve this directory over HTTP.</div>`;
-    $("#count").textContent = "no data";
+    // Leave the server-rendered fallback list in place — it is every model on
+    // the site, just without the filters. A degraded page beats a dead one.
+    $("#count").textContent = "filters unavailable — showing all models";
+    console.error("bagdex: could not load /bags.json", err);
     return;
   }
   buildFacets();

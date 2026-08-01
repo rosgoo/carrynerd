@@ -1,33 +1,80 @@
 # bagdex
 
 A searchable, comparable index of bags — normalised across brands from public
-product feeds. Three Python scripts and a static front end, no dependencies and
-no build step.
+product feeds.
 
 The premise: every existing bag resource is one person hand-maintaining a
 spreadsheet, which caps coverage at a few hundred models and misses colourways,
 current pricing and stock entirely. This pipeline gets that layer automatically.
 
+## Three planes, only one of which runs
+
+| Plane | What | Runs on |
+|---|---|---|
+| Data | crawl → normalize → JSONL ledger, committed to git | GitHub Actions, nightly |
+| Serving | static site generated from that data, one HTML page per model | Vercel |
+| Alerts | `POST /api/watch` + a matcher in the nightly + Neon | Neon + Resend |
+
+**Flat files are the source of truth; everything else is derived.** The JSONL
+price ledger diffs cleanly, so git is the database history, the backup and the
+audit log for free. The catalog needs no runtime database at all — the only one
+in the system holds email addresses, because those are the one piece of state
+that cannot live in a public repo.
+
 ```
 brands.json ──> fetch.py ──> raw/*.json ──> normalize.py ──> data/bags.json
-                                                  │                 ▲
-                                              enrich.py ────────────┘
-                                          (product pages, fills dims)
+                                                 │                 ▲   │
+                                             enrich.py ────────────┘   │
+                                         (product pages, fills dims)   │
+                                                                       ▼
+                                                              track_prices.py
+                                                                       │
+                                       ┌───────────────────────────────┤
+                                       ▼                               ▼
+                        data/price-history.jsonl              data/price-state.json
+                          (append-only ledger)                  (last known state)
+                                       │
+                    ┌──────────────────┴──────────────────┐
+                    ▼                                     ▼
+              Astro build                          alerts/match.py
+        (one page per model, static)              (Neon + Resend)
 ```
 
 ## Run it
 
 ```bash
-python3 fetch.py                # pull catalogues       (~1 request/brand)
+python3 fetch.py                # pull catalogues       (~3 requests/brand)
 python3 normalize.py            # build data/bags.json
 python3 enrich.py               # fill dimensions       (~1 request/product)
-python3 -m http.server 8731     # then open /site/
+
+npm install
+npm run dev                     # http://localhost:4321
 ```
 
 Order matters: `normalize.py` rebuilds `data/bags.json` from `raw/`, so run
 `enrich.py` after it. Enrichment caches every page it reads in
 `data/enrich-cache.json`, so re-running after a fresh normalize is instant and
 costs no requests.
+
+The crawl scripts are stdlib-only and stay that way — they have to run
+anywhere. `npm` is for the site, and `alerts/requirements.txt` (one package) is
+for the alert matcher.
+
+## Nightly crawl
+
+`.github/workflows/nightly.yml` runs the pipeline and commits the diff. Two
+jobs: a sharded price/stock pass over `/products.json`, then a single assemble
+job that normalizes, picks up the enrichment delta, tracks prices, matches
+alerts and commits. Pushing the commit is what triggers the site rebuild.
+
+Sharding splits the brand *list* across runners so the pass finishes inside one
+run. Each shard is an ordinary polite client — paced, honouring `Retry-After`,
+never retrying a block another shard hit. Grow the matrix as the brand list
+grows; never in response to a 429.
+
+**The first enrichment backfill does not belong in Actions.** It is thousands of
+product pages, and datacenter IPs get throttled on those immediately. Run it
+once from a home machine; after that the nightly delta is tens of pages.
 
 **Run this from a residential connection.** Shopify's edge rate-limits
 `/products.json` per client IP and throttles datacenter ranges almost
@@ -81,17 +128,54 @@ meter in the sidebar shows exactly how complete each field is.
 
 ## Front end
 
-`site/` is vanilla JS against `data/bags.json`. Search, faceted filters
-(category, volume, price, weight, linear dimension, features, material, brand,
-stock, sale), grid and dense-table views, side-by-side comparison of up to six
-bags with differing rows highlighted and best-in-column marked, and a detail
-drawer listing every colourway with its own SKU, price and stock.
+Astro, in `src/`. Monetisation is affiliate-first, so the business model is
+organic search traffic, and a client-rendered SPA is the worst possible shape
+for that. So:
+
+- **A real HTML page per model** at `/bags/<brand>/<model>/` — spec table with
+  provenance on every value, colourways with their own SKUs, price history, and
+  schema.org `Product` markup. (Ironic, but bagdex is the site actually filling
+  in `width`/`height`/`depth`, which is why nobody's `Product` block is worth
+  reading.)
+- **Brand pages** at `/brands/<brand>/`, and a sitemap, so every model page has
+  a crawl path that does not depend on running JavaScript.
+- **The browse UI is a client-side island** loading `/bags.json` — the same
+  faceted filtering, grid/table views, six-way comparison and detail drawer as
+  before. At 214 models, or 5,000, filtering one JSON file in the browser is
+  fine. Shard it per category when it passes a few MB.
+- The homepage server-renders a plain list of every model underneath the island,
+  so a crawler with no JS still finds all 214.
 
 All filter state syncs to the URL, so any view is a shareable link. Press `/`
 to search, `Esc` to close panels.
 
 Range filters exclude unknowns rather than treating them as zero: a bag with no
 measured volume cannot be asserted to sit inside a volume window.
+
+## Alerts
+
+The only real infrastructure, and it is small: one endpoint, two tables, and a
+matcher that runs inside the nightly workflow right after `track_prices.py` —
+which has just worked out exactly which prices moved, so no separate scheduler
+needs to exist.
+
+```
+POST /api/watch      → pending row + double opt-in email
+GET  /api/confirm    → sets confirmed_at; nothing is sent before this
+GET  /api/unsubscribe → deletes the row outright
+```
+
+Schema in `alerts/schema.sql`, matcher in `alerts/match.py`. Needs
+`DATABASE_URL` (Neon) and `RESEND_API_KEY`; with neither set the matcher
+reports what it would have done and exits clean, so the nightly stays green
+before the plane is provisioned.
+
+**Addresses live in Neon and only in Neon.** Never in the repo — the data plane
+is public and fully version-controlled, and an address committed once is in the
+history forever. Never in logs either; subscription IDs are the identifier
+everywhere. Unsubscribe deletes rather than flags, and `sent_alerts` cascades
+with it. Resend keeps its own delivery log, as every provider does, which means
+the vendor list is also the disclosure list.
 
 ## Adding brands
 
@@ -135,7 +219,16 @@ brands that have no affiliate programme.
   result alongside dimensions. Until then, treat an empty feature list as
   "unknown", not "absent" — and note the filters currently treat it as absent,
   which will wrongly exclude bags.
-- Prices are whatever the feed said when fetched, USD, no history yet. Storing
-  each fetch instead of overwriting would give price history nearly free.
+- Prices are whatever the feed said when fetched, USD. History is recorded from
+  the first `track_prices.py` run forward and cannot be backfilled, so the
+  charts stay thin for a while.
+- **The alerts plane has never been run against a real database.** The schema
+  is unexercised and the endpoints are untested — `alerts/schema.sql` needs
+  applying and `alerts/match.py --dry-run` needs a pass against real rows
+  before any of it is trusted.
+- `/api/watch` has no rate limiting beyond a unique constraint on
+  (address, criteria) and a 15-minute floor on resending a confirmation. That
+  bounds the damage but does not stop a determined sender from burning the
+  Resend quota.
 - No airline carry-on matrix yet. The `linear_cm` field and the two size
   presets are the groundwork for it.
