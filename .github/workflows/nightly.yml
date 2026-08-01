@@ -138,11 +138,23 @@ jobs:
       # because both rewrite bags.json, and allowed to fail for the same reason
       # enrich is: a plate that stays white is a cosmetic loss, and it must not
       # block the price commit.
+      #
+      # Deliberately NOT env.DELAY. That 65s is calibrated for /products.json,
+      # which rate-limits per client IP and throttles datacenter ranges; this
+      # stage talks to cdn.shopify.com, a static image CDN with no such limit,
+      # and inheriting the feed's pacing would put a first backfill at over a
+      # hundred hours and get the job killed. Half a second is still polite for
+      # a CDN from a cloud host.
+      #
+      # --limit caps a night's work, the way enrich is capped. The apply pass
+      # runs over the whole catalog from cache regardless, so plates already
+      # sampled come back on the first run and a backlog fills in over a few
+      # nights rather than in one long step.
       - name: Sample product-photo backgrounds
         continue-on-error: true
         run: |
           pip install --quiet -r requirements-image-bg.txt
-          python3 image_bg.py --delay ${{ env.DELAY }}
+          python3 image_bg.py --delay 0.5 --limit 1000
 
       # The gate. Runs before the commit, so a parser that ate half the index
       # fails the job instead of publishing and getting recrawled. Compares
