@@ -18,10 +18,25 @@
 name: nightly
 
 on:
-  schedule:
-    # 03:20 UTC. Off the hour on purpose — the top of the hour is when every
-    # other cron on GitHub fires and runners queue.
-    - cron: '20 3 * * *'
+  # Schedule deliberately off until the first run has been done by hand.
+  #
+  # Pushing to a remote for the first time armed this cron against a repo whose
+  # committed catalogue is pinned on purpose. An unattended first run would have
+  # introduced the crawler to ~160 stores from a datacenter IP while Shopify was
+  # already blocking us — and then failed at the gate regardless, because the
+  # regenerated catalogue drops dims 57% -> 24%, volume 89% -> 49% and laptop
+  # 45% -> 9%, every one past validate.py's 10-point coverage limit. That is the
+  # gate working; it is still two hours of crawling for a commit that cannot
+  # happen.
+  #
+  # Before uncommenting: point GEARHERD_CONTACT at a domain that resolves (see
+  # below), and decide whether the first commit accepts the wider catalogue via
+  # a one-off --max-coverage-drop or waits for the enrichment crawl to run.
+  #
+  # schedule:
+  #   # 03:20 UTC. Off the hour on purpose — the top of the hour is when every
+  #   # other cron on GitHub fires and runners queue.
+  #   - cron: '20 3 * * *'
   workflow_dispatch:
 
 permissions:
@@ -38,6 +53,12 @@ env:
   # immediately, so pace hard. This is the number that keeps the crawl polite.
   DELAY: '65'
   SHARDS: '4'
+  # WARNING: gearherd.com is NXDOMAIN as of 2026-08-02 — nothing is deployed
+  # yet. fetch.py omits the contact URL entirely when this is unset, and it does
+  # that on purpose: a UA advertising a URL that does not resolve is the stock
+  # bot signature that Bonfus's WAF 403s on sight, so this is currently worse
+  # than sending nothing. Either deploy the site or drop this line before the
+  # first real run.
   GEARHERD_CONTACT: https://gearherd.com/bot
 
 jobs:
