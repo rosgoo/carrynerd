@@ -29,9 +29,11 @@ on:
   # gate working; it is still two hours of crawling for a commit that cannot
   # happen.
   #
-  # Before uncommenting: point GEARHERD_CONTACT at a domain that resolves (see
-  # below), and decide whether the first commit accepts the wider catalogue via
-  # a one-off --max-coverage-drop or waits for the enrichment crawl to run.
+  # GEARHERD_CONTACT now resolves, so the remaining question before restoring
+  # the cron is whether the first commit accepts the wider catalogue via a
+  # one-off --max-coverage-drop or waits for the enrichment crawl. Note the
+  # gate failing is a safe outcome, not a lost night: "Save raw catalogues"
+  # is if: always(), so a run that fails to validate still banks its fetch.
   #
   # schedule:
   #   # 03:20 UTC. Off the hour on purpose — the top of the hour is when every
@@ -53,12 +55,11 @@ env:
   # immediately, so pace hard. This is the number that keeps the crawl polite.
   DELAY: '65'
   SHARDS: '4'
-  # WARNING: gearherd.com is NXDOMAIN as of 2026-08-02 — nothing is deployed
-  # yet. fetch.py omits the contact URL entirely when this is unset, and it does
-  # that on purpose: a UA advertising a URL that does not resolve is the stock
-  # bot signature that Bonfus's WAF 403s on sight, so this is currently worse
-  # than sending nothing. Either deploy the site or drop this line before the
-  # first real run.
+  # Live and serving a real page as of 2026-08-02. This has to keep being true:
+  # fetch.py omits the contact URL entirely when unset, on purpose, because a
+  # UA advertising a URL that does not resolve is the stock bot signature that
+  # Bonfus's WAF 403s on sight. Pointing it somewhere dead is worse than
+  # sending nothing at all.
   GEARHERD_CONTACT: https://gearherd.com/bot
 
 jobs:
