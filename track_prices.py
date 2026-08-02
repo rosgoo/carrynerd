@@ -179,6 +179,11 @@ def main():
             events.append({
                 **row,
                 "brand_slug": bag.get("brand_slug"),
+                # The permalink, carried rather than re-derived. `bag_id` holds
+                # the *source* handle, which is a colourway for any merged
+                # model — deriving a URL from it lands on a page that does not
+                # exist. normalize.py owns this slug; everything else reads it.
+                "slug": bag.get("slug"),
                 "category": bag.get("category"),
                 "url": bag.get("url"),
                 "image": bag.get("image"),

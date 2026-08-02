@@ -39,9 +39,19 @@ RESEND_ENDPOINT = "https://api.resend.com/emails"
 DEDUPE_HOURS = 24
 
 
-def bag_page(bag_id):
-    brand, _, model = bag_id.partition("__")
-    return f"{SITE_URL}/bags/{brand}/{model}/"
+def bag_page(event):
+    """The model's permalink — from the event's own slug, not from its id.
+
+    `bag_id` is the source handle, which for any merged model is one of its
+    colourways (`able-carry__daily-backpack-cordura-black`), while the page is
+    built at the merged model's slug (`/bags/able-carry/daily-backpack/`).
+    Splitting the id was linking a third of the emails to a 404, and there are
+    no redirects to catch them. Fall back to the id split only for events
+    written before track_prices.py carried the slug.
+    """
+    brand, _, model = event["bag_id"].partition("__")
+    return (f"{SITE_URL}/bags/{event.get('brand_slug') or brand}/"
+            f"{event.get('slug') or model}/")
 
 
 def esc(s):
@@ -56,7 +66,7 @@ def render(event, unsub_url):
     name = f"{event['brand']} {event['name']}"
     now = f"${event['price']:g}"
     was = f"${event['prev_price']:g}" if event.get("prev_price") else None
-    page = bag_page(event["bag_id"])
+    page = bag_page(event)
 
     subject = f"{name} dropped to {now}" + (f" (was {was})" if was else "")
     lowest = event.get("at_lowest")
