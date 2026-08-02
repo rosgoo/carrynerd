@@ -1425,7 +1425,7 @@ def merge_logs():
             continue
         os.remove(path)
     with open(LOG, "w") as f:
-        json.dump(log, f, indent=2)
+        json.dump(log, f, indent=2, sort_keys=True)
     ok = sum(1 for v in log.values() if v.get("status") == "ok")
     print(f"merged {len(parts)} shard logs -> {ok}/{len(log)} brands with "
           f"catalogs")
@@ -1560,7 +1560,7 @@ def main():
                                   "status": "no-adapter", "note": "",
                                   "product_count": 0}
             with open(log_path, "w") as f:
-                json.dump(log, f, indent=2)
+                json.dump(log, f, indent=2, sort_keys=True)
             continue
         n = len(res["products"])
         if res["status"] == "ok" and n:
@@ -1576,7 +1576,7 @@ def main():
         log[brand["slug"]] = {k: v for k, v in res.items() if k != "products"}
         log[brand["slug"]]["product_count"] = n
         with open(log_path, "w") as f:
-            json.dump(log, f, indent=2)
+            json.dump(log, f, indent=2, sort_keys=True)
 
         # Run-level circuit breaker for the feed endpoints.
         #
@@ -1605,7 +1605,7 @@ def main():
                     "of": len(brands),
                 }
                 with open(log_path, "w") as f:
-                    json.dump(log, f, indent=2)
+                    json.dump(log, f, indent=2, sort_keys=True)
                 break
         else:
             blocked_streak = 0

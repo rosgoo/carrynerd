@@ -400,7 +400,7 @@ def main():
             cache[bag["id"]] = parse_product_page(html_text)
             reparsed += 1
         with open(CACHE, "w") as f:
-            json.dump(cache, f)
+            json.dump(cache, f, sort_keys=True, indent=1)
         hit = sum(1 for v in cache.values() if v.get("dims_cm"))
         print(f"reparsed {reparsed} cached pages, 0 requests; "
               f"dims now found for {hit}", flush=True)
@@ -475,7 +475,7 @@ def main():
                           f"failures (status {status})", flush=True)
                 if streak >= args.give_up_after:
                     with open(CACHE, "w") as f:
-                        json.dump(cache, f)
+                        json.dump(cache, f, sort_keys=True, indent=1)
                     print(f"\n  ABORTING: {streak} consecutive transient "
                           f"failures across different stores (last status "
                           f"{status}) at product {i}. That is an IP-wide "
@@ -513,12 +513,12 @@ def main():
                 cache[bag["id"]] = parse_product_page(text)
             if i % 10 == 0 or not queue:
                 with open(CACHE, "w") as f:
-                    json.dump(cache, f)
+                    json.dump(cache, f, sort_keys=True, indent=1)
                 hit = sum(1 for v in cache.values() if v.get("dims_cm"))
                 print(f"  [{i}/{len(targets)}] dims found for {hit}", flush=True)
 
         with open(CACHE, "w") as f:
-            json.dump(cache, f)
+            json.dump(cache, f, sort_keys=True, indent=1)
         if transient:
             print(f"  {transient} transient failures (429/5xx) left uncached "
                   f"— rerun to pick them up", flush=True)

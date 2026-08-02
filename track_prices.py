@@ -131,7 +131,12 @@ def main():
             for row in rows:
                 f.write(json.dumps(row) + "\n")
     with open(STATE, "w") as f:
-        json.dump(state, f)
+        # sort_keys because this is committed nightly: unsorted, the key
+        # order is whatever order SKUs were walked in, so every run
+        # rewrites the whole file and the diff says nothing about what
+        # actually changed. Sorted and indented, a night that moves 60
+        # prices is a 60-line diff. Costs ~2.5% in size.
+        json.dump(state, f, sort_keys=True, indent=1)
 
     # Annotate bags.json so the front end can show drops without parsing the
     # whole history file.

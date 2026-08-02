@@ -29,6 +29,7 @@ Usage:
 """
 
 import argparse
+import datetime
 import json
 import os
 import re
@@ -222,6 +223,77 @@ def baseline(path=None):
         return None
 
 
+# Brands that are meant to have stopped. A retired or walled entry going stale
+# is the intended outcome, not a fault, and a check that shouts about it is a
+# check people learn to skip.
+DORMANT = {"retired", "walled", "unreachable", "custom", "no-adapter"}
+
+
+def freshness(rep, stale_days, fail_days):
+    """Has any brand quietly stopped producing?
+
+    Borrowed from the sister project, which hit this failure mode from the
+    other side and named it well: a broken parser produces *wrong* data and the
+    aggregate checks catch it, but a broken adapter produces *nothing*,
+    silently, forever, and nobody notices until someone asks why a brand has
+    not listed anything since March.
+
+    gearherd is more exposed to that than it looks, because fetch.py keeps
+    yesterday's catalogue when a refetch fails — deliberately, so one bad night
+    does not drop a brand out of the index. The cost of that resilience is that
+    a brand can fail every night for a month while its models sit in the
+    catalogue looking current. Nothing in the count or coverage checks moves:
+    the models are all still there. Only their age changes, and nothing was
+    watching it.
+
+    Per-brand, because that is the granularity the failure happens at. The
+    aggregate is fine by construction while any one brand rots.
+    """
+    path = os.path.join(HERE, "data", "fetch-log.json")
+    try:
+        with open(path) as f:
+            log = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        rep.note("no fetch-log.json — freshness checks skipped")
+        return
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    stale, dead = [], []
+    for slug, entry in sorted(log.items()):
+        if not isinstance(entry, dict) or slug.startswith("_"):
+            continue
+        if entry.get("status") != "ok":
+            continue                       # never fetched, or failing loudly
+        if (entry.get("platform") or "") in DORMANT:
+            continue
+        ts = entry.get("fetched_at")
+        if not ts:
+            continue
+        try:
+            when = datetime.datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(
+                tzinfo=datetime.timezone.utc)
+        except ValueError:
+            continue
+        age = (now - when).days
+        if age >= fail_days:
+            dead.append(f"{slug} ({age}d)")
+        elif age >= stale_days:
+            stale.append(f"{slug} ({age}d)")
+
+    if dead:
+        rep.fail("freshness",
+                 f"{len(dead)} brand(s) last fetched over {fail_days}d ago and "
+                 f"still in the catalogue: {sample(dead, 6)}. Their models are "
+                 f"being served as current. Retire them deliberately or fix "
+                 f"the fetch.")
+    if stale:
+        rep.warn("freshness",
+                 f"{len(stale)} brand(s) not refreshed in {stale_days}d: "
+                 f"{sample(stale, 6)}")
+    if not dead and not stale:
+        rep.note(f"freshness: every active brand fetched within {stale_days}d")
+
+
 def regression(payload, prev, rep, max_drop, max_coverage_drop):
     meta, pmeta = payload.get("meta") or {}, prev.get("meta") or {}
 
@@ -267,6 +339,13 @@ def main():
                     help="tolerated fractional fall in bag/SKU count (default .25)")
     ap.add_argument("--max-coverage-drop", type=float, default=10.0,
                     help="tolerated fall in a coverage percentage, in points")
+    ap.add_argument("--stale-days", type=int, default=3,
+                    help="warn when an active brand has not been refetched in "
+                         "this many days (default 3; the nightly refetches "
+                         "everything, so 3 already means two missed nights)")
+    ap.add_argument("--fail-days", type=int, default=14,
+                    help="fail when an active brand's catalogue is this old and "
+                         "still being served as current (default 14)")
     ap.add_argument("--baseline", default="",
                     help="the published catalogue to compare against. Defaults "
                          "to `git show HEAD:data/bags.json`, which only works "
@@ -290,6 +369,7 @@ def main():
     rep = Report()
     structural(payload, rep)
     brandmark(rep)
+    freshness(rep, args.stale_days, args.fail_days)
 
     prev = baseline(args.baseline or None)
     if prev is None and args.require_baseline:
