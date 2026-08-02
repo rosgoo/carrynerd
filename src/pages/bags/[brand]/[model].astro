@@ -5,7 +5,7 @@ import WatchForm from '../../../components/WatchForm.astro';
 import Offers from '../../../components/Offers.astro';
 import Measure from '../../../components/Measure.astro';
 import CarryOn from '../../../components/CarryOn.astro';
-import { bags, bagSlug, bagHref, priceSeries, priceChanges, trackingSince } from '../../../lib/catalog.js';
+import { bags, bagSlug, bagHref, isIndexable, priceSeries, priceChanges, trackingSince } from '../../../lib/catalog.js';
 import { catLabel, featureLabel, sourceLabel } from '../../../lib/labels.js';
 import { SITE_NAME } from '../../../lib/brand.js';
 import {
@@ -115,7 +115,11 @@ const description =
   `${fmtPriceRange(bag.price_min, bag.price_max)} across ${bag.variant_count ?? 0} SKUs. ` +
   'Specs normalised from the brand’s own product feed, with sources shown.';
 ---
-<Base title={title} description={description} image={bag.image}>
+{/* Held out of search results until the model has specs worth arriving for —
+    see isIndexable in lib/catalog.js. noindex,follow, not nofollow: the page
+    is ordinary, linked and crawlable, it simply is not a landing page yet. */}
+<Base title={title} description={description} image={bag.image}
+      noindex={!isIndexable(bag)} nofollow={false}>
   <Fragment slot="head">
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
     <script type="application/ld+json" set:html={JSON.stringify(breadcrumbs)} />

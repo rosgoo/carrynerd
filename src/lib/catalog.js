@@ -43,6 +43,43 @@ export function bagHref(bag) {
   return `/bags/${bag.brand_slug ?? splitId(bag.id).brand}/${bagSlug(bag)}/`;
 }
 
+/* Is this model's page worth arriving on from a search result?
+ *
+ * The catalogue is wide before it is deep. The feed layer reaches thousands of
+ * models in one pass; dimensions arrive later, one crawled page at a time.
+ * Publishing all of it at once means asking Google to index several thousand
+ * pages showing a name, a price and a column of dashes — which is what "thin
+ * content" names, and an expensive thing to be classified as on a domain
+ * carrying five years of someone else's history.
+ *
+ * So the page ships either way and the *indexing* is what waits. A model joins
+ * the index once it has something to say, and enrichment moves a few dozen
+ * across that line a night. Nothing is hidden from a reader: every page is
+ * linked, crawlable and identical whichever side of the line it sits on. This
+ * is a statement about search results, not about access.
+ *
+ * The rule is dimensions, or volume and weight together. Dimensions are the
+ * load-bearing field — the carry-on matrix needs three axes and abstains
+ * without them — but requiring them alone would hold back a whole category
+ * unfairly. Cottage ultralight makers do not publish external dimensions and
+ * are not being evasive: a frameless pack is genuinely specified by volume,
+ * weight and torso range, and the outside measurements of a soft bag are not a
+ * meaningful number. For that category, volume and weight together *is* the
+ * full spec.
+ */
+export function isIndexable(bag) {
+  if (!bag) return false;
+  if (bag.dims_cm) return true;
+  return Boolean(bag.volume_l && bag.weight_g);
+}
+
+/** Model paths that belong in the sitemap. Built here rather than recomputed
+ *  in astro.config.mjs so the sitemap and the meta tag cannot disagree — a
+ *  page excluded from one and not the other is the confusing half-state. */
+export const indexablePaths = new Set(
+  (payload.bags ?? []).filter(isIndexable).map(bagHref),
+);
+
 export const brands = (() => {
   const by = new Map();
   for (const bag of bags) {

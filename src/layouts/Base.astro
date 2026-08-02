@@ -8,9 +8,16 @@ const {
   description = 'A searchable, comparable index of bags normalised across brands from public product feeds.',
   image = null,
   noindex = false,
+  // Separate from noindex, because the two cases want different things.
+  // /internal/ is a working list that should be neither indexed nor crawled
+  // onward. A model page held back for thin content is an ordinary page that
+  // merely should not be a search result yet — its links to the brand page and
+  // the comparison views are still worth following, so it takes noindex,follow.
+  nofollow = true,
 } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
+const robots = noindex ? `noindex,${nofollow ? 'nofollow' : 'follow'}` : null;
 ---
 <!doctype html>
 <html lang="en" data-theme="dark" data-units="cm">
@@ -20,7 +27,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
 <title>{title}</title>
 <meta name="description" content={description} />
 <link rel="canonical" href={canonical} />
-{noindex && <meta name="robots" content="noindex,nofollow" />}
+{robots && <meta name="robots" content={robots} />}
 
 <meta property="og:type" content="website" />
 <meta property="og:title" content={title} />
