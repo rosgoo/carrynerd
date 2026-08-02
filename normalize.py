@@ -695,8 +695,16 @@ def build_shopify(product, brand, hint=None, force=None):
                           else "unclassified")
 
     options = product.get("options") or []
-    color_idx = option_index(options, r"colou?r|finish|colorway")
-    size_idx = option_index(options, r"size|capacity|volume|litre|liter")
+    # German axis names matter now that half the index is European — Heimplanet
+    # ships Farbe/Größe and Vaude, Deuter, Ortlieb and Tatonka are all on the
+    # same footing. Missing the axis does not just lose a label, it drops the
+    # colour and size off every variant of that product.
+    color_idx = option_index(options, r"colou?r|finish|colorway|farbe")
+    # Größe carries an eszett, not a double s, and a pattern written for
+    # "grosse" silently matches nothing at all — the same shape of miss as
+    # reading "2,7 kg" as 7 kg. All four spellings are in the wild.
+    size_idx = option_index(
+        options, r"size|capacity|volume|litre|liter|gr(ö|oe|o)(ß|ss)e")
 
     # Per-colourway photography, already in the feed — no extra requests. Most
     # variants carry featured_image outright; the images[] array also tags
@@ -706,11 +714,25 @@ def build_shopify(product, brand, hint=None, force=None):
         for vid in img.get("variant_ids") or []:
             by_variant_image.setdefault(vid, img.get("src"))
 
+    # Every axis the store defines, by its own name. colour and size get
+    # promoted to first-class fields because the filters are built on them; the
+    # rest were being discarded outright, and some of them are the only spec
+    # their category has. Zpacks and Six Moon sell frameless packs by "Torso
+    # Length" and "Belt Length" — the enrichment crawl concluded those brands
+    # "do not publish dimensions", which is true and beside the point, because
+    # the measurement that actually specifies the pack was sitting in the feed
+    # the whole time. Also seen: Material, Style, Length, Width, Type.
+    axis_names = [(o.get("name") or "").strip() for o in options[:3]]
+
     variants, colors, sizes, prices = [], [], [], []
     for v in product.get("variants") or []:
         opts = [v.get("option1"), v.get("option2"), v.get("option3")]
         color = opts[color_idx] if color_idx is not None and color_idx < 3 else None
         size = opts[size_idx] if size_idx is not None and size_idx < 3 else None
+        # Keep the raw axis->value map whatever the axis is called. A filter
+        # nobody has written yet costs a schema addition, not another crawl.
+        axes = {name: val for name, val in zip(axis_names, opts)
+                if name and val and name.lower() != "title"}
         try:
             price = float(v.get("price") or 0) or None
         except (TypeError, ValueError):
@@ -727,7 +749,13 @@ def build_shopify(product, brand, hint=None, force=None):
             sizes.append(size)
         variants.append({
             "sku": v.get("sku") or None,
+            # 9% of variants ship a blank sku, so sku alone cannot key a
+            # colourway. The numeric id is always there and never changes,
+            # which is what price history needs to stay attached to a variant
+            # across a retitle or a sku backfill.
+            "variant_id": v.get("id"),
             "title": v.get("title"),
+            "options": axes or None,
             "color": color,
             # The family is what makes colour filterable. Nobody searches for
             # "Atacama"; they search for brown.
@@ -778,6 +806,21 @@ def build_shopify(product, brand, hint=None, force=None):
         "category_source": cat_src,
         "url": f"https://{brand['domain']}/products/{handle}",
         "image": (images[0].get("src") if images else None),
+        # 87% of products carry more than one shot, mean 12.3, and the catalog
+        # was keeping exactly one. Referenced at source per the crawl posture,
+        # never rehosted, so a gallery costs no requests and no storage — and
+        # on a feed-only build it is the difference between a page that shows
+        # a product and a page that shows a thumbnail and a row of dashes.
+        # width/height come along because they are what stops the layout
+        # shifting while they load.
+        "images": [{"src": im.get("src"), "w": im.get("width"),
+                    "h": im.get("height")}
+                   for im in images if im.get("src")],
+        # The store's own numeric id. `id` above is brand__handle, so a brand
+        # renaming a product's handle reads as a new product and silently
+        # orphans its price history; this is the key that survives that.
+        "shopify_id": product.get("id"),
+        "handle": handle or None,
         "volume_l": volume,
         "volume_source": vol_src,
         "dims_cm": dims,
@@ -807,6 +850,25 @@ def build_shopify(product, brand, hint=None, force=None):
                                for m in detect(v["title"], MATERIALS)}),
         "features": detect(blob, FEATURES),
         "tags": tags,
+        # The store's own shelf label. Already consulted by the classifier as a
+        # signal and then thrown away, which meant a misfiled product could not
+        # be audited without going back to raw/. It is also the cheapest
+        # negative signal available: Apparel (595), Accessories (558),
+        # Outerwear (162), Patches (54) and Parts (42) are, between them, most
+        # of the 5,033 rows sitting in the quarantine.
+        "product_type": ptype or None,
+        # vendor is NOT a reliable sub-brand field — Matador files 37 feature
+        # strings in it and Calpak uses "-". It earns its place because when it
+        # disagrees with the brand it usually means a resold third-party item
+        # (Six Moon carries LEKI and CNOC) or a test product (GORUCK-DEMO,
+        # "Db Journey - Sandbox/Testing"), neither of which should be indexed
+        # as that brand's own. Stored, not acted on, until someone rules on it.
+        "vendor": product.get("vendor") or None,
+        "axis_names": [n for n in axis_names if n and n.lower() != "title"],
+        # Publication dates support new-arrival sorting and, more usefully,
+        # tell a discontinued model from one nobody has touched this year.
+        "published_at": product.get("published_at"),
+        "created_at": product.get("created_at"),
         "updated_at": product.get("updated_at"),
         "source": "shopify:products.json",
         "fetched_at": brand.get("fetched_at"),
@@ -2179,6 +2241,19 @@ def merge_models(bags):
                            for c in out["colors"]) if f})
         out["features"] = list(dict.fromkeys(f for b in group for f in b["features"]))
         out["tags"] = list(dict.fromkeys(t for b in group for t in b["tags"]))
+        # A brand that publishes one product per colourway — Able Carry ships
+        # 13 of the Stash Pouch — has its photography spread across the whole
+        # group, so taking the gallery off the canonical record alone would
+        # throw away every other colour's shots at the moment of merging.
+        # Deduped on src, first occurrence wins the ordering.
+        out["images"] = list({im["src"]: im for b in group
+                              for im in (b.get("images") or [])
+                              if im.get("src")}.values())
+        out["axis_names"] = list(dict.fromkeys(
+            n for b in group for n in (b.get("axis_names") or [])))
+        # Every source id the merge swallowed, so price history written against
+        # a colourway product still resolves after it stops existing on its own.
+        out["merged_ids"] = [b["id"] for b in group]
 
         prices = [v["price"] for v in out["variants"] if v["price"]]
         if not prices:
