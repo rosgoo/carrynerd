@@ -69,6 +69,12 @@ for path in "${PATHS[@]}"; do
   [[ "$path" == "data/price-events.json" ]] && continue
   if [[ -e "$path" ]]; then
     mkdir -p "$TMP/data-repo/$(dirname "$path")"
+    # rm -rf first, because `cp -R dir dest` copies *into* dest when dest
+    # already exists as a directory. data/collections came back from the first
+    # real run as data/collections/collections, and left alone it would have
+    # grown a level a night. Replacing the path outright is also what makes a
+    # deleted source file propagate as a deletion rather than lingering.
+    rm -rf "$TMP/data-repo/$path"
     cp -R "$path" "$TMP/data-repo/$path"
     copied=$((copied + 1))
     [[ "$path" == "data/bags.json" ]] && pushed_catalogue=1

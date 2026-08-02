@@ -42,6 +42,10 @@ while IFS= read -r path; do
   src="$TMP/data-repo/$path"
   if [[ -e "$src" ]]; then
     mkdir -p "$(dirname "$path")"
+    # Same reason as the matching line in data-push.sh: `cp -R dir dest` copies
+    # into dest when dest is an existing directory, so a second pull into a
+    # populated checkout would nest rather than replace.
+    rm -rf "$path"
     cp -R "$src" "$path"
     copied=$((copied + 1))
   fi
