@@ -1449,6 +1449,14 @@ def main():
     ap.add_argument("--limit", type=int, default=0,
                     help="cap page fetches for crawl-style platforms "
                          "(campsaver, pages) — for test runs and chunked crawls")
+    ap.add_argument("--page-delay", type=float, default=0.0,
+                    help="seconds between requests for the page adapters. "
+                         "--delay is calibrated for /products.json, which "
+                         "rate-limits per client IP; product pages are "
+                         "ordinary HTML with no such limit, and inheriting the "
+                         "feed's pacing costs hours (CamelBak: 124 pages, 2.2h "
+                         "at 65s). Defaults to --delay so nothing changes "
+                         "unless asked. robots Crawl-delay still wins.")
     args = ap.parse_args()
 
     os.makedirs(RAW, exist_ok=True)
@@ -1500,6 +1508,13 @@ def main():
     log_path = LOG_PART.format(index) if count > 1 else LOG
 
     pacer = Pacer(args.delay)
+    # A separate pacer for the page adapters, because they are pacing against a
+    # different thing. --delay is set by Shopify's per-IP limit on
+    # /products.json; a product page is ordinary HTML on a CDN and does not
+    # share it. One brand's page crawl at feed pacing costs hours — the same
+    # confusion that put enrich.py and the plate sampler on the wrong number.
+    # robots Crawl-delay is still honoured on top, per brand, as before.
+    page_pacer = Pacer(args.page_delay or args.delay)
     log = {}
     if count == 1 and os.path.exists(LOG):
         try:
@@ -1523,14 +1538,15 @@ def main():
         if platform == "bellroy":
             res = fetch_bellroy(brand, pacer)
         elif platform == "campsaver":
-            res = fetch_campsaver(brand, pacer, limit=args.limit,
+            res = fetch_campsaver(brand, page_pacer, limit=args.limit,
                                   force=args.force)
         elif platform == "woocommerce":
             res = fetch_woocommerce(brand, pacer)
         elif platform == "magento":
             res = fetch_magento(brand, pacer)
         elif platform == "pages":
-            res = fetch_pages(brand, pacer, limit=args.limit, force=args.force)
+            res = fetch_pages(brand, page_pacer, limit=args.limit,
+                              force=args.force)
         elif platform == "shopify":
             res = fetch_brand(brand, pacer)
         else:

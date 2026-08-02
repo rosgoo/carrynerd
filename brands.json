@@ -371,7 +371,8 @@
     "slug": "campsaver",
     "name": "CampSaver",
     "domain": "www.campsaver.com",
-    "platform": "campsaver"
+    "platform": "retired",
+    "note": "Retired 2026-08-02. A retailer, not a brand: it has yielded 0 models across every run, and the aggregator:direct-source-exists rule exists to reject its products wherever the brand is already sourced directly — so a successful crawl mostly produces duplicates of catalogues we hold first-hand. It is also soft-blocked behind behavioural bot protection that answers 200 with a forbidden.html, and it was occupying a whole shard to contribute nothing. The adapter stays in fetch.py; only this entry is retired."
   },
   {
     "slug": "liteaf",
