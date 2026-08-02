@@ -2,8 +2,28 @@
 # not committed: they are minified single-line JSON that churns nightly, so git
 # would store a fresh multi-MB blob every day for no diffing benefit. The
 # nightly workflow passes them between jobs as artifacts and caches them across
-# runs instead. data/ is the part that earns version control.
+# runs instead.
 raw/
+
+# The catalogue and the price ledger. They are still version-controlled, and
+# still for the original reason — git is the database history, the backup and
+# the audit log, for nothing — but in the private data repo, because this one
+# is public. Keep in step with scripts/private-paths.txt, which is the list
+# both sync scripts read and the place the reasoning is written down.
+#
+# The line being drawn: this repo is the crawler and the site, and both are
+# fine to read. The catalogue is the product, and the price history is the one
+# part of it that cannot be regenerated at any price — it accrues only by
+# observing, daily. That is what is worth not publishing.
+data/bags.json
+data/price-history.jsonl
+data/price-state.json
+data/enrich-cache.json
+data/rejected.json
+data/image-bg.json
+data/fetch-log.json
+data/collections/
+
 # Run logs
 data/*.out
 # This run's price drops, handed to the alert matcher. Not a durable artifact —

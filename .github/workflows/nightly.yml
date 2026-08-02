@@ -262,16 +262,18 @@ jobs:
           path: data/page-cache
           key: pages-${{ github.run_id }}
 
-      - name: Commit the diff
-        run: |
-          git config user.name  "gearherd-bot"
-          git config user.email "gearherd-bot@users.noreply.github.com"
-          # data/price-events.json is gitignored — it is a hand-off to the
-          # matcher, not a record. The ledger is the record.
-          git add data/
-          if git diff --cached --quiet; then
-            echo "nothing moved tonight"
-            exit 0
-          fi
-          git commit -m "data: nightly crawl $(date -u +%Y-%m-%d)"
-          git push
+      # The catalogue and the ledger go to the private data repo, not this one.
+      # Same reasoning as before — git is the database history, the backup and
+      # the audit log, for nothing — in a repo that is not public, because this
+      # one is and the ledger is the part worth not publishing.
+      #
+      # The deploy hook is not optional here the way it would be under the old
+      # single-repo setup. The site builds from *this* repo, so a data commit
+      # lands somewhere Vercel is not watching: without the hook the catalogue
+      # updates nightly and the site silently never changes.
+      - name: Push data and rebuild
+        env:
+          DATA_REPO: ${{ vars.DATA_REPO }}
+          DATA_TOKEN: ${{ secrets.DATA_TOKEN }}
+          DEPLOY_HOOK: ${{ secrets.DEPLOY_HOOK }}
+        run: bash scripts/data-push.sh

@@ -1,0 +1,29 @@
+# Paths that live in the private data repo, not this one.
+#
+# One list, read by data-pull.sh, data-push.sh and .gitignore's generated
+# block, because three copies of a list like this drift and the failure is
+# silent: a path missing from the push list stops being backed up, and a path
+# missing from the ignore list gets published.
+#
+# The rule for what belongs here: derived artefacts and the ledger. Anything a
+# crawl produces, and anything that only accrues by observing over time. The
+# catalogue can be regenerated from raw/ in a minute; the price history cannot
+# be regenerated at all, at any cost, which is what makes it the asset worth
+# separating in the first place.
+#
+# Deliberately NOT here — hand-authored inputs and curation, which are part of
+# how the code behaves and are inert without a catalogue to apply them to:
+#   brands.json                    the roster; the crawler is unreadable without it
+#   data/airlines.json             34 hand-checked airlines, with sources and dates
+#   data/category-overrides.json   rulings, effectively classifier configuration
+#   data/colour-overrides.json     same
+#   data/domains-todo.csv          research worksheet
+data/bags.json
+data/price-history.jsonl
+data/price-state.json
+data/price-events.json
+data/enrich-cache.json
+data/rejected.json
+data/image-bg.json
+data/fetch-log.json
+data/collections
