@@ -833,17 +833,37 @@ def shelf_hints(shelf_urls, pacer, keep, extra=0.0):
     # the one that sticks.
     shelves.sort(key=lambda s: (s[3] is None, s[3] == "daypack"))
 
-    hints = {}
+    hints, urls = {}, {}
     for url, slug, name, category in shelves:
         pacer.wait(extra)
         status, _, body = get(url, timeout=60, accept="text/html,*/*")
         if status != 200:
             continue
+        text = body.decode("utf-8", "replace")
+        base = f"https://{urllib.parse.urlparse(url).netloc}"
+
+        # Two ways to read a shelf, and the second is what makes stores with a
+        # category-only sitemap reachable at all.
+        #
+        # `keep` is the URL shape from the brand's crawl config, which works
+        # wherever product URLs are distinguishable by path — /en/product/x/.
+        # Mystery Ranch hangs its products off the root (/blitz-30-pack), where
+        # no pattern separates a product from /affiliates or /contact.
+        #
+        # But the shelf marks them itself: a product card is wrapped in
+        # schema.org/Product microdata, so the first link inside each card is
+        # the product. That is the store stating which of its links are
+        # products rather than us guessing from their shape, which is the same
+        # reason shelves beat keyword classification in the first place.
+        marked = [m.group(1) for m in re.finditer(
+            r'itemtype="[^"]*schema\.org/Product"[^>]*>.{0,3000}?'
+            r'href="([^"#?]+)"', text, re.S)]
+        loose = [h for h in set(re.findall(r'href="([^"#?]+)"', text))
+                 if keep.search(h)]
+        hrefs = marked or loose
+
         found = 0
-        for href in set(re.findall(r'href="([^"#?]+)"',
-                                   body.decode("utf-8", "replace"))):
-            if not keep.search(href):
-                continue
+        for href in dict.fromkeys(hrefs):
             product = href.rstrip("/").rsplit("/", 1)[-1]
             # First shelf wins, and shelves are visited in sitemap order, so a
             # narrow one ("hiking-backpacks") beats the catch-all it sits
@@ -851,10 +871,14 @@ def shelf_hints(shelf_urls, pacer, keep, extra=0.0):
             # product's own title in normalize.py either way.
             if product and product not in hints:
                 hints[product] = category
+            if product:
+                urls.setdefault(product,
+                                href if href.startswith("http")
+                                else base + href)
             found += 1
-        print(f"    shelf {slug}: {found} products -> {category or 'bag'}",
-              flush=True)
-    return hints
+        print(f"    shelf {slug}: {found} products -> {category or 'bag'}"
+              f"{' (microdata)' if marked else ''}", flush=True)
+    return hints, urls
 
 
 def fetch_pages(brand, pacer, limit=0, force=False):
@@ -905,15 +929,37 @@ def fetch_pages(brand, pacer, limit=0, force=False):
         patterns["shelf"] = re.compile(cfg["shelf"], re.I)
     found = sitemap_urls(start, pacer, patterns, extra)
     candidates = found["product"]
-    if not candidates:
-        result["status"] = "no-products"
-        result["note"] = f"nothing in {start} matched {keep.pattern!r}"
-        return result
 
     # The store's own shelving, where it publishes one. Gathered before the
-    # product crawl so every page fetched can be filed as it arrives.
-    hints = shelf_hints(found.get("shelf") or [], pacer, keep, extra)
+    # product crawl so every page fetched can be filed as it arrives — and now
+    # before the no-products bail-out, because for some stores the shelves are
+    # the only place products appear at all.
+    hints, shelf_urls = shelf_hints(found.get("shelf") or [], pacer, keep, extra)
     result["shelves"] = hints
+
+    # Shelves as the discovery surface, not just as labels.
+    #
+    # A sitemap is the surface a store publishes *for* crawlers, so it is the
+    # right place to start — but plenty of stores list only their categories in
+    # it. Mystery Ranch publishes 580 URLs and not one is a product; Klättermusen
+    # does the same. Both were unreachable, and both were one already-crawled
+    # page away from being reachable: the shelves we fetch for classification
+    # are the product index.
+    #
+    # Only as a fallback. Where a sitemap does list products it is complete and
+    # authoritative, while a shelf shows what a category chose to display — the
+    # first page of it, possibly paginated, possibly filtered.
+    if not candidates and shelf_urls:
+        candidates = sorted(shelf_urls.values())
+        result["discovery"] = "shelf"
+        print(f"    sitemap listed no products; taking {len(candidates)} "
+              f"from the shelves instead", flush=True)
+
+    if not candidates:
+        result["status"] = "no-products"
+        result["note"] = (f"nothing in {start} matched {keep.pattern!r}, "
+                          f"and no shelf yielded products")
+        return result
 
     # Shelf scoping: crawl what the brand shelves as carry rather than its
     # whole sitemap. shelf_hints has already dropped the non-carry shelves, so

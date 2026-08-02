@@ -239,7 +239,13 @@
   {
     "slug": "mystery-ranch",
     "name": "Mystery Ranch",
-    "domain": "mysteryranch.com"
+    "domain": "www.mysteryranch.com",
+    "platform": "pages",
+    "crawl": {
+      "sitemap": "https://www.mysteryranch.com/sitemap_www.mysteryranch.com_Index.xml",
+      "shelf": "/(Packs|Accessories)/",
+      "product": "^https?://[^/]+/[a-z0-9][a-z0-9-]+$"
+    }
   },
   {
     "slug": "peak-design",
