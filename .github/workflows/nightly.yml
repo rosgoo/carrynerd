@@ -40,6 +40,11 @@ on:
   #   # other cron on GitHub fires and runners queue.
   #   - cron: '20 3 * * *'
   workflow_dispatch:
+    inputs:
+      skip_fetch:
+        description: "Skip the crawl; assemble from the cached raw/ only"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -64,6 +69,13 @@ env:
 
 jobs:
   fetch:
+    # Skippable, because everything interesting in this workflow happens
+    # afterwards. The gate, the alert matcher and both data pushes live in
+    # `assemble`, and reaching them normally costs hours of crawling first —
+    # which is a poor way to test forty lines of shell. assemble is
+    # `if: always()` and restores raw/ from cache, so a skipped fetch still
+    # assembles a real catalogue from the last crawl's data.
+    if: inputs.skip_fetch != true
     runs-on: ubuntu-latest
     timeout-minutes: 330
     strategy:
@@ -160,7 +172,14 @@ jobs:
 
       # Shard artifacts land on top of the cached copies, so a brand only goes
       # stale if its shard failed — and then it is yesterday's data, not a hole.
+      #
+      # continue-on-error because this action treats "no artifacts matched" as
+      # a failure, and there are two ordinary ways to reach that: a
+      # skip_fetch run, which never produced any, and a night where every shard
+      # died. Both should assemble from the cached raw/ rather than take the
+      # whole job down — which is the same reasoning as assemble's if: always().
       - uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           pattern: raw-shard-*
           merge-multiple: true
@@ -262,18 +281,39 @@ jobs:
           path: data/page-cache
           key: pages-${{ github.run_id }}
 
-      # The catalogue and the ledger go to the private data repo, not this one.
-      # Same reasoning as before — git is the database history, the backup and
-      # the audit log, for nothing — in a repo that is not public, because this
-      # one is and the ledger is the part worth not publishing.
+      # Memory and the ledger, banked whatever the gate decided.
       #
-      # The deploy hook is not optional here the way it would be under the old
-      # single-repo setup. The site builds from *this* repo, so a data commit
-      # lands somewhere Vercel is not watching: without the hook the catalogue
-      # updates nightly and the site silently never changes.
-      - name: Push data and rebuild
+      # if: always(), so a failed gate above cannot discard it. enrich.py
+      # chooses its next batch by excluding
+      # everything already in enrich-cache.json, so gating that file behind
+      # validate.py means a rejected night throws away its own progress and the
+      # next run re-enriches the identical 60 products — the crawl never
+      # advances, however many nights it runs. The ledger is worse: a night's
+      # price observations cannot be recovered later at any price.
+      #
+      # No deploy hook here; the script only fires it when the catalogue is in
+      # the push, and the catalogue deliberately is not.
+      - name: Bank the ledger and caches
+        if: always()
+        env:
+          DATA_REPO: ${{ vars.DATA_REPO }}
+          DATA_TOKEN: ${{ secrets.DATA_TOKEN }}
+        run: |
+          bash scripts/data-push.sh \
+            data/price-history.jsonl \
+            data/price-state.json \
+            data/enrich-cache.json \
+            data/image-bg.json \
+            data/fetch-log.json \
+            data/collections
+
+      # The catalogue, only once it has validated. This is the publishing step:
+      # the site builds from the data repo, so pushing bags.json and firing the
+      # hook is what puts a change in front of readers. Everything the gate is
+      # for applies here and only here.
+      - name: Publish the catalogue
         env:
           DATA_REPO: ${{ vars.DATA_REPO }}
           DATA_TOKEN: ${{ secrets.DATA_TOKEN }}
           DEPLOY_HOOK: ${{ secrets.DEPLOY_HOOK }}
-        run: bash scripts/data-push.sh
+        run: bash scripts/data-push.sh data/bags.json

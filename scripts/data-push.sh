@@ -10,10 +10,28 @@
 #   DATA_TOKEN     a token with contents:write on it, and nothing else
 #   DEPLOY_HOOK    Vercel deploy hook URL (optional; skipped when unset)
 #
-# The deploy hook matters because the site builds from *this* repo, so a data
-# commit lands somewhere Vercel is not watching. Without the hook the catalogue
-# updates and the site never rebuilds — the failure is invisible, because
-# nothing errors and the site simply stops changing.
+# Usage: data-push.sh [path...]
+#   With no arguments, pushes everything in scripts/private-paths.txt.
+#   With arguments, pushes only those — which is how the nightly separates
+#   *memory* from *output*.
+#
+# That separation exists because the gate protects the wrong thing otherwise.
+# validate.py guards what gets published, and publishing is the catalogue. But
+# enrich-cache.json is not output, it is memory: enrich.py picks its next batch
+# by excluding whatever is already in that file. Gate the memory behind the
+# same check as the catalogue and a failing night discards its own progress —
+# the next run re-enriches the identical 60 products, and the crawl never
+# advances no matter how many nights it runs. The ledger has the same shape of
+# problem for a worse reason: a night's price observations cannot be recovered
+# later at any cost.
+#
+# So: memory and the ledger are banked unconditionally, the catalogue only when
+# it validates.
+#
+# The deploy hook fires only when the catalogue is among the paths pushed. It
+# matters because the site builds from the *code* repo, so a data commit lands
+# somewhere Vercel is not watching — without it the catalogue updates and the
+# site never rebuilds, and nothing errors to say so.
 set -euo pipefail
 
 REPO="${DATA_REPO:-}"
@@ -33,9 +51,19 @@ trap 'rm -rf "$TMP"' EXIT
 git clone --quiet --branch "$REF" \
   "https://x-access-token:${TOKEN}@github.com/${REPO}.git" "$TMP/data-repo"
 
+if [[ $# -gt 0 ]]; then
+  PATHS=("$@")
+else
+  PATHS=()
+  while IFS= read -r line; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    PATHS+=("$line")
+  done < scripts/private-paths.txt
+fi
+
 copied=0
-while IFS= read -r path; do
-  [[ -z "$path" || "$path" == \#* ]] && continue
+pushed_catalogue=0
+for path in "${PATHS[@]}"; do
   # price-events.json is a hand-off to the alert matcher, not a record. The
   # ledger is the record, and it is listed above this.
   [[ "$path" == "data/price-events.json" ]] && continue
@@ -43,8 +71,9 @@ while IFS= read -r path; do
     mkdir -p "$TMP/data-repo/$(dirname "$path")"
     cp -R "$path" "$TMP/data-repo/$path"
     copied=$((copied + 1))
+    [[ "$path" == "data/bags.json" ]] && pushed_catalogue=1
   fi
-done < scripts/private-paths.txt
+done
 
 cd "$TMP/data-repo"
 git config user.name  "gearherd-bot"
@@ -56,13 +85,24 @@ if git diff --cached --quiet; then
   exit 0
 fi
 
-git commit --quiet -m "data: nightly crawl $(date -u +%Y-%m-%d)"
-git push --quiet
-echo "data-push: pushed $copied paths"
+if [[ "$pushed_catalogue" == "1" ]]; then
+  subject="data: nightly crawl $(date -u +%Y-%m-%d)"
+else
+  # Named differently on purpose. These commits land on nights the gate
+  # rejected the catalogue, and a log full of identical "nightly crawl"
+  # messages would hide the fact that nothing was published.
+  subject="data: bank ledger and caches $(date -u +%Y-%m-%d)"
+fi
 
-if [[ -n "$HOOK" ]]; then
+git commit --quiet -m "$subject"
+git push --quiet
+echo "data-push: pushed $copied paths ($subject)"
+
+if [[ "$pushed_catalogue" != "1" ]]; then
+  echo "data-push: catalogue not in this push — no rebuild needed"
+elif [[ -n "$HOOK" ]]; then
   echo "data-push: triggering rebuild"
   curl -fsS -X POST "$HOOK" -o /dev/null
 else
-  echo "data-push: DEPLOY_HOOK unset — data updated, site NOT rebuilt" >&2
+  echo "data-push: DEPLOY_HOOK unset — catalogue updated, site NOT rebuilt" >&2
 fi
