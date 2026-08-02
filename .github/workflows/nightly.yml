@@ -45,6 +45,10 @@ on:
         description: "Skip the crawl; assemble from the cached raw/ only"
         type: boolean
         default: false
+      max_coverage_drop:
+        description: "Points of coverage a field may lose before the gate fails (default 10)"
+        type: string
+        default: "10"
 
 permissions:
   contents: write
@@ -283,11 +287,17 @@ jobs:
       # pull failed. Skipping the regression checks is the right call on a
       # genuine first run and exactly the wrong one in a pipeline that fetches
       # its own baseline: the gate would report success having compared nothing.
+      # max_coverage_drop is an input rather than a setting, and defaults to the
+      # strict value, because widening the catalogue is a decision somebody
+      # makes once and not a permanent loosening of the gate. A scheduled run
+      # gets no inputs and so gets 10 — which is the point: an unattended night
+      # can never publish a large coverage regression on its own.
       - name: Validate
         run: |
           python3 validate.py \
             --baseline data/bags.baseline.json \
-            --require-baseline
+            --require-baseline \
+            --max-coverage-drop ${{ inputs.max_coverage_drop || '10' }}
 
       - name: Install alert matcher dependencies
         run: pip install --quiet -r alerts/requirements.txt

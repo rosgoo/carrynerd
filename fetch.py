@@ -69,6 +69,12 @@ PAGE_LIMIT = 250
 MAX_PAGES = 12
 MAX_RETRIES = 4
 
+# Consecutive rate-limited brands before a run gives up on the feed endpoints
+# entirely. Three, because the block is per-store often enough that one or two
+# proves nothing — Aer served us right through a block that had every other
+# store returning 429 — while three in a row is about this client.
+RATE_LIMIT_STREAK = 3
+
 
 class _Redirect308(urllib.request.HTTPRedirectHandler):
     """
@@ -1455,6 +1461,7 @@ def main():
         except json.JSONDecodeError:
             log = {}
 
+    blocked_streak = 0
     for i, brand in enumerate(brands, 1):
         out = os.path.join(RAW, f"{brand['slug']}.json")
         if os.path.exists(out) and not args.force:
@@ -1508,6 +1515,38 @@ def main():
         log[brand["slug"]]["product_count"] = n
         with open(log_path, "w") as f:
             json.dump(log, f, indent=2)
+
+        # Run-level circuit breaker for the feed endpoints.
+        #
+        # A single brand already backs off properly — four attempts honouring
+        # Retry-After, then `rate_limited` and move on. What was missing is the
+        # decision above that: when store after store answers 429, the block is
+        # on us rather than on them, and continuing means burning four minutes
+        # of retries per brand while making the case for extending it. The
+        # posture in the README is that every request served while blocked is
+        # an argument against us, so the crawler should be the one to stop.
+        #
+        # Consecutive, and reset by any success, because the block has been
+        # observed to be per-store: Aer served us throughout one block while
+        # everything around it 429'd. An isolated blocked store is not a signal
+        # and must not stop a healthy run. Three in a row is a decision.
+        if res["status"] in ("rate_limited", "http_429"):
+            blocked_streak += 1
+            if blocked_streak >= RATE_LIMIT_STREAK:
+                print(f"\n  stopping: {blocked_streak} brands in a row "
+                      f"rate-limited. The block is on this client, not on any "
+                      f"one store — leaving the rest for another day.",
+                      flush=True)
+                log["_stopped"] = {
+                    "reason": "rate-limited",
+                    "after": i,
+                    "of": len(brands),
+                }
+                with open(log_path, "w") as f:
+                    json.dump(log, f, indent=2)
+                break
+        else:
+            blocked_streak = 0
 
     ok = sum(1 for v in log.values() if v.get("status") == "ok")
     print(f"\ndone: {ok}/{len(log)} brands with catalogs")
