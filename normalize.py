@@ -47,7 +47,10 @@ G_PER_OZ = 28.3495
 # often than the singular, so the singular-only forms silently dropped real
 # bags — WANDRD's whole PRVKE line among them.
 CATEGORIES = [
-    ("sling",            r"\bslings?\b|\bcrossbody\b|\bchest (?:packs?|bags?)\b"),
+    # Spaced as often as compounded. "Cross Body Bag XL" matched nothing at all
+    # while "Crossbody" matched here, which is the same one-character miss as
+    # "Waistpack" below.
+    ("sling",            r"\bslings?\b|\bcross ?body\b|\bchest (?:packs?|bags?)\b"),
     # Optional space in each: brands compound these as often as they space
     # them, and "Waistpack" was reading as no category at all.
     ("hip-pack",         r"\b(?:hip ?packs?|fanny ?packs?|waist ?packs?|"
@@ -67,7 +70,13 @@ CATEGORIES = [
                          r"saddle|gravel|down ?tube|stem)[- ]?(?:bags?|packs?)\b|"
                          r"\bbike[- ]?(?:bags?|packs?|packers?)\b|"
                          r"\btrunk[- ]?bags?\b"),
-    ("duffel",           r"\bduff?les?\b|\bduffels?\b|\bgym bags?\b|\bgo-?bags?\b"),
+    # weekender/carryall are what brands call a duffel when they would rather
+    # not say duffel. Db, Béis, Monos, Baboon and Heimplanet all ship a
+    # "Weekender" at 34-40L, and Dagne Dover's product copy calls its Landon
+    # Carryall "the ultimate duffle bag" outright. Neither word appears in a
+    # single title here that is not one.
+    ("duffel",           r"\bduff?les?\b|\bduffels?\b|\bgym bags?\b|\bgo-?bags?\b|"
+                         r"\bweekenders?\b|\bcarry ?alls?\b"),
     ("luggage",          r"\b(?:suitcases?|carry[- ]ons?(?: luggage)?|spinners?|rollers?|check[- ]in)\b"),
     ("tote",             r"\btotes?\b|\bshoppers?\b"),
     ("messenger",        r"\bmessengers?\b|\bcouriers?\b|\bsatchels?\b"),
@@ -92,6 +101,26 @@ CATEGORIES = [
                          r"zip bags?|pencil cases?|cosmetic cases?|"
                          r"jewel(?:le)?ry cases?|laptop (?:cases?|sleeves?)|"
                          r"stuff sacks?|caddy|caddies)\b"),
+]
+
+# Phrases that say a product is carried, not what it is. They classify only
+# when nothing else did, and they rank with tags rather than with titles, so a
+# store's own shelving still beats them — see classify().
+#
+# "shoulder bag" is the whole list for now, and both halves of that ranking are
+# load-bearing. Ranked as a title it beat the shelf and moved Cotopaxi's Viaje
+# and Topo's Mini out of `sling`, where the stores had put them and where they
+# belong. Matched plurally it also caught Tatonka, whose adapter prefixes every
+# title with the shelf it came from — "Shoulder Bags - Capture Pouch WP BC" —
+# so a breadcrumb was overriding a hand-curated shelf map with an artifact of
+# how the title was assembled. Shelves are plural, products are singular.
+#
+# What is left is the case worth having: a bag on a strap that nothing else
+# named. Dagne Dover's Nora, GORUCK's waxed canvas. Pakt's MODE Shoulder Bag
+# calls itself a briefcase in its own copy and is a fair override candidate —
+# data/category-overrides.json, not a cleverer pattern.
+CATEGORIES_WEAK = [
+    ("messenger",        r"\bshoulder bag\b"),
 ]
 
 # Things a bag catalogue should not contain. Same plural rule, same reason —
@@ -627,6 +656,13 @@ def classify(title, product_type, tags):
     blob = " ".join([product_type or "", " ".join(tags or [])])
     for name, pattern in CATEGORIES:
         if re.search(pattern, blob, re.I):
+            return name, "tag"
+    # Weak phrases report themselves as "tag" rather than "title" on purpose.
+    # Every builder ranks a title match above the store's shelving and the
+    # shelving above tags, so returning "tag" is what puts these last without
+    # each builder needing to learn a fourth precedence level.
+    for name, pattern in CATEGORIES_WEAK:
+        if re.search(pattern, f"{title or ''}\n{blob}", re.I):
             return name, "tag"
     return None, None
 
