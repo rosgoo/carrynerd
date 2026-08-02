@@ -60,6 +60,19 @@ env:
   # immediately, so pace hard. This is the number that keeps the crawl polite.
   DELAY: '65'
   SHARDS: '4'
+  # Enrichment gets its own pacing, for the same reason the plate sampler does.
+  # DELAY is 65 because /products.json rate-limits per client IP and throttles
+  # datacenter ranges on sight. Enrichment does not touch that endpoint — it
+  # fetches ordinary product pages, which are CDN-fronted HTML with nothing
+  # like the same limit — so it was inheriting a number calibrated for a
+  # different problem and paying 65 minutes a night for 60 pages.
+  #
+  # 30s is a deliberate first step down rather than the number we think is
+  # right: the first Actions run answered the open question and 32 of 40 brands
+  # served us, so the runners are not the liability they were assumed to be.
+  # Halve it, watch the fetch log for 429s and challenge markers, and keep
+  # going down if it stays clean. If it does not, this is the line to raise.
+  ENRICH_DELAY: '30'
   # Live and serving a real page as of 2026-08-02. This has to keep being true:
   # fetch.py omits the contact URL entirely when unset, on purpose, because a
   # UA advertising a URL that does not resolve is the stock bot signature that
@@ -211,7 +224,7 @@ jobs:
       # make it survive between runs without publishing it.
       - name: Enrich new products
         continue-on-error: true
-        run: python3 enrich.py --limit 60 --delay ${{ env.DELAY }} --cache-pages
+        run: python3 enrich.py --limit 60 --delay ${{ env.ENRICH_DELAY }} --cache-pages
 
       - name: Track prices
         run: python3 track_prices.py --events-out data/price-events.json
