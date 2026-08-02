@@ -15,6 +15,7 @@ raw/
 # fine to read. The catalogue is the product, and the price history is the one
 # part of it that cannot be regenerated at any price — it accrues only by
 # observing, daily. That is what is worth not publishing.
+data/brands-master.json
 data/bags.json
 data/price-history.jsonl
 data/price-state.json

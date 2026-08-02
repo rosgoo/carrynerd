@@ -13,11 +13,20 @@
 #
 # Deliberately NOT here — hand-authored inputs and curation, which are part of
 # how the code behaves and are inert without a catalogue to apply them to:
-#   brands.json                    the roster; the crawler is unreadable without it
+#   brands.json                    the roster fetch.py reads. It has to stay
+#                                  public: the nightly runs in the public repo
+#                                  and cannot pull the data repo before it has
+#                                  a brand list to fetch.
 #   data/airlines.json             34 hand-checked airlines, with sources and dates
 #   data/category-overrides.json   rulings, effectively classifier configuration
 #   data/colour-overrides.json     same
 #   data/domains-todo.csv          research worksheet
+#
+# brands-master.json is the exception to "curation stays public": 170 researched
+# brands, most not yet wired, which is a target list rather than configuration.
+# Nothing in the nightly reads it — only build_brand_master.py and
+# resolve_domains.py, both run by hand — so it costs nothing to move.
+data/brands-master.json
 data/bags.json
 data/price-history.jsonl
 data/price-state.json
