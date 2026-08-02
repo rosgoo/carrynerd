@@ -92,14 +92,31 @@ jobs:
           key: raw-${{ github.run_id }}
           restore-keys: raw-
 
+      # --limit caps the crawl-style adapters, the way enrich is capped. The
+      # feed adapters are unaffected: /products.json returns a whole catalogue
+      # in one to three requests whether the brand sells 40 products or 1,400,
+      # so there is nothing there to bound. The page adapters are the opposite
+      # — one request per product, sharing this same 65s pacer — and uncapped
+      # they do not finish. Deuter's sitemap alone lists ~1,054 product URLs,
+      # which is 19 hours at this pacing against a 330-minute job limit.
+      #
+      # Chunked rather than truncated: --max-age means a capped run picks up
+      # where the last one stopped, so a large brand fills in over several
+      # nights instead of the same first N pages being refetched every time.
       - name: Fetch shard ${{ matrix.shard }}
         run: |
           python3 fetch.py \
             --shard ${{ matrix.shard }}/${{ env.SHARDS }} \
             --delay ${{ env.DELAY }} \
-            --max-age 20
+            --max-age 20 \
+            --limit 150
 
+      # if: always() because a cancelled or timed-out job otherwise skips this
+      # and throws away everything it fetched. A job timeout is a cancellation,
+      # so before this line a shard that ran to the 330-minute limit — exactly
+      # what the uncapped page adapters caused — banked nothing at all.
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: raw-shard-${{ matrix.shard }}
           path: |
@@ -129,6 +146,18 @@ jobs:
           key: raw-${{ github.run_id }}
           restore-keys: raw-
 
+      # The kept HTML, so --cache-pages means something on an ephemeral runner.
+      # Deliberately a cache rather than a commit: it must survive between runs
+      # without entering the public repo, because it holds brands' full
+      # marketing copy. ~72 KB gzipped per page, so the whole 10k-product
+      # corpus is roughly 725 MB against GitHub's 10 GB per-repo limit.
+      - name: Restore page cache
+        uses: actions/cache/restore@v4
+        with:
+          path: data/page-cache
+          key: pages-${{ github.run_id }}
+          restore-keys: pages-
+
       # Shard artifacts land on top of the cached copies, so a brand only goes
       # stale if its shard failed — and then it is yesterday's data, not a hole.
       - uses: actions/download-artifact@v4
@@ -148,9 +177,22 @@ jobs:
       # genuinely new SKUs. Capped and allowed to fail — product pages from a
       # datacenter IP are the throttled path, and a slow night here must not
       # block the price commit, which is the part that cannot be backfilled.
+      # --cache-pages is not optional. Without it the HTML is parsed once and
+      # dropped, so the next parser fix costs a re-crawl of every page — and
+      # this project has already paid that once: the notes record a whole
+      # enrich cache going stale because its entries predated a parser change.
+      # Keeping the page means a fix costs `enrich.py --reparse` and zero
+      # requests, which is the difference between a parser being cheap to
+      # improve and being effectively frozen.
+      #
+      # The flag alone does nothing here, though: runners are ephemeral and
+      # data/page-cache/ is gitignored on purpose — it holds brands' full
+      # marketing copy, which the index deliberately does not reproduce and
+      # which must not end up in a public repo. The cache steps below are what
+      # make it survive between runs without publishing it.
       - name: Enrich new products
         continue-on-error: true
-        run: python3 enrich.py --limit 60 --delay ${{ env.DELAY }}
+        run: python3 enrich.py --limit 60 --delay ${{ env.DELAY }} --cache-pages
 
       - name: Track prices
         run: python3 track_prices.py --events-out data/price-events.json
@@ -209,6 +251,16 @@ jobs:
         with:
           path: raw
           key: raw-${{ github.run_id }}
+
+      # Same reasoning, and if: always() for the same reason as the artifact
+      # upload: a night that fails the gate has still paid for these pages, and
+      # dropping them means paying again.
+      - name: Save page cache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: data/page-cache
+          key: pages-${{ github.run_id }}
 
       - name: Commit the diff
         run: |

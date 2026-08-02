@@ -639,7 +639,8 @@
     "crawl": {
       "sitemap": "https://www.mammut.com/sitemap.xml",
       "product": "/us/en/products/[\\d-]+/[^/]+$",
-      "shelf": "/us/en/category/\\d+/[^/]+$"
+      "shelf": "/us/en/category/\\d+/[^/]+$",
+      "shelf_scoped": true
     }
   },
   {

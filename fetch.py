@@ -909,6 +909,37 @@ def fetch_pages(brand, pacer, limit=0, force=False):
     hints = shelf_hints(found.get("shelf") or [], pacer, keep, extra)
     result["shelves"] = hints
 
+    # Shelf scoping: crawl what the brand shelves as carry rather than its
+    # whole sitemap. shelf_hints has already dropped the non-carry shelves, so
+    # its keys are a ready-made frontier — the change here is spending them
+    # instead of only labelling with them.
+    #
+    # This is the difference between a page adapter that finishes and one that
+    # does not. Deuter lists ~1,054 product URLs and yields 187 models; Mammut
+    # yielded seven bags from 267 crawled pages. The remainder is gaiters,
+    # flasks and spare buckles, fetched at 65s each to be rejected later.
+    #
+    # Opt-in per brand, and it fails open. A brand reorganising its navigation
+    # would otherwise halve the crawl silently — unlike a rejected product, a
+    # page never fetched leaves no trace in rejected.json — so a scope that
+    # reaches implausibly little of the sitemap is read as a broken pattern
+    # rather than a small catalogue, and the full list is used instead. The
+    # count is printed either way, so the log says what scoping cost.
+    if cfg.get("shelf_scoped"):
+        scoped = [u for u in candidates
+                  if u.rstrip("/").rsplit("/", 1)[-1] in hints] if hints else []
+        share = len(scoped) / len(candidates)
+        if share < 0.05:
+            print(f"    shelf scope reached {len(scoped)}/{len(candidates)} "
+                  f"({share:.0%}) — too little to trust, crawling all",
+                  flush=True)
+            result["note"] = f"shelf-scope suspect: {len(scoped)}/{len(candidates)}"
+        else:
+            print(f"    shelf-scoped: {len(scoped)} of {len(candidates)} "
+                  f"sitemap products sit on carry shelves", flush=True)
+            result["scoped_from"] = len(candidates)
+            candidates = scoped
+
     path = urllib.parse.urlparse(candidates[0]).path
     allowed, why = robots_allows(domain, path)
     if not allowed:
