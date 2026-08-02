@@ -53,3 +53,7 @@ dist/
 # contain brands' full marketing copy, which the index deliberately does not
 # reproduce.
 data/page-cache/
+
+# The gate's baseline, copied from the pulled catalogue before normalize.py
+# writes over it. A build artefact of one run, never a record.
+data/bags.baseline.json

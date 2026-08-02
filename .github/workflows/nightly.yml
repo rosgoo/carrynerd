@@ -164,6 +164,28 @@ jobs:
         with:
           python-version: '3.11'
 
+      # The catalogue, the ledger and the caches. Without this the job runs
+      # against an empty data/ and every step downstream misreads it: enrich.py
+      # picks its batch by excluding what is already in enrich-cache.json, so
+      # an absent cache means re-enriching from zero; track_prices.py compares
+      # against price-state.json, so an absent one makes every price look new
+      # and writes a fresh ledger over 1,500 real observations. Nothing errors
+      # while any of that happens.
+      - name: Pull the published data
+        env:
+          DATA_REPO: ${{ vars.DATA_REPO }}
+          DATA_TOKEN: ${{ secrets.DATA_TOKEN }}
+        run: bash scripts/data-pull.sh
+
+      # Keep the published catalogue before normalize.py writes over it. This
+      # is what validate.py compares tonight's build against — it used to read
+      # `git show HEAD:data/bags.json`, which stopped existing when the
+      # catalogue moved to the data repo. That failure was silent: no baseline
+      # means the regression checks skip themselves and the gate passes having
+      # checked nothing.
+      - name: Keep the published catalogue as the gate's baseline
+        run: cp data/bags.json data/bags.baseline.json
+
       - name: Restore raw catalogues
         uses: actions/cache/restore@v4
         with:
@@ -257,8 +279,15 @@ jobs:
       # against the last committed catalogue, which is the copy currently live.
       # A legitimate large change — a merge fix, a stricter classifier — needs
       # a one-off --max-drop and a human deciding it is right.
+      # --require-baseline because here a missing baseline can only mean the
+      # pull failed. Skipping the regression checks is the right call on a
+      # genuine first run and exactly the wrong one in a pipeline that fetches
+      # its own baseline: the gate would report success having compared nothing.
       - name: Validate
-        run: python3 validate.py
+        run: |
+          python3 validate.py \
+            --baseline data/bags.baseline.json \
+            --require-baseline
 
       - name: Install alert matcher dependencies
         run: pip install --quiet -r alerts/requirements.txt

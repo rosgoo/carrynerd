@@ -189,8 +189,28 @@ def brandmark(rep):
                  f"({len(logo)} vs {len(icon)} path(s)) — update both")
 
 
-def baseline():
-    """The last committed catalogue — i.e. the one currently deployed."""
+def baseline(path=None):
+    """The last published catalogue — i.e. the one currently deployed.
+
+    `git show HEAD:data/bags.json` was the whole implementation until the
+    catalogue moved to the private data repo, at which point that path stopped
+    existing in this checkout and this returned None — silently, because a
+    missing baseline is a legitimate state on a first run. The regression
+    checks then skipped themselves and the gate reported success having checked
+    nothing, which is the worst way for a safety check to fail: it does not
+    fire, and it does not say that it did not fire.
+
+    So a caller can name the file instead. The nightly pulls the published
+    catalogue before rebuilding over it and hands that copy here, which is what
+    the git lookup used to mean. The git path stays as the fallback, for local
+    runs in a checkout that still tracks it.
+    """
+    if path:
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return None
     try:
         out = subprocess.run(
             ["git", "show", "HEAD:data/bags.json"],
@@ -247,6 +267,16 @@ def main():
                     help="tolerated fractional fall in bag/SKU count (default .25)")
     ap.add_argument("--max-coverage-drop", type=float, default=10.0,
                     help="tolerated fall in a coverage percentage, in points")
+    ap.add_argument("--baseline", default="",
+                    help="the published catalogue to compare against. Defaults "
+                         "to `git show HEAD:data/bags.json`, which only works "
+                         "in a checkout that still tracks it — the nightly "
+                         "pulls the live copy from the data repo and names it")
+    ap.add_argument("--require-baseline", action="store_true",
+                    help="fail rather than skip when no baseline is found. The "
+                         "nightly sets this: with the catalogue in another "
+                         "repo, a missing baseline means the pull failed, not "
+                         "that this is a first run")
     args = ap.parse_args()
 
     try:
@@ -261,8 +291,17 @@ def main():
     structural(payload, rep)
     brandmark(rep)
 
-    prev = baseline()
-    if prev is None:
+    prev = baseline(args.baseline or None)
+    if prev is None and args.require_baseline:
+        # Skipping is right when there is genuinely nothing to compare against.
+        # It is wrong when the baseline was supposed to be fetched and was not:
+        # the gate then passes having checked nothing, and says so only in a
+        # note nobody reads. Anywhere the baseline is expected, demand it.
+        rep.fail("baseline",
+                 f"no baseline at {args.baseline or 'HEAD:data/bags.json'} — "
+                 f"regression checks would silently pass. Did the data pull "
+                 f"run?")
+    elif prev is None:
         rep.note("no committed baseline in git — regression checks skipped")
     else:
         regression(payload, prev, rep, args.max_drop, args.max_coverage_drop)
