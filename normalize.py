@@ -787,6 +787,14 @@ def build_shopify(product, brand, hint=None, force=None):
     for v in product.get("variants") or []:
         opts = [v.get("option1"), v.get("option2"), v.get("option3")]
         color = opts[color_idx] if color_idx is not None and color_idx < 3 else None
+        # Dropped here rather than in colour_family, which was the first place
+        # I put it and did nothing at all: these codes contain no colour word,
+        # so the patterns already returned None for them. The leak is `colors`,
+        # which is built from the raw option value and never asks. Del Día's
+        # first variant is genuinely named "Del Día" and survives; the 700-odd
+        # part numbers behind it do not.
+        if is_sku_code(color):
+            color = None
         size = opts[size_idx] if size_idx is not None and size_idx < 3 else None
         # Keep the raw axis->value map whatever the axis is called. A filter
         # nobody has written yet costs a schema addition, not another crawl.
