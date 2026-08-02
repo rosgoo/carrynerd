@@ -321,6 +321,25 @@ CATEGORY_OVERRIDES = Overrides(CATEGORY_OVERRIDES_PATH,
                                [c for c, _ in CATEGORIES], "category")
 
 
+# A colour option carrying an internal part number rather than a colour name.
+# Cotopaxi's Del Día line is built from offcuts, so every unit is unique and
+# the colour axis holds the SKU instead: A35-CHOICEDDC_ZL-10, BATAC24-CHOICEDDC_
+# ACR-8. 752 values corpus-wide, 723 of them Cotopaxi's, and every one of them
+# reaches the colour filter as a distinct "colour" that matches nothing and
+# heads the coverage audit forever.
+#
+# Deliberately narrow: all-caps with a separator and a digit run. Real colour
+# names do not look like this, and anything ambiguous is left for a ruling in
+# colour-overrides.json rather than guessed at here.
+SKU_CODE_COLOUR = re.compile(r"^[A-Z0-9]+[-_][A-Z0-9][A-Z0-9_-]{2,}$")
+
+
+def is_sku_code(name):
+    """True when a colour option is really a part number."""
+    s = (name or "").strip()
+    return bool(s) and bool(SKU_CODE_COLOUR.match(s)) and bool(re.search(r"\d", s))
+
+
 def colour_family(name, brand=None):
     """
     The family a colourway name belongs to, or None when it names no colour.
@@ -336,6 +355,10 @@ def colour_family(name, brand=None):
         decided = COLOUR_OVERRIDES.decide(brand, name)
         if decided is not MISSING:
             return decided
+    # After the override, so a ruling can still name one, and before the
+    # patterns, so a part number never accidentally matches a colour word.
+    if is_sku_code(name):
+        return None
     text = name or ""
     for _, pattern in MATERIALS:
         text = re.sub(pattern, " ", text, flags=re.I)
@@ -2225,6 +2248,75 @@ def model_key(name):
     return re.sub(r"\s+", " ", key).strip().lower()
 
 
+# Above this many SKUs on one model, a variant list is a cross-product rather
+# than a list of things a reader chooses between. Zpacks sells the Arc Haul in
+# six colours and prices every combination of torso length, belt size and
+# shoulder strap separately: 241 SKUs, six colours.
+COLLAPSE_ABOVE = 25
+
+
+def collapse_variants(bags):
+    """Store the axes, not their cross-product.
+
+    A model with 241 SKUs and six colours is not offering 241 choices. It is
+    offering six colours and a fitting, and the 241 rows are every combination
+    of the two written out. Carrying them costs on three fronts: they are 31%
+    of the catalogue JSON, they ship to the browser in the browse payload, and
+    track_prices.py writes a ledger row and a state entry *per variant*, so the
+    append-only history grows by the cross-product every night, permanently.
+
+    So keep one variant per distinct colourway — which is what the drawer
+    shows and what a reader picks — and record the other axes as the lists they
+    are. Nothing a page displays is lost; what goes is the enumeration.
+
+    Keyed on colour *and* price together, which is what keeps it safe without
+    knowing the brand. Requiring a single price first seemed like the careful
+    choice and turned out to reject exactly the cases worth collapsing: the Arc
+    Haul Ultra 60L carries 241 SKUs across 21 colours at 2 prices, so a
+    uniform-price rule skipped it for having two. Keying on the pair keeps
+    every distinct price — 241 rows become 39 — and where price really does
+    vary per SKU, the pairs are the SKUs and nothing collapses, which is the
+    correct outcome rather than a special case.
+    """
+    collapsed = 0
+    for bag in bags:
+        vs = bag.get("variants") or []
+        if len(vs) <= COLLAPSE_ABOVE:
+            continue
+
+        # First occurrence wins, so the kept row is the one whose image and sku
+        # the page would already have shown. Availability is OR'd across the
+        # group: the colour is buyable if any fitting of it is, which is what
+        # "in stock" means on a page that no longer lists every fitting.
+        groups = {}
+        for v in vs:
+            key = (v.get("color") or v.get("color_family") or v.get("title"),
+                   v.get("price"))
+            if key in groups:
+                if v.get("available"):
+                    groups[key]["available"] = True
+            else:
+                groups[key] = dict(v)
+        kept = list(groups.values())
+        if len(kept) >= len(vs):
+            continue
+
+        # The axes that were being enumerated, so the page can still say a
+        # model comes in five torso lengths without carrying a row per length.
+        axes = {}
+        for v in vs:
+            for name, val in (v.get("options") or {}).items():
+                if val:
+                    axes.setdefault(name, []).append(val)
+        bag["variant_axes"] = {k: sorted(set(v)) for k, v in axes.items()}
+        bag["variants_collapsed_from"] = len(vs)
+        bag["variants"] = kept
+        # variant_count keeps saying how many SKUs exist, because that is true
+        # and the page reports it. Only the enumeration is gone.
+        collapsed += 1
+    return collapsed
+
+
 def merge_models(bags):
     groups = {}
     for bag in bags:
@@ -2440,6 +2532,7 @@ def main():
 
     before = len(bags)
     bags = merge_models(bags)
+    collapsed = collapse_variants(bags)
     bags.sort(key=lambda b: (b["brand"].lower(), b["name"].lower()))
 
     # URLs come from the merged model name, not from the surviving Shopify
@@ -2474,6 +2567,7 @@ def main():
         "sku_count": sum(b["variant_count"] for b in bags),
         "categories": sorted({b["category"] for b in bags}),
         "products_merged": before - len(bags),
+        "models_collapsed": collapsed,
         "rejected": rejects,
         "overrides": {
             "colour": COLOUR_OVERRIDES.report(),
