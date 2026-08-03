@@ -1,6 +1,7 @@
 ---
 import '../styles/app.css';
 import Logo from '../components/Logo.astro';
+import Analytics from '../components/Analytics.astro';
 import { SITE_NAME_DISPLAY } from '../lib/brand.js';
 
 const {
@@ -113,5 +114,7 @@ const robots = noindex ? `noindex,${nofollow ? 'nofollow' : 'follow'}` : null;
   // It listens for this and converts them.
   swap('units', 'data-units', 'units', ['cm', 'in'], 'unitchange');
 </script>
+
+<Analytics />
 </body>
 </html>

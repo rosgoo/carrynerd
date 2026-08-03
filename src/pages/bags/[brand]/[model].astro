@@ -125,7 +125,16 @@ const description =
     <script type="application/ld+json" set:html={JSON.stringify(breadcrumbs)} />
   </Fragment>
 
-  <div class="page">
+  {/* The bag this page is about, in the one form a static page can hand to a
+      client script: attributes baked in at build time. scripts/analytics.js
+      reads these to fire product_view, the denominator of the referral rate. */}
+  <div class="page"
+       data-product-view
+       data-bag-id={bag.id}
+       data-brand={bag.brand}
+       data-model={bag.name}
+       data-category={bag.category}
+       data-price={bag.price_min}>
     <nav class="crumbs" aria-label="Breadcrumb">
       <a href="/">Bags</a> <span>/</span>
       <a href={`/brands/${bag.brand_slug}/`}>{bag.brand}</a> <span>/</span>
@@ -174,7 +183,12 @@ const description =
           ))}
         </dl>
 
-        <a class="btn buy" href={bag.url} target="_blank" rel="noopener nofollow">
+        <a class="btn buy" href={bag.url} target="_blank" rel="noopener nofollow"
+           data-buy="product_page"
+           data-buy-id={bag.id}
+           data-buy-brand={bag.brand}
+           data-buy-model={bag.name}
+           data-buy-price={bag.price_min}>
           View on {bag.brand} ↗
         </a>
       </div>

@@ -1,0 +1,22 @@
+---
+/* Everything measurement, in one place the layout mounts once.
+ *
+ * Analytics and SpeedInsights are the two standard Vercel scripts and neither
+ * takes configuration: pageviews and web vitals start arriving as soon as the
+ * site is deployed. Both are no-ops locally — they detect development mode and
+ * log to the console instead of sending — so `astro dev` stays quiet and no
+ * local browsing pollutes the numbers.
+ *
+ * The route the pageview is filed under comes from Astro.params, which means
+ * the several thousand model pages aggregate under /bags/[brand]/[model]
+ * rather than arriving as several thousand separate one-view rows.
+ */
+import Analytics from '@vercel/analytics/astro';
+import SpeedInsights from '@vercel/speed-insights/astro';
+---
+<Analytics />
+<SpeedInsights />
+<script>
+  import { initAnalytics } from '../scripts/analytics.js';
+  initAnalytics();
+</script>

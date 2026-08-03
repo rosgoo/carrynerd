@@ -58,7 +58,18 @@ const offers = urls.map((url, i) => ({
             {offer.primary ? (bag.in_stock ? 'in stock' : 'out') : '—'}
           </td>
           <td>
-            <a href={offer.url} target="_blank" rel="noopener nofollow">Buy ↗</a>
+            {/* Price is attached only to the canonical listing, for the same
+                reason the table only prints one: the extra fabric/colourway
+                listings share a model but not a confirmed price, and a click
+                should not report a number the reader was never shown. The
+                seller domain is read off the href by the tracker itself, so
+                every row is attributed to wherever it actually goes. */}
+            <a href={offer.url} target="_blank" rel="noopener nofollow"
+               data-buy="offers_table"
+               data-buy-id={bag.id}
+               data-buy-brand={bag.brand}
+               data-buy-model={bag.name}
+               data-buy-price={offer.primary ? bag.price_min : undefined}>Buy ↗</a>
           </td>
         </tr>
       ))}

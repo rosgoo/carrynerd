@@ -8,6 +8,7 @@
 
 import { CAT_LABELS, FEATURE_LABELS, COLOUR_LABELS, COLOUR_SWATCH,
          COLOUR_ORDER } from '../lib/labels.js';
+import { trackProductView } from './analytics.js';
 
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -455,10 +456,19 @@ function openDetail(id) {
       <thead><tr><th>Colourway</th><th>SKU</th><th>Price</th><th>Stock</th></tr></thead>
       <tbody>${variants}</tbody></table>` : ""}
     <div class="note">
-      <a href="${esc(b.url)}" target="_blank" rel="noopener nofollow">Open on ${esc(b.brand)} ↗</a>
+      <a href="${esc(b.url)}" target="_blank" rel="noopener nofollow"
+         data-buy="browse_overlay"
+         data-buy-id="${esc(b.id)}"
+         data-buy-brand="${esc(b.brand)}"
+         data-buy-model="${esc(b.name)}"
+         data-buy-price="${esc(b.price_min ?? "")}">Open on ${esc(b.brand)} ↗</a>
     </div>
     <a class="btn detfull" href="${esc(bagHref(b))}">Full specs &amp; price history →</a>`;
   $("#detoverlay").classList.add("on");
+  // The drawer is the other place a bag gets looked at and bought from, and the
+  // only one that never loads a model page. Without this the clicks it produces
+  // would have no views to divide by. See scripts/analytics.js.
+  trackProductView(b, "browse_overlay");
 }
 
 /* ---------- URL state ---------- */
