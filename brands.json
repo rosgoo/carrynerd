@@ -340,7 +340,13 @@
   {
     "slug": "thule",
     "name": "Thule",
-    "domain": "thule.com"
+    "domain": "www.thule.com",
+    "platform": "pages",
+    "crawl": {
+      "sitemap": "https://www.thule.com/sitemap/sitemap_en-us.xml",
+      "shelf": "/en-us/(backpacks|luggage|bike-packs-bags-and-racks)/[^/]+$",
+      "product": "/en-us/(backpacks|luggage|bike-packs-bags-and-racks)/[^/]+/[^/]+_-\\d+$"
+    }
   },
   {
     "slug": "tomtoc",

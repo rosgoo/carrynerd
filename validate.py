@@ -26,6 +26,7 @@ Usage:
     python3 validate.py
     python3 validate.py --warn-only     # report, always exit 0
     python3 validate.py --max-drop 0.3  # allow a 30% fall in bag count
+    python3 validate.py --max-brand-drop 0.6   # a brand really did shrink
 """
 
 import argparse
@@ -46,13 +47,29 @@ REQUIRED = ("id", "brand", "brand_slug", "name", "category", "url", "slug")
 # Physical plausibility, not precision. These are wide on purpose: the job is
 # to catch a parser that has started reading pixel widths as centimetres, not
 # to second-guess a brand about its own bag.
+#
+# Widened at the bottom end for wallets, which the index carries now and did
+# not when these were written. The floors were set around the smallest *bag*
+# and duly failed a build on 85 values that were all correct: an Alpaka
+# cardholder really does weigh 19 g, and Bellroy's Apex Slim Sleeve really is
+# 0.1 L. A gate that fires on true data is worse than no gate, because the
+# next person reads past it.
+#
+# Still floors rather than none. 5 g catches the 1 g accessories that were a
+# parser fault, and 0.05 L is 50 cm³ — smaller than any card slip and larger
+# than zero.
 BOUNDS = {
     "price_min": (1, 20000),
     "price_max": (1, 20000),
-    "weight_g":  (20, 25000),
-    "volume_l":  (0.2, 300),
+    "weight_g":  (5, 25000),
+    "volume_l":  (0.05, 300),
     "linear_cm": (5, 600),
 }
+
+# Per-axis dimension sanity. The floor is 0.2 cm because a card sleeve is 2 mm
+# thick — the old 1 cm floor rejected three Bellroy card products for being
+# accurately thin.
+DIM_MIN, DIM_MAX = 0.2, 250
 
 
 class Report:
@@ -114,7 +131,8 @@ def structural(payload, rep):
         dims = bag.get("dims_cm")
         if dims is not None:
             if (not isinstance(dims, list) or not 2 <= len(dims) <= 3
-                    or not all(isinstance(d, (int, float)) and 1 <= d <= 250
+                    or not all(isinstance(d, (int, float))
+                               and DIM_MIN <= d <= DIM_MAX
                                for d in dims)):
                 bad_dims.append(f"{bid}={dims}")
             elif bag.get("linear_cm") is not None:
@@ -294,6 +312,84 @@ def freshness(rep, stale_days, fail_days):
         rep.note(f"freshness: every active brand fetched within {stale_days}d")
 
 
+# Below this many bags in the baseline, a percentage is noise rather than
+# signal: a brand with three models loses a third of its catalogue by
+# discontinuing one colourway. The per-brand check skips them, and the
+# aggregate and brand_count checks still cover the case where they vanish.
+MIN_BRAND_BAGS = 5
+
+
+def per_brand(payload, prev, rep, fail_drop, warn_drop):
+    """Has one brand's catalogue collapsed while the totals stayed fine?
+
+    The regression checks above are all aggregates, and the aggregate is the
+    wrong granularity for the failure that actually happens. gearherd carries
+    484 bags across 11 brands, unevenly: aer has 88, able-carry has 8. A paging
+    bug that costs aer 40% of its models drops 35 bags — 7% of the catalogue,
+    against a 25% tolerance. Nothing moves. brand_count does not move, because
+    aer still has bags. Coverage does not move, because the bags that survived
+    are as well-specified as they ever were. freshness() does not move either:
+    the fetch *succeeded*, it just came back short, so fetched_at is today's.
+
+    So the gate passes, the short catalogue publishes, and the only trace is a
+    number in a log nobody reads. That is the same shape as the paging bug that
+    was quietly losing 22% of every fetch, and nothing here would have caught
+    it.
+
+    Two tiers, because a brand genuinely discontinuing a line should not block a
+    deploy at 3am. A fall past the whole-catalogue tolerance is worth saying out
+    loud; a fall past the per-brand tolerance is worth stopping for. The
+    per-brand limit is the looser of the two on purpose: one brand's count is a
+    far noisier series than the total, so holding it to the aggregate's standard
+    would fail on ordinary churn.
+
+    Note this compares catalogue bags, not fetch-log product_count. Those differ
+    — merging and classification sit between them — and the catalogue is the
+    thing being published, so it is the thing worth gating. Erosion too slow to
+    trip a night-over-night check is the other half of this, and belongs to
+    scripts/crawl_history.py, which has the whole series to compare against
+    rather than just last night.
+    """
+    def counts(doc):
+        out = {}
+        for bag in doc.get("bags") or []:
+            slug = bag.get("brand_slug")
+            if slug:
+                out[slug] = out.get(slug, 0) + 1
+        return out
+
+    now, before = counts(payload), counts(prev)
+    if not before:
+        return
+
+    collapsed, shrunk = [], []
+    for slug, was in sorted(before.items()):
+        if was < MIN_BRAND_BAGS:
+            continue
+        remains = now.get(slug, 0)
+        if remains >= was:
+            continue
+        drop = (was - remains) / was
+        entry = f"{slug} {was} -> {remains} ({drop:.0%})"
+        if drop > fail_drop:
+            collapsed.append(entry)
+        elif drop > warn_drop:
+            shrunk.append(entry)
+
+    if collapsed:
+        rep.fail("drop:brand",
+                 f"{len(collapsed)} brand(s) lost more than {fail_drop:.0%} of "
+                 f"their catalogue: {sample(collapsed, 6)}. The totals absorb "
+                 f"this — check the fetch before assuming it is real. Rerun "
+                 f"with --max-brand-drop if the brand did discontinue them.")
+    if shrunk:
+        rep.warn("drop:brand",
+                 f"{len(shrunk)} brand(s) shrank by more than {warn_drop:.0%}: "
+                 f"{sample(shrunk, 6)}")
+    if not collapsed and not shrunk:
+        rep.note(f"per-brand: no brand lost more than {warn_drop:.0%} of its bags")
+
+
 def regression(payload, prev, rep, max_drop, max_coverage_drop):
     meta, pmeta = payload.get("meta") or {}, prev.get("meta") or {}
 
@@ -337,6 +433,11 @@ def main():
                     help="report problems but always exit 0")
     ap.add_argument("--max-drop", type=float, default=0.25,
                     help="tolerated fractional fall in bag/SKU count (default .25)")
+    ap.add_argument("--max-brand-drop", type=float, default=0.4,
+                    help="tolerated fractional fall in any one brand's bag "
+                         "count (default .4). Looser than --max-drop because a "
+                         "single brand's count is a noisier series than the "
+                         "total; a fall past --max-drop warns, past this fails")
     ap.add_argument("--max-coverage-drop", type=float, default=10.0,
                     help="tolerated fall in a coverage percentage, in points")
     ap.add_argument("--stale-days", type=int, default=3,
@@ -385,6 +486,7 @@ def main():
         rep.note("no committed baseline in git — regression checks skipped")
     else:
         regression(payload, prev, rep, args.max_drop, args.max_coverage_drop)
+        per_brand(payload, prev, rep, args.max_brand_drop, args.max_drop)
 
     meta = payload.get("meta") or {}
     print(f"validating {meta.get('bag_count', '?')} bags, "
