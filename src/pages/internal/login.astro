@@ -1,0 +1,63 @@
+---
+/* The gate in front of /internal/referrals/.
+ *
+ * One page handling both verbs: GET draws the form, POST checks the password
+ * and sets the cookie. Astro gives server pages the whole Request, so there is
+ * no reason to put the handler in a separate route and then have to keep the
+ * two in step.
+ */
+import Base from '../../layouts/Base.astro';
+import { checkPassword, mint, secret, COOKIE, cookieOptions } from '../../lib/dash.ts';
+
+export const prerender = false;
+
+const next = new URL(Astro.request.url).searchParams.get('next') ?? '/internal/referrals/';
+// Only ever bounce back inside this site. `next` arrives from the query string,
+// so without this the login page is an open redirect with a password prompt
+// attached — the most convincing possible place to host one.
+const safeNext = next.startsWith('/') && !next.startsWith('//') ? next : '/internal/referrals/';
+
+const configured = secret() !== null;
+let failed = false;
+
+if (Astro.request.method === 'POST' && configured) {
+  const form = await Astro.request.formData();
+  if (await checkPassword(form.get('password'))) {
+    const token = await mint();
+    if (token) {
+      Astro.cookies.set(COOKIE, token, cookieOptions);
+      return Astro.redirect(safeNext, 303);
+    }
+  }
+  failed = true;
+}
+---
+<Base title="Sign in" noindex={true}>
+  <div class="page">
+    <section>
+      <h1>Internal</h1>
+
+      {!configured && (
+        <p class="note">
+          <b>DASHBOARD_PASSWORD is not set.</b> Nothing can authenticate until it
+          is — set it in the Vercel project environment and redeploy. This page
+          fails closed on purpose: an internal dashboard that lets everyone in
+          when a variable is missing is worse than one that lets nobody in.
+        </p>
+      )}
+
+      {configured && (
+        <form method="post" class="watch">
+          <p>This page is not part of the public index.</p>
+          <div class="watchrow">
+            <input type="password" name="password" required autofocus
+                   autocomplete="current-password" aria-label="Password"
+                   placeholder="Password" />
+            <button class="btn" type="submit">Sign in</button>
+          </div>
+          {failed && <p class="note nil">Not that one.</p>}
+        </form>
+      )}
+    </section>
+  </div>
+</Base>

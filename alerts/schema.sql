@@ -58,3 +58,56 @@ create index if not exists sent_alerts_lookup
 -- forty.
 create index if not exists sent_alerts_dedupe
   on sent_alerts (subscription_id, (event->>'bag_id'), sent_at desc);
+
+-- Referral tracking.
+--
+-- Three event names, written by /api/click from the browser. The whole point is
+-- the ratio between the first two: buy_click over product_view is the referral
+-- rate, per brand, per bag or per placement depending on how it is grouped.
+--
+-- 'brand_click' — a reader leaving for a brand's own site rather than for a
+-- product — is deliberately a third name and not a buy_click placement. It is
+-- an outbound click worth counting, but it is not an attempt to buy anything,
+-- and adding it to the numerator would raise the referral rate without a single
+-- extra sale behind it. Every rate query below filters on buy_click explicitly
+-- for that reason.
+--
+-- This is the second reason the alerts Postgres exists, and it holds nothing
+-- personal. No address, no IP, no cookie, no session — nothing here identifies
+-- a reader, only which bag was looked at and which seller was left for. That
+-- is a deliberate ceiling, not an oversight: it means the table needs no
+-- retention policy and no mention in the privacy page beyond what it already
+-- says. Counting is enough to price the index; knowing who did the counting is
+-- not worth the disclosure.
+--
+-- Typed columns rather than the jsonb that sent_alerts uses, because every
+-- query against this table is an aggregate and the shape is fixed by the two
+-- senders in scripts/analytics.js.
+create table if not exists events (
+  id         bigint generated always as identity primary key,
+  name       text        not null
+             check (name in ('product_view', 'buy_click', 'brand_click')),
+  -- Widest useful cut, and the finest: brand groups the report, bag_id joins a
+  -- view to the click it produced.
+  brand      text,
+  bag_id     text,
+  -- Which surface: 'product_page', 'offers_table' or 'browse_overlay'. Clicks
+  -- arrive from all three, views from only two, so the rate is only comparable
+  -- within a surface — see the note in scripts/analytics.js.
+  placement  text,
+  -- Destination host for a buy_click, null for a view. Today this is always
+  -- the brand's own store; it stops being redundant the day retailer offers
+  -- land in the table.
+  seller     text,
+  model      text,
+  price      numeric(10, 2),
+  created_at timestamptz not null default now()
+);
+
+-- The report: counts of both names grouped by brand over a window.
+create index if not exists events_rate
+  on events (name, brand, created_at desc);
+
+-- Per-bag drilldown, and the join that turns two counts into one rate.
+create index if not exists events_bag
+  on events (bag_id, name);

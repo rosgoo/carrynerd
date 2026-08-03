@@ -149,7 +149,11 @@ const description =
       </div>
 
       <div class="modelmeta">
-        <div class="cbrand">{bag.brand}</div>
+        {/* Internal, not the brand's own site. The reader is deciding on this
+            bag and the buy button is inches away; an outbound homepage link
+            here would compete with it and convert worse. The brand's site is
+            one click on, from /brands/, where browsing is the point. */}
+        <a class="cbrand" href={`/brands/${bag.brand_slug}/`}>{bag.brand}</a>
         <h1>{bag.name}</h1>
 
         <div class="pricebox">

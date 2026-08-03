@@ -461,6 +461,7 @@ function openDetail(id) {
     ${b.image ? `<div class="shot" style="aspect-ratio:16/10;border-bottom:1px solid var(--line)${
         b.image_bg ? `;--shot-bg:${esc(b.image_bg)}` : ""}">
       <img src="${esc(b.image)}" alt="${esc(b.name)}"></div>` : ""}
+    ${row("Brand", `<a href="/brands/${esc(b.brand_slug)}/">${esc(b.brand)} →</a>`)}
     ${row("Category", esc(CAT_LABELS[b.category] || b.category))}
     ${row("Price", b.price_min === b.price_max ? fmtPrice(b.price_min)
         : `${fmtPrice(b.price_min)} – ${fmtPrice(b.price_max)}`)}

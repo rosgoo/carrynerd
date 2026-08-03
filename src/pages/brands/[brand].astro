@@ -6,12 +6,26 @@ import { brands, bagHref } from '../../lib/catalog.js';
 import { catLabel } from '../../lib/labels.js';
 import { SITE_NAME } from '../../lib/brand.js';
 import { fmtPrice, fmtVolume, fmtWeight, fmtDims } from '../../lib/format.js';
+import roster from '../../../brands.json';
 
 export function getStaticPaths() {
   return brands.map((brand) => ({ params: { brand: brand.slug }, props: { brand } }));
 }
 
 const { brand } = Astro.props;
+
+/* The brand's own site.
+ *
+ * This is the one place it belongs. It was tempting to put it on the model page
+ * beside the buy button, but a link to a brand's homepage competes with that
+ * button and converts worse than it: the reader who follows it has to find the
+ * bag again, where the buy link lands them on the product itself. Here the
+ * reader is browsing a brand rather than deciding on a bag, so the link answers
+ * the question actually being asked and costs no purchase intent.
+ *
+ * Tracked as brand_click, never as buy_click — see scripts/analytics.js.
+ */
+const domain = roster.find((b) => b.slug === brand.slug)?.domain ?? null;
 const prices = brand.bags.map((b) => b.price_min).filter((p) => p != null);
 const cats = [...new Set(brand.bags.map((b) => b.category))].map(catLabel);
 
@@ -56,6 +70,14 @@ const jsonLd = {
       {brand.bags.length} {brand.bags.length === 1 ? 'model' : 'models'}
       {cats.length > 0 && ` · ${cats.join(', ')}`}
       {prices.length > 0 && ` · ${fmtPrice(Math.min(...prices))}–${fmtPrice(Math.max(...prices))}`}
+      {domain && (
+        <Fragment>
+          {' · '}
+          <a href={`https://${domain}/`} target="_blank" rel="noopener nofollow"
+             data-brandlink="brand_page"
+             data-brandlink-brand={brand.name}>{domain} ↗</a>
+        </Fragment>
+      )}
     </p>
 
     <table class="spectable brandtable">

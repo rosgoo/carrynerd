@@ -1,0 +1,456 @@
+---
+/* Referral rate — the one number the index is trying to earn.
+ *
+ * Everything here is buy_click over product_view, sliced differently. The
+ * generic web metrics deliberately are not: pageviews, referrers, devices and
+ * countries live in Vercel's own dashboard, which is free and already
+ * collecting them, and the events table holds no session, address or agent to
+ * rebuild them from even if we wanted to.
+ *
+ * THE DENOMINATOR IS THE WHOLE DIFFICULTY. Clicks arrive from three placements
+ * but views from only two, because 'offers_table' is the buy table *on the
+ * model page* — it has no view of its own, it shares the model page's. Dividing
+ * each placement's clicks by its own views would compare offers_table against
+ * nothing and quietly overstate every other row. So the rate is computed per
+ * SURFACE, where a surface is a thing that can be looked at:
+ *
+ *   Model page    views: product_page     clicks: product_page + offers_table
+ *   Browse drawer views: browse_overlay   clicks: browse_overlay
+ *
+ * Placement is still shown underneath, as counts only, because which of the two
+ * buttons on the model page gets used is a real question — just not a rate.
+ */
+import Base from '../../layouts/Base.astro';
+import { sql } from '../../lib/db.ts';
+import { verify, COOKIE } from '../../lib/dash.ts';
+
+export const prerender = false;
+
+if (!(await verify(Astro.cookies.get(COOKIE)?.value))) {
+  return Astro.redirect(`/internal/login/?next=${encodeURIComponent(Astro.url.pathname)}`, 303);
+}
+
+const DAYS = [7, 30, 90];
+const requested = Number(new URL(Astro.request.url).searchParams.get('days'));
+const days = DAYS.includes(requested) ? requested : 30;
+
+const n = (v: unknown) => Number(v ?? 0);
+const pct = (clicks: number, views: number) =>
+  views > 0 ? `${((clicks / views) * 100).toFixed(1)}%` : null;
+
+// A rate over three views is noise wearing a percentage sign. Rows below this
+// show their counts and withhold the ratio rather than publishing a number that
+// will move twenty points on the next click.
+const MIN_VIEWS = 20;
+
+type Row = Record<string, unknown>;
+let error: string | null = null;
+let byPlacement: Row[] = [];
+let byBrand: Row[] = [];
+let bySeller: Row[] = [];
+let daily: Row[] = [];
+let byBag: Row[] = [];
+let byBrandClick: Row[] = [];
+
+try {
+  const db = sql();
+  const since = db`now() - (${String(days)} || ' days')::interval`;
+
+  [byPlacement, byBrand, bySeller, daily, byBag, byBrandClick] = await Promise.all([
+    db`select name, placement, count(*) as n from events
+       where created_at >= ${since} group by name, placement`,
+
+    db`select brand,
+              count(*) filter (where name = 'product_view') as views,
+              count(*) filter (where name = 'buy_click')    as clicks
+       from events
+       where created_at >= ${since} and brand is not null
+       group by brand
+       order by clicks desc, views desc, brand
+       limit 60`,
+
+    db`select seller,
+              count(*) filter (where name = 'buy_click')   as buys,
+              count(*) filter (where name = 'brand_click') as brand
+       from events
+       where created_at >= ${since} and seller is not null
+         and name in ('buy_click', 'brand_click')
+       group by seller order by buys desc, brand desc limit 25`,
+
+    db`select date_trunc('day', created_at)::date as day,
+              count(*) filter (where name = 'product_view') as views,
+              count(*) filter (where name = 'buy_click')    as clicks
+       from events
+       where created_at >= ${since}
+       group by 1 order by 1`,
+
+    // No HAVING here: this is the raw per-SKU click ledger as well as the
+    // source for the rate tables, and a bag with three views and one click
+    // still belongs in a list of total clicks. The view threshold is applied
+    // later, and only where a percentage is actually printed.
+    db`select bag_id, brand, model,
+              count(*) filter (where name = 'product_view') as views,
+              count(*) filter (where name = 'buy_click')    as clicks
+       from events
+       where created_at >= ${since} and bag_id is not null
+       group by bag_id, brand, model
+       order by clicks desc, views desc
+       limit 400`,
+
+    db`select brand, count(*) as n from events
+       where created_at >= ${since} and name = 'brand_click' and brand is not null
+       group by brand order by n desc limit 25`,
+  ]);
+} catch (err) {
+  error = err instanceof Error ? err.message : String(err);
+}
+
+/* ---------- surfaces ---------- */
+
+const count = (name: string, placement: string) =>
+  n(byPlacement.find((r) => r.name === name && r.placement === placement)?.n);
+
+const surfaces = [
+  {
+    label: 'Model page',
+    views: count('product_view', 'product_page'),
+    clicks: count('buy_click', 'product_page') + count('buy_click', 'offers_table'),
+    note: 'buy button + offers table',
+  },
+  {
+    label: 'Browse drawer',
+    views: count('product_view', 'browse_overlay'),
+    clicks: count('buy_click', 'browse_overlay'),
+    note: 'quick-look panel on the grid',
+  },
+];
+
+const totalViews = surfaces.reduce((t, s) => t + s.views, 0);
+const totalClicks = surfaces.reduce((t, s) => t + s.clicks, 0);
+
+const placements = ['product_page', 'offers_table', 'browse_overlay'].map((p) => ({
+  placement: p,
+  views: count('product_view', p),
+  clicks: count('buy_click', p),
+}));
+
+const sellerTotal = bySeller.reduce((t, r) => t + n(r.buys), 0);
+const brandClickTotal = byBrandClick.reduce((t, r) => t + n(r.n), 0);
+
+/* ---------- converters ---------- */
+
+const bags = byBag.map((r) => ({
+  bag_id: String(r.bag_id),
+  brand: r.brand ? String(r.brand) : '—',
+  model: r.model ? String(r.model) : '—',
+  views: n(r.views),
+  clicks: n(r.clicks),
+  rate: n(r.views) > 0 ? n(r.clicks) / n(r.views) : 0,
+}));
+
+// The plain ledger: which SKUs get clicked at all, most first. No threshold —
+// this table answers "how many" and not "how often", so a bag with one view and
+// one click is a real row rather than a 100% that means nothing.
+const topClicked = bags.filter((b) => b.clicks > 0).slice(0, 25);
+
+// Ratios, however, need the floor. Sorting the unfiltered list by rate would
+// put every one-view-one-click bag at the top on a permanent 100%.
+const rated = bags.filter((b) => b.views >= MIN_VIEWS).sort((a, b) => b.rate - a.rate);
+
+const best = rated.slice(0, 10);
+// Not `rated.slice(-10)` — that would be the same list read backwards when
+// fewer than twenty bags clear MIN_VIEWS, printing every row twice under two
+// headings that say opposite things.
+const worst = rated.length >= 20 ? rated.slice(-10).reverse() : [];
+
+/* ---------- sparkline ---------- */
+
+// The query returns only days that saw traffic. A gap has to become a zero
+// rather than a shorter line, or a quiet week reads as a steeper one.
+const iso = (d: unknown) =>
+  d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+
+const seen = new Map(daily.map((r) => [iso(r.day), r]));
+const series = Array.from({ length: days }, (_, i) => {
+  const d = new Date(Date.now() - (days - 1 - i) * 86_400_000);
+  const hit = seen.get(d.toISOString().slice(0, 10));
+  return { views: n(hit?.views), clicks: n(hit?.clicks) };
+});
+
+const W = 720;
+const H = 80;
+const peak = Math.max(1, ...series.map((p) => p.views));
+const line = (pick: (p: { views: number; clicks: number }) => number) =>
+  series
+    .map((p, i) => {
+      const x = series.length === 1 ? W : (i / (series.length - 1)) * W;
+      return `${x.toFixed(1)},${(H - (pick(p) / peak) * H).toFixed(1)}`;
+    })
+    .join(' ');
+---
+<Base title="Referrals" noindex={true}>
+  <div class="page">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/internal/">Internal</a> <span>/</span> <b>Referrals</b>
+    </nav>
+
+    <h1>Referral rate</h1>
+
+    <div class="tagrow">
+      {DAYS.map((d) => (
+        <a class="tag" href={`?days=${d}`} aria-current={d === days ? 'page' : undefined}>
+          {d === days ? `▸ ${d} days` : `${d} days`}
+        </a>
+      ))}
+    </div>
+
+    {error && (
+      <section>
+        <p class="note">
+          <b>No data source.</b> The query failed with: <code>{error}</code>
+          <br /><br />
+          If this is a fresh deployment, <code>DATABASE_URL</code> is probably
+          unset, or <code>alerts/schema.sql</code> has not been applied yet.
+          Every click is being accepted and dropped until it is — <code>/api/click</code>
+          returns 204 either way by design, and logs the same error.
+        </p>
+      </section>
+    )}
+
+    {!error && totalViews === 0 && totalClicks === 0 && (
+      <section>
+        <p class="note">
+          Connected, but no events in the last {days} days. That is the expected
+          state until a deployment carrying <code>scripts/analytics.js</code> has
+          had real traffic — local browsing never writes here.
+        </p>
+      </section>
+    )}
+
+    {!error && (totalViews > 0 || totalClicks > 0) && (
+      <Fragment>
+        <section>
+          <h2>Overall</h2>
+          <dl class="keyspecs">
+            <div><dt>Views</dt><dd>{totalViews.toLocaleString()}</dd></div>
+            <div><dt>Buy clicks</dt><dd>{totalClicks.toLocaleString()}</dd></div>
+            <div>
+              <dt>Referral rate</dt>
+              <dd class={pct(totalClicks, totalViews) ? '' : 'nil'}>
+                {pct(totalClicks, totalViews) ?? '—'}
+              </dd>
+            </div>
+          </dl>
+
+          <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img"
+               aria-label={`Views and buy clicks over ${days} days`}
+               preserveAspectRatio="none" style="overflow:visible">
+            <polyline points={line((p) => p.views)} fill="none"
+                      stroke="var(--ink-mute)" stroke-width="1.5" />
+            <polyline points={line((p) => p.clicks)} fill="none"
+                      stroke="var(--ok)" stroke-width="1.5" />
+          </svg>
+          <p class="note">
+            Views in grey, buy clicks in green, both to the same scale — the
+            clicks line is meant to sit low. Peak day: {peak.toLocaleString()} views.
+            Days are UTC.
+          </p>
+        </section>
+
+        <section>
+          <h2>By surface</h2>
+          <table class="spectable">
+            <thead>
+              <tr><th>Surface</th><th>Views</th><th>Clicks</th><th>Rate</th></tr>
+            </thead>
+            <tbody>
+              {surfaces.map((s) => (
+                <tr>
+                  <td>{s.label}<i class="prov">{s.note}</i></td>
+                  <td>{s.views.toLocaleString()}</td>
+                  <td>{s.clicks.toLocaleString()}</td>
+                  <td class={pct(s.clicks, s.views) ? '' : 'nil'}>
+                    {pct(s.clicks, s.views) ?? '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p class="note">
+            A surface is something that can be looked at. The offers table is not
+            one — it sits on the model page and shares its views — so its clicks
+            are counted in the model page’s rate rather than divided by a
+            denominator it does not have. Raw placement counts are below.
+          </p>
+
+          <table class="spectable">
+            <thead>
+              <tr><th>Placement</th><th>Views</th><th>Clicks</th></tr>
+            </thead>
+            <tbody>
+              {placements.map((p) => (
+                <tr>
+                  <td class="mono">{p.placement}</td>
+                  <td class={p.views ? '' : 'nil'}>
+                    {p.views ? p.views.toLocaleString() : '—'}
+                  </td>
+                  <td>{p.clicks.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+
+        <section>
+          <h2>By brand</h2>
+          <table class="spectable">
+            <thead>
+              <tr><th>Brand</th><th>Views</th><th>Clicks</th><th>Rate</th></tr>
+            </thead>
+            <tbody>
+              {byBrand.map((r) => (
+                <tr>
+                  <td>{String(r.brand)}</td>
+                  <td>{n(r.views).toLocaleString()}</td>
+                  <td>{n(r.clicks).toLocaleString()}</td>
+                  <td class={n(r.views) >= MIN_VIEWS ? '' : 'nil'}>
+                    {n(r.views) >= MIN_VIEWS ? pct(n(r.clicks), n(r.views)) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p class="note">
+            Rate is withheld below {MIN_VIEWS} views — the counts are still real,
+            the percentage would not be.
+          </p>
+        </section>
+
+        {bySeller.length > 0 && (
+          <section>
+            <h2>By seller</h2>
+            <table class="spectable">
+              <thead>
+                <tr><th>Destination</th><th>Buy clicks</th><th>Share</th><th>Brand-site clicks</th></tr>
+              </thead>
+              <tbody>
+                {bySeller.map((r) => (
+                  <tr>
+                    <td class="mono">{String(r.seller)}</td>
+                    <td>{n(r.buys).toLocaleString()}</td>
+                    <td>{sellerTotal ? `${((n(r.buys) / sellerTotal) * 100).toFixed(1)}%` : '—'}</td>
+                    <td class={n(r.brand) ? '' : 'nil'}>
+                      {n(r.brand) ? n(r.brand).toLocaleString() : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p class="note">
+              Every row is a brand’s own store today, so this reads as a second
+              brand table. It stops being a copy the day retailer listings land
+              in the offers table — that is the column that will show which
+              affiliate is actually worth having.
+            </p>
+          </section>
+        )}
+
+        {topClicked.length > 0 && (
+          <section>
+            <h2>Most clicked bags</h2>
+            <table class="spectable">
+              <thead><tr><th>Bag</th><th>Views</th><th>Buy clicks</th><th>Rate</th></tr></thead>
+              <tbody>
+                {topClicked.map((r) => (
+                  <tr>
+                    <td><b>{r.brand}</b> {r.model}</td>
+                    <td>{r.views.toLocaleString()}</td>
+                    <td>{r.clicks.toLocaleString()}</td>
+                    <td class={r.views >= MIN_VIEWS ? '' : 'nil'}>
+                      {r.views >= MIN_VIEWS ? pct(r.clicks, r.views) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p class="note">
+              Total clicks per SKU, most first — the raw ledger, no threshold.
+              The rate column still withholds below {MIN_VIEWS} views, which is
+              why some of the busiest rows show a dash: plenty of clicks, not yet
+              enough views to divide them by honestly.
+            </p>
+          </section>
+        )}
+
+        {byBrandClick.length > 0 && (
+          <section>
+            <h2>Brand-site clicks</h2>
+            <table class="spectable">
+              <thead><tr><th>Brand</th><th>Clicks</th><th>Share</th></tr></thead>
+              <tbody>
+                {byBrandClick.map((r) => (
+                  <tr>
+                    <td>{String(r.brand)}</td>
+                    <td>{n(r.n).toLocaleString()}</td>
+                    <td>{brandClickTotal
+                      ? `${((n(r.n) / brandClickTotal) * 100).toFixed(1)}%` : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p class="note">
+              Readers leaving for a brand’s own site from <code>/brands/</code>,
+              rather than for a bag. Counted separately and kept out of every
+              rate above on purpose — these are not attempts to buy anything, and
+              folding them in would raise the referral rate without a single
+              extra sale behind it.
+            </p>
+          </section>
+        )}
+
+        {best.length > 0 && (
+          <section>
+            <h2>Best converting</h2>
+            <table class="spectable">
+              <thead><tr><th>Bag</th><th>Views</th><th>Clicks</th><th>Rate</th></tr></thead>
+              <tbody>
+                {best.map((r) => (
+                  <tr>
+                    <td><b>{r.brand}</b> {r.model}</td>
+                    <td>{r.views.toLocaleString()}</td>
+                    <td>{r.clicks.toLocaleString()}</td>
+                    <td>{pct(r.clicks, r.views)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
+
+        {worst.length > 0 && (
+          <section>
+            <h2>Worst converting</h2>
+            <table class="spectable">
+              <thead><tr><th>Bag</th><th>Views</th><th>Clicks</th><th>Rate</th></tr></thead>
+              <tbody>
+                {worst.map((r) => (
+                  <tr>
+                    <td><b>{r.brand}</b> {r.model}</td>
+                    <td>{r.views.toLocaleString()}</td>
+                    <td>{r.clicks.toLocaleString()}</td>
+                    <td>{pct(r.clicks, r.views)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p class="note">
+              Read this one as a worklist: a bag people arrive at and do not
+              leave from is usually missing the specs that would settle the
+              decision, not priced wrong.
+            </p>
+          </section>
+        )}
+      </Fragment>
+    )}
+  </div>
+</Base>
