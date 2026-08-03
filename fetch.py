@@ -793,7 +793,15 @@ def sitemap_urls(start, pacer, patterns, extra=0.0, max_shards=40):
     # sitemaps — Mammut's /us/en and /int/en shards each hold part of the US
     # catalogue and overlap in the middle — and a duplicate here is a second
     # request for a page already in hand.
+    # `refused` rides along under a key no pattern can collide with, because a
+    # sitemap that will not load and a sitemap with nothing in it produce the
+    # same empty result and want opposite responses. Mystery Ranch found 299
+    # candidates from a residential IP and reported "nothing matched
+    # '^https?://[^/]+/[a-z0-9][a-z0-9-]+$'" from an Actions runner — a message
+    # that sends the next person to debug a regex which was never reached,
+    # when the sitemap had simply been refused to a datacenter address.
     out = {name: {} for name in patterns}
+    refused = []
     seen, queue, shards = set(), [start], 0
     while queue and shards < max_shards:
         url = queue.pop(0)
@@ -804,6 +812,8 @@ def sitemap_urls(start, pacer, patterns, extra=0.0, max_shards=40):
         status, _, body = get(url, timeout=60,
                               accept="application/xml, text/xml, */*")
         if status != 200:
+            print(f"    sitemap {url} -> http_{status}", flush=True)
+            refused.append(f"http_{status}")
             continue
         shards += 1
         for loc in _xml_locs(body):
@@ -814,6 +824,7 @@ def sitemap_urls(start, pacer, patterns, extra=0.0, max_shards=40):
                 if rx.search(loc):
                     out[name][loc] = True
                     break
+    out["_refused"] = refused
     return {name: list(urls) for name, urls in out.items()}
 
 
@@ -943,6 +954,7 @@ def fetch_pages(brand, pacer, limit=0, force=False, cache_pages=False):
     if cfg.get("shelf"):
         patterns["shelf"] = re.compile(cfg["shelf"], re.I)
     found = sitemap_urls(start, pacer, patterns, extra)
+    refused = found.pop("_refused", [])
     candidates = found["product"]
 
     # The store's own shelving, where it publishes one. Gathered before the
@@ -972,8 +984,17 @@ def fetch_pages(brand, pacer, limit=0, force=False, cache_pages=False):
 
     if not candidates:
         result["status"] = "no-products"
-        result["note"] = (f"nothing in {start} matched {keep.pattern!r}, "
-                          f"and no shelf yielded products")
+        # Name the cause. "Nothing matched your pattern" is only true when the
+        # sitemap was actually read; when it was refused, that message points
+        # at a regex which never ran.
+        if refused:
+            result["status"] = "sitemap-refused"
+            result["note"] = (f"{len(refused)} sitemap request(s) refused "
+                              f"({', '.join(sorted(set(refused)))}) — the "
+                              f"product pattern was never reached")
+        else:
+            result["note"] = (f"nothing in {start} matched {keep.pattern!r}, "
+                              f"and no shelf yielded products")
         return result
 
     # Shelf scoping: crawl what the brand shelves as carry rather than its
