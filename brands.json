@@ -300,7 +300,9 @@
   {
     "slug": "greenroom",
     "name": "Greenroom",
-    "domain": "greenroom136.com"
+    "domain": "greenroom136.com",
+    "platform": "retired",
+    "note": "Skipped 2026-08-03 after investigation. Wix Stores. The site sitemap lists six pages and no products; there is no /store-products-sitemap.xml either, so products are not discoverable by crawling. Reaching them needs Wix's storefront catalog API, which requires first pulling an anonymous token from /_api/v1/access-tokens \u2014 close enough to the 'needs a login/token' line in the adapter playbook that it is not worth crossing for a brand this size. The /products/ link on their homepage goes to gordongreenroom.com, which is a partner site and 404s on products.json."
   },
   {
     "slug": "incase",
@@ -361,7 +363,8 @@
   {
     "slug": "troubadour",
     "name": "Troubadour",
-    "domain": "troubadourgoods.com"
+    "domain": "troubadour.myshopify.com",
+    "note": "troubadourgoods.com is a headless Next.js storefront on Vercel using Shopify's URL shapes, which is why the feed read as bad_json: /products.json there returns the app shell. The underlying store is troubadour.myshopify.com and answers Shopify's own local_rate_limited, which is this IP's block rather than their configuration \u2014 a non-Shopify host could not produce that response. Unverified from here for exactly that reason; it will prove itself on the next Actions run."
   },
   {
     "slug": "united-by-blue",
