@@ -65,6 +65,21 @@ CONTACT = os.environ.get("GEARHERD_CONTACT", "")
 UA = (f"gearherd/0.1 (product catalog indexer; +{CONTACT})" if CONTACT
       else "gearherd/0.1 (product catalog indexer)")
 
+# Kept pages, shared with enrich.py: same directory, same gitignore, same
+# reason. Brands' full marketing copy, a working file rather than a dataset,
+# and the thing that makes a parser change cost zero requests instead of a
+# full re-crawl of the most expensive brands in the index.
+PAGES = os.path.join(HERE, "data", "page-cache")
+
+
+def save_page(key, text):
+    os.makedirs(PAGES, exist_ok=True)
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", key)
+    with gzip.open(os.path.join(PAGES, f"{safe}.html.gz"), "wt",
+                   encoding="utf-8") as f:
+        f.write(text)
+
+
 PAGE_LIMIT = 250
 MAX_PAGES = 12
 MAX_RETRIES = 4
@@ -881,7 +896,7 @@ def shelf_hints(shelf_urls, pacer, keep, extra=0.0):
     return hints, urls
 
 
-def fetch_pages(brand, pacer, limit=0, force=False):
+def fetch_pages(brand, pacer, limit=0, force=False, cache_pages=False):
     """
     Crawl a storefront's sitemap and keep a digest of each product page.
 
@@ -1020,7 +1035,15 @@ def fetch_pages(brand, pacer, limit=0, force=False):
     # is just a bad minute: Deuter served a run of them mid-crawl and the
     # single counter read it as a block, on pages that parse perfectly well.
     fetched, empty, errors, stopped = 0, 0, 0, ""
-    for url in fresh:
+    total = len(fresh)
+    for i, url in enumerate(fresh, 1):
+        # Progress, because without it a healthy crawl and a hung one look
+        # identical. This loop prints only on failure, so a 2.7-hour Deuter
+        # pass produced no output at all between its opening line and its
+        # last — and an hour of a run was spent wondering whether it had
+        # stalled. One line per 25 pages costs nothing and answers that.
+        if i % 25 == 1 and total > 25:
+            print(f"      {i}/{total} pages", flush=True)
         pacer.wait(extra)
         status, _, body = get(url, timeout=45, accept="text/html,*/*")
         if CHALLENGE.search(body[:4000]):
@@ -1029,9 +1052,24 @@ def fetch_pages(brand, pacer, limit=0, force=False):
             break
         digest = None
         if status == 200:
+            text = body.decode("utf-8", "replace")
+            # Keep the page. enrich.py learned this and the page adapters never
+            # did, which left the lesson unlearned exactly where it costs most:
+            # these are the expensive crawls, and until now every one of them
+            # threw its HTML away after a single parse. A PageDigest change
+            # meant re-crawling Deuter's 1,054 pages from nothing. Same
+            # directory as enrich's cache, same gitignore, same reason — it
+            # holds brands' full marketing copy and is a working file, not a
+            # dataset.
+            if cache_pages:
+                try:
+                    save_page(f"{brand['slug']}__{url.rstrip('/').rsplit('/', 1)[-1]}",
+                              text)
+                except OSError:
+                    pass          # a cache miss is slow, not wrong
             parser = PageDigest()
             try:
-                parser.feed(body.decode("utf-8", "replace"))
+                parser.feed(text)
             except Exception:
                 # A malformed page is one lost product, not a lost run.
                 parser = None
@@ -1449,6 +1487,11 @@ def main():
     ap.add_argument("--limit", type=int, default=0,
                     help="cap page fetches for crawl-style platforms "
                          "(campsaver, pages) — for test runs and chunked crawls")
+    ap.add_argument("--cache-pages", action="store_true",
+                    help="keep the raw HTML the page adapters fetch, in "
+                         "data/page-cache, so a parser change costs no "
+                         "requests. enrich.py has had this; the page adapters "
+                         "are where it matters most and did not")
     ap.add_argument("--page-delay", type=float, default=0.0,
                     help="seconds between requests for the page adapters. "
                          "--delay is calibrated for /products.json, which "
@@ -1534,6 +1577,7 @@ def main():
 
         print(f"[{i}/{len(brands)}] {brand['name']} ({brand['domain']}) ...",
               flush=True)
+        t0 = time.time()
         platform = brand.get("platform", "shopify")
         if platform == "bellroy":
             res = fetch_bellroy(brand, pacer)
@@ -1546,7 +1590,8 @@ def main():
             res = fetch_magento(brand, pacer)
         elif platform == "pages":
             res = fetch_pages(brand, page_pacer, limit=args.limit,
-                              force=args.force)
+                              force=args.force,
+                              cache_pages=args.cache_pages)
         elif platform == "shopify":
             res = fetch_brand(brand, pacer)
         else:
@@ -1575,6 +1620,13 @@ def main():
 
         log[brand["slug"]] = {k: v for k, v in res.items() if k != "products"}
         log[brand["slug"]]["product_count"] = n
+        # How long this brand cost. Recovering it from Actions log timestamps
+        # works but is forensics, and the logs age out while this file lives in
+        # the data repo. Recorded here, "which brands are expensive" is a sort
+        # rather than an investigation — and the answers were not the ones
+        # anybody guessed: Rab at 19.5 min for 66 products, and 15% of a run
+        # spent on brands that return nothing at all.
+        log[brand["slug"]]["elapsed_s"] = round(time.time() - t0, 1)
         with open(log_path, "w") as f:
             json.dump(log, f, indent=2, sort_keys=True)
 

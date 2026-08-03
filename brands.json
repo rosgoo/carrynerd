@@ -372,7 +372,7 @@
     "name": "CampSaver",
     "domain": "www.campsaver.com",
     "platform": "retired",
-    "note": "Retired 2026-08-02. A retailer, not a brand: it has yielded 0 models across every run, and the aggregator:direct-source-exists rule exists to reject its products wherever the brand is already sourced directly — so a successful crawl mostly produces duplicates of catalogues we hold first-hand. It is also soft-blocked behind behavioural bot protection that answers 200 with a forbidden.html, and it was occupying a whole shard to contribute nothing. The adapter stays in fetch.py; only this entry is retired."
+    "note": "Retired 2026-08-02. A retailer, not a brand: it has yielded 0 models across every run, and the aggregator:direct-source-exists rule exists to reject its products wherever the brand is already sourced directly \u2014 so a successful crawl mostly produces duplicates of catalogues we hold first-hand. It is also soft-blocked behind behavioural bot protection that answers 200 with a forbidden.html, and it was occupying a whole shard to contribute nothing. The adapter stays in fetch.py; only this entry is retired."
   },
   {
     "slug": "liteaf",
@@ -486,11 +486,12 @@
     "slug": "camelbak",
     "name": "CamelBak",
     "domain": "www.camelbak.com",
-    "platform": "pages",
+    "platform": "retired",
     "crawl": {
       "sitemap": "https://www.camelbak.com/sitemap_0.xml",
       "product": "/product/.+\\.html$"
-    }
+    },
+    "note": "Retired 2026-08-02. Measured at 10.3 min a run for 16 models (16 with dimensions) \u2014 see the roster section of the handoff. Too slow for the return, and not a brand this audience is looking for. normalize.py globs raw/ and never reads this file, so the catalogue already fetched stays in the index; only the refetch stops, and validate.py exempts retired entries from the freshness check so it goes stale deliberately rather than by neglect."
   },
   {
     "slug": "caribee",
@@ -528,11 +529,12 @@
     "slug": "deuter",
     "name": "Deuter",
     "domain": "www.deuter.com",
-    "platform": "pages",
+    "platform": "retired",
     "crawl": {
       "sitemap": "https://www.deuter.com/de-en/sitemap.xml",
       "product": "/de-en/[^/]+/\\d{8,14}/?$"
-    }
+    },
+    "note": "Retired 2026-08-02. Measured at 41.7 min a run for 187 models (180 with dimensions) \u2014 see the roster section of the handoff. Too slow for the return, and not a brand this audience is looking for. normalize.py globs raw/ and never reads this file, so the catalogue already fetched stays in the index; only the refetch stops, and validate.py exempts retired entries from the freshness check so it goes stale deliberately rather than by neglect."
   },
   {
     "slug": "everyman",
@@ -642,13 +644,14 @@
     "slug": "mammut",
     "name": "Mammut",
     "domain": "www.mammut.com",
-    "platform": "pages",
+    "platform": "retired",
     "crawl": {
       "sitemap": "https://www.mammut.com/sitemap.xml",
       "product": "/us/en/products/[\\d-]+/[^/]+$",
       "shelf": "/us/en/category/\\d+/[^/]+$",
       "shelf_scoped": true
-    }
+    },
+    "note": "Retired 2026-08-02. Measured at 22.2 min a run for 31 models (22 with dimensions) \u2014 see the roster section of the handoff. Too slow for the return, and not a brand this audience is looking for. normalize.py globs raw/ and never reads this file, so the catalogue already fetched stays in the index; only the refetch stops, and validate.py exempts retired entries from the freshness check so it goes stale deliberately rather than by neglect."
   },
   {
     "slug": "mec",
@@ -811,11 +814,12 @@
     "slug": "tatonka",
     "name": "Tatonka",
     "domain": "www.tatonka.com",
-    "platform": "pages",
+    "platform": "retired",
     "crawl": {
       "sitemap": "https://www.tatonka.com/en/sitemap_index.xml",
       "product": "/en/product/[^/]+/$"
-    }
+    },
+    "note": "Retired 2026-08-02. Measured at 48.8 min a run for 245 models (23 with dimensions) \u2014 see the roster section of the handoff. Too slow for the return, and not a brand this audience is looking for. normalize.py globs raw/ and never reads this file, so the catalogue already fetched stays in the index; only the refetch stops, and validate.py exempts retired entries from the freshness check so it goes stale deliberately rather than by neglect."
   },
   {
     "slug": "tobiq",
