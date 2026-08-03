@@ -9,6 +9,7 @@
 import { CAT_LABELS, FEATURE_LABELS, COLOUR_LABELS, COLOUR_SWATCH,
          COLOUR_ORDER } from '../lib/labels.js';
 import { trackProductView } from './analytics.js';
+import './watch.js';
 
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -413,6 +414,28 @@ function renderCompare() {
 
 /* ---------- detail ---------- */
 
+// Mirrors components/WatchForm.astro. The drawer is a bag's whole story for
+// anyone who never opens the model page, so it gets the signup too; both share
+// the submit handler in scripts/watch.js and the .watch rules in app.css, so
+// only the markup is restated here.
+const watchForm = b => `
+  <form class="watch" data-watch>
+    <input type="hidden" name="bag_id" value="${esc(b.id)}">
+    <h3>Watch the price</h3>
+    <p>
+      Tell us where to write when the ${esc(b.name)} drops. We confirm by email
+      first and every message carries a one-click unsubscribe.
+    </p>
+    <div class="watchrow">
+      <input type="email" name="email" required placeholder="you@example.com"
+             autocomplete="email" aria-label="Email address">
+      <input type="number" name="max_price" min="0" step="10"
+             placeholder="under $" aria-label="Only alert below this price">
+      <button class="btn" type="submit">Watch</button>
+    </div>
+    <p class="watchmsg" role="status" aria-live="polite" hidden></p>
+  </form>`;
+
 function openDetail(id) {
   const b = DATA.bags.find(x => x.id === id);
   if (!b) return;
@@ -463,6 +486,7 @@ function openDetail(id) {
          data-buy-model="${esc(b.name)}"
          data-buy-price="${esc(b.price_min ?? "")}">Open on ${esc(b.brand)} ↗</a>
     </div>
+    ${watchForm(b)}
     <a class="btn detfull" href="${esc(bagHref(b))}">Full specs &amp; price history →</a>`;
   $("#detoverlay").classList.add("on");
   // The drawer is the other place a bag gets looked at and bought from, and the

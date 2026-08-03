@@ -475,12 +475,21 @@ td.nil, .nil { color: var(--ink-mute); }
   border: 1px solid var(--line-2); display: flex; flex-direction: column;
   overflow: hidden;
 }
-.sheet header {
+/* Both overlay shells share this chrome. Kept as one rule because the drawer
+   used to fall through to the global sticky `header` above, which left the
+   close button jammed against the title and the body unscrollable. */
+.sheet header, .drawer header {
   position: static; height: auto; padding: 10px 14px; align-items: center;
-  justify-content: space-between; display: flex;
+  justify-content: space-between; gap: 12px; display: flex; flex-shrink: 0;
+  border-bottom: 1px solid var(--line);
 }
-.sheet header h2 { margin: 0; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; font-weight: 700; }
-.sheet .inner { overflow: auto; flex: 1; }
+.sheet header h2, .drawer header h2 {
+  margin: 0; font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+  font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sheet header .btn, .drawer header .btn { flex-shrink: 0; margin-left: auto; }
+.sheet .inner, .drawer .inner { overflow-y: auto; overscroll-behavior: contain; flex: 1; min-height: 0; }
 
 .drawer {
   position: absolute; top: 0; right: 0; bottom: 0; width: min(460px, 100%);
