@@ -379,3 +379,57 @@ jobs:
           DATA_TOKEN: ${{ secrets.DATA_TOKEN }}
           DEPLOY_HOOK: ${{ secrets.DEPLOY_HOOK }}
         run: bash scripts/data-push.sh data/bags.json
+
+  # The other half of the freshness story, and the slow half.
+  #
+  # validate.py gates the cliff: it compares tonight's catalogue against the
+  # last published one and stops the deploy when a brand falls off it. What no
+  # night-over-night check can see is a brand shedding a few percent a night —
+  # each step is small, and each night's baseline is the previous night's
+  # already-diminished count, so the decline never trips anything and the
+  # baseline follows it all the way down. Three percent a night is 46% gone in
+  # three weeks. Seeing that needs the whole series, which is exactly what the
+  # data repo has been accruing in fetch-log.json's commit history and nothing
+  # could read.
+  #
+  # Its own job rather than a step in assemble, for two reasons: it must run
+  # after the bank step has pushed tonight's fetch log, and it must not be able
+  # to fail the nightly. A slow signal that can turn a build red is a slow
+  # signal that gets muted, so this reports and never blocks.
+  history:
+    needs: assemble
+    # The bank step is `if: always()` too. A night the gate rejected is a night
+    # the crawl-reliability view is *more* worth having, not less.
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Clones the data repo itself, at full depth — the history is the input
+      # here, so the --depth 1 that data-pull.sh uses would defeat the purpose.
+      # Stdlib only, like the crawl: the obvious tool for this is git-history,
+      # and its current release silently returns an empty database for any file
+      # that is not at the repo root. See the module docstring.
+      - name: Build the crawl history
+        env:
+          DATA_REPO: ${{ vars.DATA_REPO }}
+          DATA_TOKEN: ${{ secrets.DATA_TOKEN }}
+        run: python3 scripts/crawl_history.py --out crawl-history.db
+
+      # Derived entirely from commits that are already in the data repo, so it
+      # is rebuildable at any time and deliberately not committed anywhere: a
+      # binary blob that git cannot delta, rewritten nightly, would cost more
+      # storage than the history it summarises. The artifact is a convenience
+      # for querying without a clone.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: crawl-history
+          path: crawl-history.db
+          retention-days: 14
+          if-no-files-found: warn

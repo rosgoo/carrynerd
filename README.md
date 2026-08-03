@@ -81,6 +81,12 @@ the commit deploys. It checks two things:
 - **Regression**, against the last committed `data/bags.json` — which is the
   copy currently live. Bag and SKU counts must not fall more than 25%, no
   brand may vanish, and no coverage percentage may drop more than 10 points.
+- **Per brand**, because the aggregate is the wrong granularity for the failure
+  that actually happens. The catalogue is unevenly distributed — aer has 88
+  bags, able-carry has 8 — so a paging bug costing aer 40% of its models moves
+  the total by 7%, against a 25% tolerance, and nothing fires. Freshness does
+  not fire either: the fetch *succeeded*, it just came back short. A brand
+  falling more than 25% warns, more than 40% (`--max-brand-drop`) fails.
 
 A single implausible value is a warning; a lot of them at once is a failure,
 because that is the difference between a brand publishing a packed-box weight
@@ -94,10 +100,11 @@ audited by reading a file instead of re-deriving the evidence.
 
 ## Nightly crawl
 
-`.github/workflows/nightly.yml` runs the pipeline and commits the diff. Two
+`.github/workflows/nightly.yml` runs the pipeline and commits the diff. Three
 jobs: a sharded price/stock pass over `/products.json`, then a single assemble
 job that normalizes, picks up the enrichment delta, tracks prices, matches
-alerts and commits. Pushing the commit is what triggers the site rebuild.
+alerts and commits, then a reporting job that builds the crawl history. Pushing
+the commit is what triggers the site rebuild.
 
 Sharding splits the brand *list* across runners so the pass finishes inside one
 run. Each shard is an ordinary polite client — paced, honouring `Retry-After`,
@@ -119,6 +126,39 @@ User-Agent so store operators can reach you:
 ```bash
 export GEARHERD_CONTACT="https://yoursite.com/bot"
 ```
+
+### Crawl history
+
+The gate catches a brand falling off a cliff. It cannot catch one shedding 3% a
+night, because every step is small and each night's baseline is the previous
+night's already-diminished count — so the decline never trips anything and the
+baseline follows it all the way down. Three percent a night is 46% gone in three
+weeks.
+
+Seeing that needs the whole series, and the series already exists: the data repo
+has been committing `data/fetch-log.json` every night. `scripts/crawl_history.py`
+walks those commits into a SQLite table of one row per brand per night, then
+reports any brand sitting below its own 21-night median. It reports and never
+blocks — a slow signal that can turn a build red is one that gets muted.
+
+```bash
+python3 scripts/crawl_history.py --repo ../gearherd-data   # local checkout
+python3 scripts/crawl_history.py --out crawl-history.db    # clones DATA_REPO
+```
+
+The nightly runs it as a third job and uploads the database as a build artifact.
+It is not committed anywhere: it derives entirely from commits already in the
+data repo, so it rebuilds in seconds, and a binary blob git cannot delta would
+cost more storage than the history it summarises.
+
+Not `git-history`, which is the obvious tool for this and is why the script
+exists. Its current release (0.6.1) looks the file up among the blobs at the
+*root* of each commit tree and compares them against the full relative path, so
+any path containing a directory matches nothing. It exits 0 and writes a
+database with no rows in it. Every file in this project lives under `data/`. The
+0.7a0 alpha fixes it, but pinning a 2022 pre-release to get a tool whose stable
+version silently reports success on an empty result is a bad trade for the ~70
+lines actually needed — and `sqlite3` is stdlib.
 
 ## Where the data comes from
 
