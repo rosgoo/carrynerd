@@ -330,7 +330,25 @@ main { flex: 1; min-width: 0; }
   border: 1px solid var(--line); background: var(--panel);
   display: flex; flex-direction: column; position: relative;
   transition: border-color .12s;
+
+  /* The grid keeps every card it has painted, so that scrolling back up, using
+     find-in-page and restoring a scroll position all still work. This is what
+     makes that affordable: the browser skips layout and paint for the cards
+     currently off screen, so the cost of a card is paid while it is being
+     looked at rather than for the whole session after it scrolls away.
+
+     `auto` on both axes means the last rendered size is remembered and reused
+     once a card has been seen, so the scrollbar stops lying after the first
+     pass; the fallback figures are a measured card — 232px is the narrowest
+     grid track, ~300px its height at that width. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 232px auto 300px;
 }
+
+/* Watched by the IntersectionObserver in browse.js, which paints the next
+   chunk of results as this approaches the viewport. It needs to be a real box
+   with real height to be observable at all. */
+#sentinel { height: 1px; }
 .card:hover { border-color: var(--line-2); }
 .card.sel { border-color: var(--accent); }
 

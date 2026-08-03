@@ -4,10 +4,18 @@
  * few thousand models it beats a round trip per keystroke, and it means the
  * catalog needs no runtime service behind it. The per-model pages are static
  * HTML generated at build time; this is the one interactive surface.
+ *
+ * Filtering in memory scales; *drawing* the answer does not, and at 7,700
+ * models the two had to be separated. Matching is one pass over an array and
+ * costs a few milliseconds. Rendering paints a screenful and lets an
+ * IntersectionObserver ask for the rest — see render() and paintChunk(), and
+ * `content-visibility` on .card in app.css, which is the half of that bargain
+ * the stylesheet holds.
  */
 
 import { CAT_LABELS, FEATURE_LABELS, COLOUR_LABELS, COLOUR_SWATCH,
          COLOUR_ORDER } from '../lib/labels.js';
+import { thumb, THUMB } from '../lib/thumb.js';
 import { trackProductView } from './analytics.js';
 import './watch.js';
 
@@ -36,6 +44,11 @@ const facetSets = () => ({
 let DATA = { meta: {}, bags: [] };
 let VIEW = "grid";
 const compare = new Set();
+
+// id → bag. The tray, the comparison sheet and the drawer all resolve ids back
+// to records, and a linear scan of 7,700 for each one adds up on a page where
+// the whole point is that nothing scans the catalog more than it must.
+let BY_ID = new Map();
 
 const S = {
   q: "", cats: new Set(), brands: new Set(), feats: new Set(), mats: new Set(),
@@ -100,19 +113,34 @@ function fitsUnderseat(b) {
   return d[0] <= 40 && d[1] <= 30 && d[2] <= 20;
 }
 
+/* Derived once per render and read by matches(), which runs once per bag.
+ *
+ * Splitting the query string and spreading three Sets *inside* matches() meant
+ * doing all four thousands of times over for an answer that cannot change
+ * during the pass — at 7,700 bags that is the allocation, not the comparing,
+ * that made a keystroke cost what it did. prepareFilters() is the only writer
+ * and render() is the only caller. */
+let QTERMS = [], FEATS = [], MATS = [], COLORS = [];
+
+function prepareFilters() {
+  QTERMS = S.q ? S.q.toLowerCase().split(/\s+/).filter(Boolean) : [];
+  FEATS = [...S.feats];
+  MATS = [...S.mats];
+  COLORS = [...S.colors];
+}
+
 function matches(b) {
-  if (S.q) {
-    const terms = S.q.toLowerCase().split(/\s+/).filter(Boolean);
+  if (QTERMS.length) {
     const hay = haystack(b);
-    if (!terms.every(t => hay.includes(t))) return false;
+    for (const t of QTERMS) if (!hay.includes(t)) return false;
   }
   if (S.cats.size && !S.cats.has(b.category)) return false;
   if (S.brands.size && !S.brands.has(b.brand_slug)) return false;
-  if (S.feats.size && ![...S.feats].every(f => (b.features || []).includes(f))) return false;
-  if (S.mats.size && ![...S.mats].some(m => (b.materials || []).includes(m))) return false;
+  if (FEATS.length && !FEATS.every(f => (b.features || []).includes(f))) return false;
+  if (MATS.length && !MATS.some(m => (b.materials || []).includes(m))) return false;
   // Any-of, like materials: picking black and green means "comes in either".
-  if (S.colors.size
-      && ![...S.colors].some(c => (b.color_families || []).includes(c))) return false;
+  if (COLORS.length
+      && !COLORS.some(c => (b.color_families || []).includes(c))) return false;
   // Feature and material lists are only trustworthy once enrichment has read
   // the product page. Before that an empty list means "we never got a good
   // look", not "it doesn't have one" — see featuresUnknown() and the count.
@@ -185,7 +213,8 @@ function card(b) {
 
   return `<article class="card${on ? " sel" : ""}" data-id="${esc(b.id)}">
     <div class="shot" data-detail${plate(shot.bg)}>
-      ${shot.src ? `<img loading="lazy" src="${esc(shot.src)}" alt="${esc(b.name)}${
+      ${shot.src ? `<img loading="lazy" decoding="async" src="${
+          esc(thumb(shot.src, THUMB.card))}" alt="${esc(b.name)}${
           shot.label ? ` in ${esc(shot.label)}` : ""}">`
                 : '<span class="none">NO IMAGE</span>'}
       ${shot.label ? `<div class="wayname">${esc(shot.label)}</div>` : ""}
@@ -225,31 +254,34 @@ function cssColor(name) {
   return "var(--line-2)";
 }
 
-function tableRows(list) {
+// The head and one row are separate so the table can be extended a chunk at a
+// time, the same way the grid is. See paintChunk().
+function tableShell() {
   const head = ["Brand", "Model", "Category", "Vol L", "Weight g",
                 `H×W×D ${dual("cm", "in")}`,
                 `Linear ${dual("cm", "in")}`,
                 "Laptop", "Price", "g/L", "$/L", "Colours"];
-  const rows = list.map(b => {
-    const on = compare.has(b.id);
-    const td = v => v == null ? '<td class="nil">—</td>' : `<td>${v}</td>`;
-    return `<tr class="${on ? "sel" : ""}" data-id="${esc(b.id)}">
-      <td>${esc(b.brand)}</td>
-      <td class="name"><a href="${esc(bagHref(b))}">${esc(b.name)}</a></td>
-      <td>${esc(CAT_LABELS[b.category] || b.category)}</td>
-      ${td(b.volume_l)}${td(b.weight_g)}
-      ${td(dualDims(b.dims_cm))}
-      ${td(dualLen(b.linear_cm))}
-      ${td(b.laptop_in ? b.laptop_in + "″" : null)}
-      ${td(b.price_min ? fmtPrice(b.price_min) : null)}
-      ${td(gpl(b) ? gpl(b).toFixed(0) : null)}
-      ${td(ppl(b) ? ppl(b).toFixed(1) : null)}
-      ${td((b.colors || []).length || null)}
-    </tr>`;
-  }).join("");
   return `<div class="tablewrap"><table>
     <thead><tr>${head.map(h => `<th>${h}</th>`).join("")}</tr></thead>
-    <tbody>${rows}</tbody></table></div>`;
+    <tbody></tbody></table></div>`;
+}
+
+function row(b) {
+  const on = compare.has(b.id);
+  const td = v => v == null ? '<td class="nil">—</td>' : `<td>${v}</td>`;
+  return `<tr class="${on ? "sel" : ""}" data-id="${esc(b.id)}">
+    <td>${esc(b.brand)}</td>
+    <td class="name"><a href="${esc(bagHref(b))}">${esc(b.name)}</a></td>
+    <td>${esc(CAT_LABELS[b.category] || b.category)}</td>
+    ${td(b.volume_l)}${td(b.weight_g)}
+    ${td(dualDims(b.dims_cm))}
+    ${td(dualLen(b.linear_cm))}
+    ${td(b.laptop_in ? b.laptop_in + "″" : null)}
+    ${td(b.price_min ? fmtPrice(b.price_min) : null)}
+    ${td(gpl(b) ? gpl(b).toFixed(0) : null)}
+    ${td(ppl(b) ? ppl(b).toFixed(1) : null)}
+    ${td((b.colors || []).length || null)}
+  </tr>`;
 }
 
 // A bag whose feature list was only ever built from the brand's marketing copy
@@ -260,42 +292,142 @@ function featuresUnknown(b) {
   return b.features_source !== "product-page";
 }
 
-function render() {
-  const list = DATA.bags.filter(matches).sort(SORTS[S.sort] || SORTS.brand);
+/* The result set is the whole catalog when nothing is filtered, and building
+ * that as one HTML string was the single thing making the page hang: 7,700
+ * cards is on the order of 115,000 nodes, parsed, laid out and painted from
+ * scratch on every keystroke, every facet click and every frame of a slider
+ * drag.
+ *
+ * So a render paints a screenful and stops. An IntersectionObserver watching a
+ * sentinel below the last card paints the next chunk as it approaches the
+ * viewport, which makes the cost of a filter change a function of the viewport
+ * rather than of the size of the catalog.
+ *
+ * Cards that scroll out of view stay in the DOM rather than being recycled —
+ * `content-visibility` in app.css is what stops them costing layout — because
+ * the alternative loses find-in-page, native scroll restoration and the link
+ * targets that make a card a card. This is progressive rendering, not
+ * virtualisation, and the distinction is deliberate.
+ */
+const CHUNK = 60;
+let LIST = [];      // the current filtered, sorted result set
+let painted = 0;    // how much of LIST is actually in the DOM
+let sentinelIO = null;
 
-  // Say so when a filter is dropping bags we simply have not established a
-  // value for, rather than silently returning a shorter list.
+function paintChunk() {
+  const next = LIST.slice(painted, painted + CHUNK);
+  if (!next.length) return false;
+  const host = VIEW === "grid" ? $("#results .grid") : $("#results tbody");
+  if (!host) return false;
+  host.insertAdjacentHTML("beforeend",
+    (VIEW === "grid" ? next.map(card) : next.map(row)).join(""));
+  painted += next.length;
+  return true;
+}
+
+/* Keep painting while the sentinel is still within reach of the viewport.
+ *
+ * The observer only fires on a *change* of intersection, so a chunk that fails
+ * to push the sentinel off screen — a tall window, a short chunk, a filter
+ * that leaves eighty results — would otherwise stall with the observer
+ * satisfied and the page half-drawn. Reading the sentinel's position back
+ * forces a synchronous layout per iteration, which is why this is bounded by
+ * the viewport and not by LIST.length. */
+function fill() {
+  const el = $("#sentinel");
+  if (!el) return;
+  const reach = () => el.getBoundingClientRect().top < innerHeight + 800;
+  while (painted < LIST.length && reach()) paintChunk();
+  if (painted >= LIST.length) {
+    sentinelIO?.disconnect();
+    el.remove();
+  }
+}
+
+function observeSentinel() {
+  sentinelIO?.disconnect();
+  const el = $("#sentinel");
+  if (!el) return;
+  // The margin is what keeps the next chunk ahead of the scroll rather than
+  // arriving under it — nobody should watch a gap fill in.
+  sentinelIO = new IntersectionObserver(
+    entries => { if (entries.some(e => e.isIntersecting)) fill(); },
+    { rootMargin: "800px 0px" },
+  );
+  sentinelIO.observe(el);
+}
+
+function render() {
+  prepareFilters();
+
+  /* One pass, not three. Each caveat count below used to re-run matches()
+   * across the entire catalog, so a colour filter combined with a material
+   * filter cost three full passes to answer one question. They are all
+   * decided by the same per-bag verdict, so they are all taken from it. */
+  LIST = [];
+  const brandSet = new Set();
+  let skus = 0, noFeature = 0, noColour = 0;
+  const wantFeature = S.feats.size > 0 || S.mats.size > 0;
+  const wantColour = S.colors.size > 0;
+
+  for (const b of DATA.bags) {
+    if (matches(b)) {
+      LIST.push(b);
+      brandSet.add(b.brand_slug);
+      skus += b.variant_count || 0;
+    } else {
+      // Say so when a filter is dropping bags we simply have not established a
+      // value for, rather than silently returning a shorter list.
+      if (wantFeature && featuresUnknown(b)) noFeature++;
+      if (wantColour && !(b.color_families || []).length) noColour++;
+    }
+  }
+  LIST.sort(SORTS[S.sort] || SORTS.brand);
+
   const unknown = [];
-  if (S.feats.size || S.mats.size) {
-    const n = DATA.bags.filter(b => featuresUnknown(b) && !matches(b)).length;
-    if (n) unknown.push(`${n} with no feature detection yet`);
-  }
-  if (S.colors.size) {
-    const n = DATA.bags.filter(b => !(b.color_families || []).length
-                                    && !matches(b)).length;
-    if (n) unknown.push(`${n} whose colourway names state no colour`);
-  }
+  if (noFeature) unknown.push(`${noFeature} with no feature detection yet`);
+  if (noColour) unknown.push(`${noColour} whose colourway names state no colour`);
   const caveat = unknown.length
     ? ` · <em class="warnnote">excluded: ${unknown.join(", ")} — unknown, not` +
       ` known to be absent</em>`
     : "";
 
-  $("#count").innerHTML = `<b>${list.length}</b> of ${DATA.bags.length} bags` +
-    ` · ${new Set(list.map(b => b.brand_slug)).size} brands` +
-    ` · ${list.reduce((n, b) => n + (b.variant_count || 0), 0)} SKUs` + caveat;
+  $("#count").innerHTML = `<b>${LIST.length}</b> of ${DATA.bags.length} bags` +
+    ` · ${brandSet.size} brands · ${skus} SKUs` + caveat;
 
   const out = $("#results");
-  if (!list.length) {
+  painted = 0;
+  if (!LIST.length) {
+    sentinelIO?.disconnect();
     out.innerHTML = `<div class="empty"><b>No matches</b>
       Every active range filter excludes bags whose value is unknown.
       Widen a range or clear filters.</div>`;
   } else {
-    out.innerHTML = VIEW === "grid"
-      ? `<div class="grid">${list.map(card).join("")}</div>`
-      : tableRows(list);
+    out.innerHTML = (VIEW === "grid" ? '<div class="grid"></div>' : tableShell())
+      + '<div id="sentinel" aria-hidden="true"></div>';
+    paintChunk();
+    observeSentinel();
+    fill();
   }
   renderTray();
   syncURL();
+}
+
+/* Toggling a comparison used to re-render. At 7,700 cards that meant rebuilding
+ * the entire result set to flip one border — and now that a render paints from
+ * the top, it would also throw away everything the reader had scrolled to. The
+ * selection is visible on exactly one card, so only that card is touched. */
+function syncSelection(id) {
+  const on = compare.has(id);
+  $$(`[data-id="${CSS.escape(id)}"]`).forEach(el => {
+    el.classList.toggle("sel", on);
+    const btn = $("[data-cmp]", el);
+    if (btn) {
+      btn.setAttribute("aria-pressed", on);
+      btn.textContent = on ? "✓" : "+";
+    }
+  });
+  renderTray();
 }
 
 /* ---------- facets ---------- */
@@ -424,7 +556,7 @@ function renderTray() {
   const tray = $("#tray");
   tray.classList.toggle("on", compare.size > 0);
   $("#picked").innerHTML = [...compare].map(id => {
-    const b = DATA.bags.find(x => x.id === id);
+    const b = BY_ID.get(id);
     return b ? `<span class="pick">${esc(b.brand)} ${esc(b.name)}
       <button data-drop="${esc(id)}">✕</button></span>` : "";
   }).join("");
@@ -432,7 +564,7 @@ function renderTray() {
 }
 
 function renderCompare() {
-  const bags = [...compare].map(id => DATA.bags.find(b => b.id === id)).filter(Boolean);
+  const bags = [...compare].map(id => BY_ID.get(id)).filter(Boolean);
   if (!bags.length) return;
 
   const rows = [
@@ -454,7 +586,8 @@ function renderCompare() {
   ];
 
   const head = bags.map(b => `<th class="cmphead">
-    ${b.image ? `<img src="${esc(b.image)}" alt=""${plate(b.image_bg)}>` : ""}
+    ${b.image ? `<img src="${esc(thumb(b.image, THUMB.compare))}" alt=""${
+      plate(b.image_bg)}>` : ""}
     <div>${esc(b.name)}</div></th>`).join("");
 
   const body = rows.map(([label, get, metric, best]) => {
@@ -503,7 +636,7 @@ const watchForm = b => `
   </form>`;
 
 function openDetail(id) {
-  const b = DATA.bags.find(x => x.id === id);
+  const b = BY_ID.get(id);
   if (!b) return;
   $("#dettitle").textContent = `${b.brand} — ${b.name}`;
 
@@ -512,7 +645,8 @@ function openDetail(id) {
 
   const variants = (b.variants || []).map(v => `<tr>
       <td class="waycell">${v.image
-          ? `<img class="waythumb" loading="lazy" src="${esc(v.image)}" alt=""${
+          ? `<img class="waythumb" loading="lazy" decoding="async" src="${
+              esc(thumb(v.image, THUMB.chip))}" alt=""${
               plate(v.image_bg)}>` : ""}${
         esc(v.color || v.title || "—")}</td>
       <td>${esc(v.sku || "—")}</td>
@@ -526,7 +660,7 @@ function openDetail(id) {
   $("#detbody").innerHTML = `
     ${b.image ? `<div class="shot" style="aspect-ratio:16/10;border-bottom:1px solid var(--line)${
         b.image_bg ? `;--shot-bg:${esc(b.image_bg)}` : ""}">
-      <img src="${esc(b.image)}" alt="${esc(b.name)}"></div>` : ""}
+      <img src="${esc(thumb(b.image, THUMB.hero))}" alt="${esc(b.name)}"></div>` : ""}
     ${row("Brand", `<a href="/brands/${esc(b.brand_slug)}/">${esc(b.brand)} →</a>`)}
     ${row("Category", esc(CAT_LABELS[b.category] || b.category))}
     ${row("Price", b.price_min === b.price_max ? fmtPrice(b.price_min)
@@ -626,8 +760,10 @@ const DUALS = [
   { key: "weight", lo: "weightMin", hi: "weightMax", of: b => b.weight_g,  step: 25 },
 ];
 
-/* Dragging fires `input` at pointer rate, and rebuilding 484 cards that often
- * is exactly what makes a slider feel heavy. One render per frame is plenty. */
+/* Dragging fires `input` at pointer rate, and re-rendering that often is
+ * exactly what makes a slider feel heavy. One render per frame is plenty —
+ * and since a render now paints one chunk rather than the whole result set,
+ * a frame during a drag costs sixty cards instead of several thousand. */
 let frame = 0;
 const schedule = () => {
   if (frame) return;
@@ -731,10 +867,13 @@ function wire() {
       if (compare.has(id)) compare.delete(id);
       else if (compare.size >= 6) return;
       else compare.add(id);
-      return render();
+      return syncSelection(id);
     }
     const drop = e.target.closest("[data-drop]");
-    if (drop) { compare.delete(drop.dataset.drop); return render(); }
+    if (drop) {
+      compare.delete(drop.dataset.drop);
+      return syncSelection(drop.dataset.drop);
+    }
 
     const det = e.target.closest("[data-detail]");
     if (det) return openDetail(det.closest("[data-id]").dataset.id);
@@ -803,7 +942,11 @@ function wire() {
     renderCompare();
     $("#cmpoverlay").classList.add("on");
   });
-  $("#cmpclear").addEventListener("click", () => { compare.clear(); render(); });
+  $("#cmpclear").addEventListener("click", () => {
+    const ids = [...compare];
+    compare.clear();
+    ids.forEach(syncSelection);
+  });
 
   $("#railtoggle").addEventListener("click", () => $("#rail").classList.toggle("on"));
 
@@ -832,6 +975,7 @@ function wire() {
     console.error("gearherd: could not load /bags.json", err);
     return;
   }
+  BY_ID = new Map(DATA.bags.map(b => [b.id, b]));
   buildFacets();
   // Before loadURL, which pushes any query-string bounds onto the handles.
   initSliders();
