@@ -135,9 +135,7 @@ jobs:
         with:
           path: raw
           key: raw-s${{ matrix.shard }}-${{ github.run_id }}
-          restore-keys: |
-            raw-s${{ matrix.shard }}-
-            raw-
+          restore-keys: raw-s${{ matrix.shard }}-
 
       # --limit caps the crawl-style adapters, the way enrich is capped. The
       # feed adapters are unaffected: /products.json returns a whole catalogue
@@ -169,11 +167,16 @@ jobs:
       # of the shard means the crawl is banked the moment it exists, and
       # everything downstream is free to fail.
       #
-      # Each entry holds the whole raw/ rather than this shard's slice, because
-      # cache/save takes a path and not a filter. Four near-copies plus the
-      # merged one is roughly 500 MB a run against a 10 GB repo limit with LRU
-      # eviction — wasteful, affordable, and worth less than the crawl it
-      # protects.
+      # This saves the shard's slice and not the whole catalogue, without
+      # needing a filter: the restore above is scoped to this shard's own key,
+      # so raw/ only ever contains the brands this shard fetches. Restoring the
+      # merged cache here instead would put every brand on disk and then save
+      # four near-copies of it, about 500 MB a run for nothing.
+      #
+      # The cost is one migration run where every shard starts empty and
+      # refetches its slice. assemble is unaffected — it merges the artifacts
+      # regardless — and the artifacts shrink to a quarter each as a side
+      # effect.
       - name: Bank this shard's catalogues
         uses: actions/cache/save@v4
         if: always()
