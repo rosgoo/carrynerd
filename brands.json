@@ -240,8 +240,9 @@
     "slug": "mystery-ranch",
     "name": "Mystery Ranch",
     "domain": "www.mysteryranch.com",
-    "platform": "pages",
-    "crawl": {
+    "platform": "retired",
+    "note": "Retired 2026-08-03. Wired and working from a residential IP \u2014 299 candidates off the shelves via schema.org microdata, products parsing with volume, weight and dims \u2014 and its sitemap is refused to Actions runners, so the nightly gets sitemap-refused and nothing else. Keeping it enabled buys a guaranteed no-op every night. The crawl config below is correct and worth restoring if the crawl ever runs somewhere with a residential address.",
+    "crawl_disabled": {
       "sitemap": "https://www.mysteryranch.com/sitemap_www.mysteryranch.com_Index.xml",
       "shelf": "/(Packs|Accessories)/",
       "product": "^https?://[^/]+/[a-z0-9][a-z0-9-]+$"
