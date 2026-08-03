@@ -22,13 +22,13 @@
  */
 import Base from '../../layouts/Base.astro';
 import { sql } from '../../lib/db.ts';
-import { verify, COOKIE } from '../../lib/dash.ts';
+import { guard } from '../../lib/dash.ts';
+import { traffic } from '../../lib/vercel-analytics.ts';
 
 export const prerender = false;
 
-if (!(await verify(Astro.cookies.get(COOKIE)?.value))) {
-  return Astro.redirect(`/internal/login/?next=${encodeURIComponent(Astro.url.pathname)}`, 303);
-}
+const denied = await guard(Astro);
+if (denied) return denied;
 
 const DAYS = [7, 30, 90];
 const requested = Number(new URL(Astro.request.url).searchParams.get('days'));
@@ -133,6 +133,39 @@ const placements = ['product_page', 'offers_table', 'browse_overlay'].map((p) =>
   views: count('product_view', p),
   clicks: count('buy_click', p),
 }));
+
+/* Vercel's half of the picture, fetched outside the database try/catch on
+ * purpose: the two sources fail independently and one being down must not blank
+ * the other. */
+const vercel = await traffic(days);
+
+/* The funnel, in raw pageviews and raw events throughout.
+ *
+ * Deliberately NOT Vercel's `visitors` at the top, tempting as it is. Our table
+ * holds no session and cannot dedupe, so every number it produces is a raw
+ * count; dividing raw events by unique visitors would mix two units and quietly
+ * inflate every rate below it. Same unit end to end, or the arithmetic is a
+ * lie.
+ */
+const funnel = vercel && vercel.pageviews > 0
+  ? [
+      { step: 'Arrived on the site', value: vercel.pageviews, source: 'Vercel pageviews' },
+      { step: 'Looked at a bag', value: totalViews, source: 'product_view' },
+      { step: 'Left for a seller', value: totalClicks, source: 'buy_click' },
+    ]
+  : null;
+
+/* Cross-check, and the most useful line on the page for trusting the rest.
+ *
+ * Vercel counts model pages from a third-party script; we count the same views
+ * from a same-origin beacon. They measure the same thing, so a gap between them
+ * is measurement, not behaviour — almost always content blockers, which stop
+ * /_vercel/insights and let /api/click through. Ours reading higher than 100%
+ * is the expected direction and is worth seeing rather than hiding. */
+const modelViewsOurs = surfaces[0].views;
+const coverage = vercel?.modelPageviews
+  ? (modelViewsOurs / vercel.modelPageviews) * 100
+  : null;
 
 const sellerTotal = bySeller.reduce((t, r) => t + n(r.buys), 0);
 const brandClickTotal = byBrandClick.reduce((t, r) => t + n(r.n), 0);
@@ -256,6 +289,51 @@ const line = (pick: (p: { views: number; clicks: number }) => number) =>
             Days are UTC.
           </p>
         </section>
+
+        {funnel && (
+          <section>
+            <h2>Funnel</h2>
+            <table class="spectable">
+              <thead>
+                <tr><th>Step</th><th>Count</th><th>From previous</th><th>From arrival</th></tr>
+              </thead>
+              <tbody>
+                {funnel.map((s, i) => (
+                  <tr>
+                    <td>{s.step}<i class="prov">{s.source}</i></td>
+                    <td>{s.value.toLocaleString()}</td>
+                    <td class={i === 0 ? 'nil' : ''}>
+                      {i === 0 ? '—' : pct(s.value, funnel[i - 1].value) ?? '—'}
+                    </td>
+                    <td class={i === 0 ? 'nil' : ''}>
+                      {i === 0 ? '—' : pct(s.value, funnel[0].value) ?? '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p class="note">
+              End-to-end conversion — arrival to a seller — is
+              {' '}<b>{pct(totalClicks, vercel.pageviews) ?? '—'}</b>.
+              Every figure is a raw count: Vercel pageviews, not unique
+              visitors, because our events carry no session and cannot be
+              deduplicated. Mixing the two units would inflate every rate here.
+            </p>
+            {coverage !== null && (
+              <p class="note">
+                <b>Measurement check.</b> Vercel counted
+                {' '}{vercel.modelPageviews!.toLocaleString()} model-page views
+                over the same window; we counted {modelViewsOurs.toLocaleString()}
+                {' '}— <b>{coverage.toFixed(0)}%</b>.
+                {coverage > 110
+                  ? ' Ours reading higher is the expected direction: content blockers stop Vercel’s third-party script and let a same-origin beacon through. Treat our number as the better one.'
+                  : coverage < 60
+                    ? ' Ours reading materially lower is not expected and is worth looking at — it usually means the beacon is failing, not that readers vanished.'
+                    : ' The two agree closely, which is the good case: both counts can be trusted.'}
+              </p>
+            )}
+          </section>
+        )}
 
         <section>
           <h2>By surface</h2>
@@ -452,5 +530,63 @@ const line = (pick: (p: { views: number; clicks: number }) => number) =>
         )}
       </Fragment>
     )}
+
+      {vercel && (vercel.routes.length > 0 || vercel.referrers.length > 0) && (
+        <section>
+          <h2>Traffic</h2>
+          <p class="note">
+            From Vercel Web Analytics, which is where the generic web metrics
+            live — our own table holds no session, address or agent and cannot
+            produce these at all.
+            {' '}{vercel.visitors.toLocaleString()} visitors,
+            {' '}{vercel.pageviews.toLocaleString()} pageviews.
+          </p>
+
+          {vercel.routes.length > 0 && (
+            <table class="spectable">
+              <thead><tr><th>Route</th><th>Pageviews</th></tr></thead>
+              <tbody>
+                {vercel.routes.map((r) => (
+                  <tr>
+                    <td class="mono">{r.route}</td>
+                    <td>{r.pageviews.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {vercel.referrers.length > 0 && (
+            <Fragment>
+              <h3>Referrers</h3>
+              <table class="spectable">
+                <thead><tr><th>Source</th><th>Pageviews</th></tr></thead>
+                <tbody>
+                  {vercel.referrers.map((r) => (
+                    <tr>
+                      <td class="mono">{r.referrer}</td>
+                      <td>{r.pageviews.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Fragment>
+          )}
+        </section>
+      )}
+
+      {!vercel && (
+        <section>
+          <p class="note">
+            <b>Vercel traffic not connected.</b> The funnel needs the top of
+            itself — how many people arrived — and only Vercel has that.
+            Set <code>VERCEL_ANALYTICS_TOKEN</code> (an account token with
+            read access) and <code>VERCEL_PROJECT_ID</code>, plus
+            {' '}<code>VERCEL_TEAM_ID</code> if the project belongs to a team
+            rather than your personal account. Everything above this line
+            comes from our own database and is unaffected.
+          </p>
+        </section>
+      )}
   </div>
 </Base>

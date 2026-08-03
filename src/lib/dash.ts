@@ -75,6 +75,21 @@ export async function verify(token: unknown): Promise<boolean> {
   return equal(sig, await hmac(key, exp));
 }
 
+/* The gate, as one line at the top of every page behind it.
+ *
+ * Returns a redirect to hand straight back from the page, or null to carry on.
+ * A helper rather than three copies of the same four lines, because the failure
+ * mode of copies is that a page added later quietly gets none of them.
+ */
+export async function guard(ctx: {
+  cookies: { get(name: string): { value: string } | undefined };
+  url: URL;
+  redirect(path: string, status?: 302 | 303): Response;
+}): Promise<Response | null> {
+  if (await verify(ctx.cookies.get(COOKIE)?.value)) return null;
+  return ctx.redirect(`/internal/login/?next=${encodeURIComponent(ctx.url.pathname)}`, 303);
+}
+
 export const cookieOptions = {
   httpOnly: true,
   secure: true,

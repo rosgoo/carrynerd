@@ -2,9 +2,18 @@
 import Base from '../../layouts/Base.astro';
 import { bags, bagHref, meta } from '../../lib/catalog.js';
 import { SITE_NAME } from '../../lib/brand.js';
+import { guard } from '../../lib/dash.ts';
 import rejectedPayload from '../../../data/rejected.json';
 import colourOverrides from '../../../data/colour-overrides.json';
 import categoryOverrides from '../../../data/category-overrides.json';
+
+/* Behind the password now, and therefore rendered per request rather than
+ * built. It was unlinked and noindex before, which is not the same thing: this
+ * page lists what the index declined to claim, and that is a working weakness
+ * rather than a public one. Nothing about the page itself changes. */
+export const prerender = false;
+const denied = await guard(Astro);
+if (denied) return denied;
 
 /* The working list behind the coverage banners.
  *

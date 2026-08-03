@@ -40,7 +40,28 @@ const fallback = [...bags].sort(
   </header>
 
   <div class="shell">
+    {/* Alphabetical by heading. The old order was the order the facets were
+        built in, which meant the one people reach for first — Brand — sat
+        ninth, below three collapsed groups. Nothing here ranks above anything
+        else, so the only ordering that a stranger can predict is the alphabet.
+        Data coverage is the exception and stays pinned last: it filters
+        nothing, it is a footnote about the catalog. */}
     <aside class="rail" id="rail">
+      <details class="fgroup" open>
+        <summary>Availability</summary>
+        <div class="fbody">
+          <div class="checks">
+            <button class="check" id="f-stock" aria-pressed="false"><i></i>In stock only</button>
+            <button class="check" id="f-sale" aria-pressed="false"><i></i>On sale</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="fgroup" open>
+        <summary>Brand</summary>
+        <div class="fbody"><div class="checks" id="f-brand"></div></div>
+      </details>
+
       <details class="fgroup" open>
         <summary>Category</summary>
         <div class="fbody"><div class="chips" id="f-cat"></div></div>
@@ -49,6 +70,48 @@ const fallback = [...bags].sort(
       <details class="fgroup" open>
         <summary>Colour</summary>
         <div class="fbody"><div class="checks" id="f-color"></div></div>
+      </details>
+
+      <details class="fgroup">
+        <summary>Features</summary>
+        <div class="fbody"><div class="checks" id="f-feat"></div></div>
+      </details>
+
+      <details class="fgroup">
+        <summary>Material</summary>
+        <div class="fbody"><div class="checks" id="f-mat"></div></div>
+      </details>
+
+      <details class="fgroup">
+        <summary>Max linear dimension</summary>
+        <div class="fbody">
+          <div class="rangerow">
+            <input id="linear-max" type="number" min="0" step="5"
+                   placeholder="max total h+w+d (cm)"
+                   data-ph-cm="max total h+w+d (cm)"
+                   data-ph-in="max total h+w+d (in)" />
+          </div>
+          <div class="checks" style="margin-top:8px">
+            <button class="check" data-preset="carryon" aria-pressed="false"><i></i>Fits common carry-on (<span class="u-cm">≤115cm</span><span class="u-in">≤45in</span> linear)</button>
+            <button class="check" data-preset="underseat" aria-pressed="false"><i></i>Fits under seat (<span class="u-cm">≤40×30×20</span><span class="u-in">≤16×12×8</span>)</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="fgroup" open>
+        <summary>Price — USD</summary>
+        <div class="fbody">
+          <div class="dual" data-dual="price">
+            <div class="track"><div class="fill"></div></div>
+            <input class="lo" type="range" aria-label="Minimum price" />
+            <input class="hi" type="range" aria-label="Maximum price" />
+          </div>
+          <div class="rangerow">
+            <input id="price-min" type="number" placeholder="min" min="0" step="10" />
+            <em>—</em>
+            <input id="price-max" type="number" placeholder="max" min="0" step="10" />
+          </div>
+        </div>
       </details>
 
       <details class="fgroup" open>
@@ -70,22 +133,6 @@ const fallback = [...bags].sort(
         </div>
       </details>
 
-      <details class="fgroup" open>
-        <summary>Price — USD</summary>
-        <div class="fbody">
-          <div class="dual" data-dual="price">
-            <div class="track"><div class="fill"></div></div>
-            <input class="lo" type="range" aria-label="Minimum price" />
-            <input class="hi" type="range" aria-label="Maximum price" />
-          </div>
-          <div class="rangerow">
-            <input id="price-min" type="number" placeholder="min" min="0" step="10" />
-            <em>—</em>
-            <input id="price-max" type="number" placeholder="max" min="0" step="10" />
-          </div>
-        </div>
-      </details>
-
       <details class="fgroup">
         <summary>Weight — grams</summary>
         <div class="fbody">
@@ -98,47 +145,6 @@ const fallback = [...bags].sort(
             <input id="weight-min" type="number" placeholder="min" min="0" step="50" />
             <em>—</em>
             <input id="weight-max" type="number" placeholder="max" min="0" step="50" />
-          </div>
-        </div>
-      </details>
-
-      <details class="fgroup">
-        <summary>Max linear dimension</summary>
-        <div class="fbody">
-          <div class="rangerow">
-            <input id="linear-max" type="number" min="0" step="5"
-                   placeholder="max total h+w+d (cm)"
-                   data-ph-cm="max total h+w+d (cm)"
-                   data-ph-in="max total h+w+d (in)" />
-          </div>
-          <div class="checks" style="margin-top:8px">
-            <button class="check" data-preset="carryon" aria-pressed="false"><i></i>Fits common carry-on (<span class="u-cm">≤115cm</span><span class="u-in">≤45in</span> linear)</button>
-            <button class="check" data-preset="underseat" aria-pressed="false"><i></i>Fits under seat (<span class="u-cm">≤40×30×20</span><span class="u-in">≤16×12×8</span>)</button>
-          </div>
-        </div>
-      </details>
-
-      <details class="fgroup">
-        <summary>Features</summary>
-        <div class="fbody"><div class="checks" id="f-feat"></div></div>
-      </details>
-
-      <details class="fgroup">
-        <summary>Material</summary>
-        <div class="fbody"><div class="checks" id="f-mat"></div></div>
-      </details>
-
-      <details class="fgroup">
-        <summary>Brand</summary>
-        <div class="fbody"><div class="checks" id="f-brand"></div></div>
-      </details>
-
-      <details class="fgroup" open>
-        <summary>Availability</summary>
-        <div class="fbody">
-          <div class="checks">
-            <button class="check" id="f-stock" aria-pressed="false"><i></i>In stock only</button>
-            <button class="check" id="f-sale" aria-pressed="false"><i></i>On sale</button>
           </div>
         </div>
       </details>

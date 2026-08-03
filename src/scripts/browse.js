@@ -337,6 +337,8 @@ function buildFacets() {
     .map(([slug, e]) => `<button class="check" data-f="brand" data-v="${esc(slug)}" aria-pressed="false"><i></i>${
       esc(e.name)}<b>${e.n}</b></button>`).join("");
 
+  ["#f-brand", "#f-color", "#f-feat", "#f-mat"].forEach(mountFacetSearch);
+
   const cov = DATA.meta.coverage || {};
   const labels = { volume_l: "Volume", dims_cm: "Dims", weight_g: "Weight",
                    laptop_in: "Laptop", price_min: "Price" };
@@ -350,6 +352,70 @@ function buildFacets() {
     `<span><b>${DATA.meta.brand_count ?? "—"}</b> BRANDS</span>` +
     `<span><b>${DATA.meta.sku_count ?? "—"}</b> SKUS</span>`;
 
+}
+
+/* A list long enough to scroll inside its own panel is a list you scan rather
+ * than read, and scanning for one brand among dozens is the slow way to do it.
+ * Past this many options the group grows a filter box.
+ *
+ * Driving it off the count rather than a hand-kept list of facets means the box
+ * arrives on its own the first time a facet outgrows the panel — the catalog
+ * gains brands every crawl, and nobody has to remember this file when it does. */
+const FACET_SEARCH_AT = 8;
+
+// The visible label, minus the trailing <b> that carries the match count —
+// otherwise typing a digit would match every option's tally.
+const optionText = el => [...el.childNodes]
+  .filter(n => !(n.nodeType === 1 && n.tagName === "B"))
+  .map(n => n.textContent).join(" ").replace(/\s+/g, " ").trim().toLowerCase();
+
+function mountFacetSearch(sel) {
+  const list = $(sel);
+  if (!list) return;
+  const rows = $$(".check", list).map(el => ({ el, hay: optionText(el) }));
+  if (rows.length < FACET_SEARCH_AT) return;
+
+  // Named after its own heading, so the placeholder cannot drift out of step
+  // with the group it sits under.
+  const group = list.closest(".fgroup");
+  const heading = ((group && $("summary", group)?.textContent) || "options")
+    .split("—")[0].trim().toLowerCase();
+
+  const box = document.createElement("input");
+  Object.assign(box, { type: "search", className: "fsearch", autocomplete: "off",
+                       spellcheck: false, placeholder: `filter ${heading}…` });
+  box.setAttribute("aria-label", `Filter the ${heading} list`);
+
+  const none = document.createElement("div");
+  none.className = "fnone";
+  none.textContent = "no match";
+  none.hidden = true;
+
+  list.before(box);
+  list.after(none);
+
+  box.addEventListener("input", () => {
+    const q = box.value.trim().toLowerCase();
+    let shown = 0;
+    for (const r of rows) {
+      // A ticked option never hides. It is still narrowing the grid, and a
+      // filter you cannot see is one you cannot turn off — the count above the
+      // results would be arguing with a list that no longer admits why.
+      const hit = !q || r.hay.includes(q)
+                  || r.el.getAttribute("aria-pressed") === "true";
+      r.el.hidden = !hit;
+      if (hit) shown++;
+    }
+    none.hidden = shown > 0;
+  });
+}
+
+function clearFacetSearches() {
+  $$(".fsearch").forEach(box => {
+    if (!box.value) return;
+    box.value = "";
+    box.dispatchEvent(new Event("input"));
+  });
 }
 
 /* ---------- compare ---------- */
@@ -715,6 +781,10 @@ function wire() {
       sale: false, sort: "brand",
     });
     [S.cats, S.brands, S.feats, S.mats, S.colors, S.presets].forEach(s => s.clear());
+    // The facet boxes hide options rather than filter bags, so they survive a
+    // render untouched — Clear has to say so explicitly or the rail keeps a
+    // half-hidden brand list after everything else has reset.
+    clearFacetSearches();
     history.replaceState(null, "", location.pathname);
     loadURL();
     render();

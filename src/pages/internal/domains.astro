@@ -1,6 +1,14 @@
 ---
 import Base from '../../layouts/Base.astro';
 import { SITE_NAME } from '../../lib/brand.js';
+import { guard } from '../../lib/dash.ts';
+
+// Same gate as the rest of /internal/. The page is inert without its dev-only
+// API, but the shell still names brands and domains under review, which is a
+// working list and not a public one.
+export const prerender = false;
+const denied = await guard(Astro);
+if (denied) return denied;
 
 /* Domain review — the hand-off list from resolve_domains.py, editable.
  *

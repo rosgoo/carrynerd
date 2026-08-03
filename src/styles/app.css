@@ -250,6 +250,21 @@ header {
   background: var(--accent); outline: 1px solid var(--accent); outline-offset: 1px;
 }
 
+/* Sits above the scroll box, not inside it, so the field stays put while the
+   options it is narrowing scroll under it. See mountFacetSearch() in
+   browse.js — the box only exists on lists long enough to need one. */
+.fsearch {
+  width: 100%; margin-bottom: 6px; background: var(--bg);
+  border: 1px solid var(--line-2); padding: 4px 7px; font-size: 11px;
+  color: inherit; font-family: inherit; outline: none;
+  -webkit-appearance: none; appearance: none;
+}
+.fsearch::placeholder { color: var(--ink-mute); }
+.fsearch:focus { border-color: var(--accent); }
+.fsearch::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+
+.fnone { padding: 5px 0 0; font-size: 10px; color: var(--ink-mute); letter-spacing: .04em; }
+
 .checks { display: flex; flex-direction: column; max-height: 218px; overflow-y: auto; }
 .checks::-webkit-scrollbar { width: 6px; }
 .checks::-webkit-scrollbar-thumb { background: var(--line-2); }
@@ -257,6 +272,10 @@ header {
   display: flex; align-items: center; gap: 8px; padding: 3.5px 0;
   font-size: 11px; color: var(--ink-dim); text-align: left; width: 100%;
 }
+/* .check sets display:flex, which outranks the UA sheet's [hidden] rule — the
+   facet search box hides options with the attribute, so it has to be restated
+   here or nothing would disappear. */
+.check[hidden] { display: none; }
 .check:hover { color: var(--ink); }
 .check i {
   width: 11px; height: 11px; border: 1px solid var(--line-2);
