@@ -125,6 +125,23 @@ jobs:
       # this is not a way to skip work; it is what lets a brand that fails
       # tonight keep its last good catalogue instead of vanishing from the
       # index for a day.
+      # TEMPORARY — the `raw-` line below is a migration crutch, remove it
+      # after one successful full run.
+      #
+      # There are no raw-s<N>- entries yet, so without a fallback the first run
+      # starts every shard from an empty cache. If that run is rate-limited
+      # part-way, a *partial* slice becomes shard N's cache and the next run
+      # restores the partial rather than the good merged copy. The old merged
+      # rawall- entry survives, but nothing except a skip_fetch assemble reads
+      # it. Falling back to raw- for one run means the migration inherits the
+      # full set and only splits once it has actually succeeded.
+      #
+      # The cost while it is here is the waste this change was meant to remove:
+      # restoring the merged cache puts every brand on disk, so each shard
+      # saves a near-copy of the whole catalogue, ~500 MB a run. Acceptable
+      # once. Delete the `raw-` line as soon as a full run has banked its
+      # per-shard entries — see progress.md.
+      #
       # Shard-scoped, because the shard stride is deterministic: fetch.py
       # slices brands[index::count], so shard N handles the same brands every
       # night and only ever needs its own catalogues. A cache entry restores as
@@ -135,7 +152,9 @@ jobs:
         with:
           path: raw
           key: raw-s${{ matrix.shard }}-${{ github.run_id }}
-          restore-keys: raw-s${{ matrix.shard }}-
+          restore-keys: |
+            raw-s${{ matrix.shard }}-
+            raw-
 
       # --limit caps the crawl-style adapters, the way enrich is capped. The
       # feed adapters are unaffected: /products.json returns a whole catalogue
