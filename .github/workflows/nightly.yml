@@ -39,6 +39,15 @@ on:
   #   # 03:20 UTC. Off the hour on purpose — the top of the hour is when every
   #   # other cron on GitHub fires and runners queue.
   #   - cron: '20 3 * * *'
+  #
+  # OPEN, decide when the cron goes on: nightly or weekly. Specs never
+  # change, so refetching them nightly is waste — but price and stock come
+  # in the same request, and a weekly fetch means an alert can fire six days
+  # after a sale started, which is not a late alert but a wrong one. It also
+  # turns price-history.jsonl from a record of movements into weekly
+  # snapshots, and discounting cadence is the licensing pitch. Runner minutes
+  # are free on a public repo, so cost is not the argument. Politeness might
+  # be: weekly is 7x fewer requests to 123 stores that never asked for any.
   workflow_dispatch:
     inputs:
       skip_fetch:
@@ -64,27 +73,38 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # Datacenter IPs get `local_rate_limited` from Shopify's edge almost
-  # immediately, so pace hard. This is the number that keeps the crawl polite.
-  DELAY: '65'
+  # The feed pacing, and ~85% of a run's wall time — it is spacing, not data.
+  # A brand costs about two of these whether it sells 40 products or 1,400.
+  #
+  # 65 came from the premise that datacenter IPs get `local_rate_limited` from
+  # Shopify's edge almost immediately. The premise went untested until
+  # 2026-08-02 and did not survive: 32 of 40 brands served a runner while this
+  # project's residential IP was getting 429 on 6 of 6 stores, and no shard
+  # tripped the rate-limit breaker across a full night of crawling.
+  #
+  # 30 halves the run, to roughly half an hour of wall time across four shards.
+  # Step down further only with the fetch log watched for 429s and challenge
+  # markers. The breaker stops a shard after three consecutive rate-limited
+  # brands so the downside is bounded, but this is still a store's patience
+  # being spent. Raise this line if the crawl starts being refused.
+  DELAY: '30'
   SHARDS: '4'
   # Enrichment gets its own pacing, for the same reason the plate sampler does.
-  # DELAY is 65 because /products.json rate-limits per client IP and throttles
+  # DELAY exists because /products.json rate-limits per client IP and throttles
   # datacenter ranges on sight. Enrichment does not touch that endpoint — it
   # fetches ordinary product pages, which are CDN-fronted HTML with nothing
   # like the same limit — so it was inheriting a number calibrated for a
-  # different problem and paying 65 minutes a night for 60 pages.
+  # different problem and paying an hour a night to read 60 pages.
   #
-  # 30s is a deliberate first step down rather than the number we think is
-  # right: the first Actions run answered the open question and 32 of 40 brands
-  # served us, so the runners are not the liability they were assumed to be.
-  # Halve it, watch the fetch log for 429s and challenge markers, and keep
-  # going down if it stays clean. If it does not, this is the line to raise.
+  # Now equal to DELAY by coincidence rather than by inheritance: both were
+  # stepped down from 65 on the same evidence, and they are free to diverge.
+  # Product pages are the softer limit of the two, so this is the one to lower
+  # first if either moves again.
   ENRICH_DELAY: '30'
-  # And the page adapters, for the same reason a third time. deuter, mammut,
-  # camelbak and tatonka fetch one product page each, not /products.json, so
-  # they were paying the feed's per-IP limit for requests that never touch it.
-  # CamelBak is 124 pages: 2.2 hours at 65s, about ten minutes at 5s. robots
+  # And the page adapters, for the same reason a third time. They fetch one
+  # product page each, not /products.json, so they were paying the feed's
+  # per-IP limit for requests that never touch it. CamelBak was 124 pages:
+  # 2.2 hours at the old 65s, about ten minutes at 5s. robots
   # Crawl-delay is still honoured per brand on top of this, so a host that asks
   # for ten seconds gets ten seconds regardless of what is set here.
   PAGE_DELAY: '5'
@@ -338,7 +358,7 @@ jobs:
       # enrich is: a plate that stays white is a cosmetic loss, and it must not
       # block the price commit.
       #
-      # Deliberately NOT env.DELAY. That 65s is calibrated for /products.json,
+      # Deliberately NOT env.DELAY. That number is calibrated for /products.json,
       # which rate-limits per client IP and throttles datacenter ranges; this
       # stage talks to cdn.shopify.com, a static image CDN with no such limit,
       # and inheriting the feed's pacing would put a first backfill at over a
