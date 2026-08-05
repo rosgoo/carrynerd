@@ -787,6 +787,12 @@ a.brand { text-decoration: none; }
    to start from. */
 .xscroll table { white-space: nowrap; }
 .xscroll th:first-child, .xscroll td:first-child { white-space: normal; min-width: 132px; }
+/* That exception is for a first column of prose. The ledger's is a date, which
+   wants the opposite: allowed to wrap, "2026-08-01" folds onto two lines and
+   every row in the table reads as two. */
+.pricehist .xscroll th:first-child, .pricehist .xscroll td:first-child {
+  white-space: nowrap; min-width: 0;
+}
 
 .brandtable td:first-child { font-family: inherit; }
 .brandtable a { color: var(--ink); text-decoration: none; font-weight: 550; }

@@ -65,6 +65,7 @@ const ticks = hi === lo ? [hi] : [lo, (lo + hi) / 2, hi];
   )}
 
   {changes.length > 0 && (
+    <div class="xscroll">
     <table class="vartable">
       <thead>
         <tr><th>Date</th><th>Colourway</th><th>Was</th><th>Now</th><th>Change</th></tr>
@@ -83,5 +84,6 @@ const ticks = hi === lo ? [hi] : [lo, (lo + hi) / 2, hi];
         ))}
       </tbody>
     </table>
+    </div>
   )}
 </section>

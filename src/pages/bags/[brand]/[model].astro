@@ -246,6 +246,13 @@ const description =
     {bag.variants?.length > 0 && (
       <section>
         <h2>Colourways &amp; SKUs</h2>
+        {/* A colourway name, a SKU, a price and a stock word will not fold
+            onto a 320px phone, and unwrapped this table was taking the whole
+            page sideways with it — which put every other block on the page,
+            the watch form included, out of line with the screen. It scrolls
+            inside its own box instead, as the brand and airline tables
+            already do. */}
+        <div class="xscroll">
         <table class="vartable">
           <thead>
             <tr><th>Colourway</th><th>SKU</th><th>Price</th><th>Stock</th></tr>
@@ -271,6 +278,7 @@ const description =
             ))}
           </tbody>
         </table>
+        </div>
       </section>
     )}
 
