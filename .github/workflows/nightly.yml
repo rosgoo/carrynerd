@@ -18,36 +18,33 @@
 name: nightly
 
 on:
-  # Schedule deliberately off until the first run has been done by hand.
+  # 03:20 UTC. Off the hour on purpose — the top of the hour is when every other
+  # cron on GitHub fires and runners queue.
   #
-  # Pushing to a remote for the first time armed this cron against a repo whose
-  # committed catalogue is pinned on purpose. An unattended first run would have
-  # introduced the crawler to ~160 stores from a datacenter IP while Shopify was
-  # already blocking us — and then failed at the gate regardless, because the
-  # regenerated catalogue drops dims 57% -> 24%, volume 89% -> 49% and laptop
-  # 45% -> 9%, every one past validate.py's 10-point coverage limit. That is the
-  # gate working; it is still two hours of crawling for a commit that cannot
-  # happen.
+  # Held off until a full run had been done by hand, which was the right order.
+  # Arming it on the first push would have introduced the crawler to ~160 stores
+  # from a datacenter IP while Shopify was already blocking us, and then failed
+  # at the gate regardless: the regenerated catalogue dropped dims 57% -> 24%,
+  # volume 89% -> 49% and laptop 45% -> 9%, every one past validate.py's
+  # 10-point coverage limit. Run 30973717097 settled that — the gate passed at
+  # the strict default and coverage moved up rather than off the cliff — so a
+  # run with no inputs now publishes cleanly, which is what a cron is.
   #
-  # GEARHERD_CONTACT now resolves, so the remaining question before restoring
-  # the cron is whether the first commit accepts the wider catalogue via a
-  # one-off --max-coverage-drop or waits for the enrichment crawl. Note the
-  # gate failing is a safe outcome, not a lost night: "Save raw catalogues"
-  # is if: always(), so a run that fails to validate still banks its fetch.
+  # Nightly rather than weekly, which was open for a while. Specs never change,
+  # so refetching them nightly is waste — but price and stock arrive in the same
+  # request, and a weekly fetch means an alert can fire six days after a sale
+  # started, which is not a late alert but a wrong one. It also turns
+  # price-history.jsonl from a record of movements into weekly snapshots, and
+  # discounting cadence is the licensing pitch.
   #
-  # schedule:
-  #   # 03:20 UTC. Off the hour on purpose — the top of the hour is when every
-  #   # other cron on GitHub fires and runners queue.
-  #   - cron: '20 3 * * *'
-  #
-  # OPEN, decide when the cron goes on: nightly or weekly. Specs never
-  # change, so refetching them nightly is waste — but price and stock come
-  # in the same request, and a weekly fetch means an alert can fire six days
-  # after a sale started, which is not a late alert but a wrong one. It also
-  # turns price-history.jsonl from a record of movements into weekly
-  # snapshots, and discounting cadence is the licensing pitch. Runner minutes
-  # are free on a public repo, so cost is not the argument. Politeness might
-  # be: weekly is 7x fewer requests to 123 stores that never asked for any.
+  # The politeness case for weekly is thinner than it reads. The feed adapters
+  # spend one to three requests on an entire catalogue, so a night across 123
+  # stores is roughly 250 requests; the page adapters are the expensive ones and
+  # they are already capped by --limit and chunked by --max-age. Nightly is not
+  # seven times the crawl, it is seven times a small number.
+  schedule:
+    - cron: '20 3 * * *'
+
   workflow_dispatch:
     inputs:
       skip_fetch:
