@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-gearherd image-plate sampler — reads the background colour out of each product
+carrynerd image-plate sampler — reads the background colour out of each product
 photo so the plate behind it can match.
 
 Brands all shoot on white, but not the same white. An eggshell JPEG dropped on

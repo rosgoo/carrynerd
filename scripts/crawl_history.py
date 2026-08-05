@@ -34,7 +34,7 @@ when it finds nothing to read.
 
 Usage:
     python3 scripts/crawl_history.py --out crawl-history.db
-    python3 scripts/crawl_history.py --repo ../gearherd-data   # local checkout
+    python3 scripts/crawl_history.py --repo ../carrynerd-data   # local checkout
     python3 scripts/crawl_history.py --quiet                   # build, no report
 
 Query it afterwards with anything that speaks SQLite:

@@ -33,7 +33,7 @@ export async function send(mail: Mail): Promise<void> {
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      from: process.env.ALERT_FROM ?? 'gearherd <alerts@gearherd.com>',
+      from: process.env.ALERT_FROM ?? 'carrynerd <alerts@carrynerd.com>',
       to: [mail.to],
       subject: mail.subject,
       html: mail.html,
@@ -55,7 +55,7 @@ const esc = (s: string) =>
 
 export function confirmEmail(confirmUrl: string, what: string): Mail {
   const text = [
-    `Confirm your gearherd price watch`,
+    `Confirm your carrynerd price watch`,
     ``,
     `You asked to be told when ${what} drops in price.`,
     `Confirm that here — the watch does not start until you do:`,
@@ -68,7 +68,7 @@ export function confirmEmail(confirmUrl: string, what: string): Mail {
 
   const html = `
 <div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;max-width:520px;color:#16181a">
-  <p style="letter-spacing:.1em;text-transform:uppercase;font-size:11px;color:#8e938f">gearherd</p>
+  <p style="letter-spacing:.1em;text-transform:uppercase;font-size:11px;color:#8e938f">carrynerd</p>
   <h1 style="font-size:18px;margin:0 0 14px">Confirm your price watch</h1>
   <p style="font-size:13px;line-height:1.7">
     You asked to be told when ${esc(what)} drops in price. The watch does not
@@ -85,5 +85,5 @@ export function confirmEmail(confirmUrl: string, what: string): Mail {
   </p>
 </div>`.trim();
 
-  return { to: '', subject: 'Confirm your gearherd price watch', html, text };
+  return { to: '', subject: 'Confirm your carrynerd price watch', html, text };
 }

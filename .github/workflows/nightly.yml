@@ -114,7 +114,7 @@ env:
   # UA advertising a URL that does not resolve is the stock bot signature that
   # Bonfus's WAF 403s on sight. Pointing it somewhere dead is worse than
   # sending nothing at all.
-  GEARHERD_CONTACT: https://gearherd.com/bot
+  CARRYNERD_CONTACT: https://carrynerd.com/bot
 
 jobs:
   fetch:

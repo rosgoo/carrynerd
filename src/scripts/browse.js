@@ -293,6 +293,37 @@ function row(b) {
   </tr>`;
 }
 
+/* What boot paints while the first answer is in flight. Until now the reader
+ * spent that round trip looking at the crawler's fallback — a text list that
+ * shares nothing but data with the grid about to replace it, so the page
+ * appeared to change its mind on arrival. These are cards with nothing in them
+ * yet: same shell, same shot plate, same proportions, so the first paint is
+ * the shape of the answer and the answer only fills it in. Twelve covers the
+ * first viewport on anything reasonable; below the fold there is no one to
+ * lie to. */
+const SKEL = 12;
+
+function skeletonCard() {
+  return `<article class="card skel" aria-hidden="true">
+    <div class="shot"></div>
+    <div class="cbody">
+      <div class="cbrand"><i class="bone"></i></div>
+      <div class="cname"><i class="bone"></i></div>
+    </div>
+    <div class="specs">${'<div class="spec"><i class="bone"></i></div>'.repeat(4)}</div>
+    <div class="cfoot"><i class="bone"></i></div>
+  </article>`;
+}
+
+function skeletonPage() {
+  // The 12 matches tableShell()'s column count, not anything about SKEL.
+  const rows = `<tr class="skel" aria-hidden="true">${
+    '<td><i class="bone"></i></td>'.repeat(12)}</tr>`.repeat(SKEL);
+  $("#results").innerHTML = VIEW === "grid"
+    ? `<div class="grid">${skeletonCard().repeat(SKEL)}</div>`
+    : tableShell().replace("<tbody>", `<tbody>${rows}`);
+}
+
 /* The result set is the whole catalog when nothing is filtered, and drawing
  * that as one HTML string was the single thing making this page hang: 8,000
  * cards is on the order of 120,000 nodes, parsed, laid out and painted from
@@ -441,6 +472,19 @@ async function render({ boot = false } = {}) {
   const out = $("#results");
   out.setAttribute("aria-busy", "true");
 
+  // At boot what is on screen is the crawler's list, and the reader's first
+  // paint should be the shape of the grid instead — see skeletonPage(). The
+  // list is moved aside rather than discarded — as nodes, because a string
+  // round-trip of every model would serialise and reparse the longest list
+  // this page ever holds — since it is also the page's only working fallback
+  // and the failure path below hands it back.
+  let fallback = null;
+  if (boot) {
+    fallback = document.createDocumentFragment();
+    fallback.append(...out.childNodes);
+    skeletonPage();
+  }
+
   let data;
   try {
     data = await ask(0, boot);
@@ -450,10 +494,11 @@ async function render({ boot = false } = {}) {
     if (err.name === "AbortError") return null;
     console.error("carrynerd: could not reach /api/browse", err);
     out.removeAttribute("aria-busy");
-    // On the first request there is nothing drawn yet, and the page underneath
-    // is the server-rendered list of every model — degraded, but every bag is
-    // still reachable. Later on, the results on screen are simply one filter
-    // out of date, which is worth saying rather than pretending.
+    // On the first request the skeletons give way to the server-rendered list
+    // of every model — degraded, but every bag is still reachable. Later on,
+    // the results on screen are simply one filter out of date, which is worth
+    // saying rather than pretending.
+    if (boot) out.replaceChildren(fallback);
     $("#count").textContent = boot
       ? "filters unavailable — showing all models"
       : "could not load that filter — showing the previous results";
@@ -1133,9 +1178,9 @@ function wire() {
 
   // boot=1 asks for the rail, the slider tracks, the coverage meter and the
   // first page of results in one go, so arriving on a filtered link still costs
-  // exactly one request before there is something to look at. A failure leaves
-  // the server-rendered list of every model in place — see render(); a degraded
-  // page beats a dead one.
+  // exactly one request before there is something to look at. A failure swaps
+  // the boot skeletons back out for the server-rendered list of every model —
+  // see render(); a degraded page beats a dead one.
   const data = await render({ boot: true });
   if (!data) return;
 

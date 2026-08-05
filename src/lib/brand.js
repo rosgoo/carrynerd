@@ -1,45 +1,50 @@
-/* Site identity in one place, because it is not settled.
+/* Site identity in one place. Settled, at last, 2026-08.
  *
- * "gearherd" is the third working name, and the second time it has held the
- * slot: gearherd -> calipered -> gearherd. The objections that got it dropped
- * the first time are recorded here rather than deleted, because they have not
- * gone away and rediscovering them a third time would be worse than living
- * with them knowingly:
+ * "carrynerd" is the fourth working name: gearherd -> calipered -> gearherd
+ * -> carrynerd. The objections that dogged "gearherd" through both of its
+ * tenures are kept rather than deleted, because they are why the rename
+ * finally happened and the bar any future name has to clear:
  *
- *   - Spoken aloud it is close to indistinguishable from "gearhead", which is
- *     an existing outdoor retailer. This is a real collision on any spoken
- *     channel — podcast reads, word of mouth, someone dictating the URL.
+ *   - Spoken aloud it was close to indistinguishable from "gearhead", an
+ *     existing outdoor retailer and a common word — a real collision on any
+ *     spoken channel (podcast reads, word of mouth, someone dictating the
+ *     URL), and one letter of edit distance in print, so search kept
+ *     correcting the brand into somebody else's.
  *   - "herd" connotes herd mentality, which cuts against an audience that
  *     prides itself on doing its own research.
  *
- * What it buys in exchange: it says what the site is in one compound, it is a
- * word people type unprompted, and it carries a mark. "calipered" named the
- * method precisely and earned no search traffic on the name alone, because it
- * is a verb form nobody types — and its caliper mark, drawn asymmetric to
- * avoid reading as the letter H, reads instead as a rifle in profile. That is
- * not fixable: symmetric goes back to H, asymmetric stays a weapon. A gear
- * site cannot ship it, and a name whose art cannot be drawn is not a name.
+ * What "carrynerd" buys where gearherd paid: it spells itself when heard,
+ * the token was unclaimed everywhere that matters, and "carry nerd" is what
+ * this audience already calls itself — the name is the community's own
+ * self-descriptor, not a coinage to teach. "calipered" named the method
+ * precisely and earned no search traffic on the name alone, because it is a
+ * verb form nobody types — and its caliper mark, drawn asymmetric to avoid
+ * reading as the letter H, reads instead as a rifle in profile. That is not
+ * fixable: symmetric goes back to H, asymmetric stays a weapon. A gear site
+ * cannot ship it, and a name whose art cannot be drawn is not a name.
  *
  * Changing the name means changing this file and `site` in astro.config.mjs,
  * plus the places outside the Astro build that cannot import from here:
  * the Python pipeline's User-Agent and docstrings, alerts/ (match.py,
- * schema.sql), src/lib/email.ts, and the nightly workflow's GEARHERD_CONTACT
+ * schema.sql), src/lib/email.ts, and the nightly workflow's CARRYNERD_CONTACT
  * and bot identity, and README.md. Grep for the name; it is not confined to
  * this file. The localStorage keys in Base.astro used to be on that list and
  * deliberately are not any more — see the note there.
  *
- * The mark in components/Logo.astro and public/favicon.svg is a bison, so it
- * is tied to this name: a rename that keeps the art leaves an animal with no
- * setup. validate.py fails the nightly if those two files ever disagree.
+ * The mark in components/Logo.astro and public/favicon.svg is a bison. It
+ * predates this name and stays by choice: the herd moved from the domain to
+ * the community layer, and the animal keeps its job (the identity working
+ * docs in the notes store hold that argument). validate.py fails the nightly
+ * if those two files ever disagree.
  */
 
-export const SITE_NAME = 'gearherd';
-export const SITE_NAME_DISPLAY = 'GEARHERD';
+export const SITE_NAME = 'carrynerd';
+export const SITE_NAME_DISPLAY = 'CARRYNERD';
 
 export const TAGLINE = 'carry spec index';
 
 /** Contact addresses referenced by /bot and /privacy. */
 export const CONTACT = {
-  crawler: 'crawler@gearherd.com',
-  privacy: 'privacy@gearherd.com',
+  crawler: 'crawler@carrynerd.com',
+  privacy: 'privacy@carrynerd.com',
 };

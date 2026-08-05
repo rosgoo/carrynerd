@@ -82,8 +82,8 @@ for path in "${PATHS[@]}"; do
 done
 
 cd "$TMP/data-repo"
-git config user.name  "gearherd-bot"
-git config user.email "gearherd-bot@users.noreply.github.com"
+git config user.name  "carrynerd-bot"
+git config user.email "carrynerd-bot@users.noreply.github.com"
 git add -A
 
 if git diff --cached --quiet; then

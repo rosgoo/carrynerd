@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-gearherd quality gate — the thing standing between a bad parse and a live site.
+carrynerd quality gate — the thing standing between a bad parse and a live site.
 
 The nightly workflow commits and deploys with nobody watching. That is fine
 right up until a regex change halves the index, at which point the pipeline
@@ -262,7 +262,7 @@ def freshness(rep, stale_days, fail_days):
     silently, forever, and nobody notices until someone asks why a brand has
     not listed anything since March.
 
-    gearherd is more exposed to that than it looks, because fetch.py keeps
+    carrynerd is more exposed to that than it looks, because fetch.py keeps
     yesterday's catalogue when a refetch fails — deliberately, so one bad night
     does not drop a brand out of the index. The cost of that resilience is that
     a brand can fail every night for a month while its models sit in the
@@ -449,7 +449,7 @@ def per_brand(payload, prev, rep, fail_drop, warn_drop):
     """Has one brand's catalogue collapsed while the totals stayed fine?
 
     The regression checks above are all aggregates, and the aggregate is the
-    wrong granularity for the failure that actually happens. gearherd carries
+    wrong granularity for the failure that actually happens. carrynerd carries
     484 bags across 11 brands, unevenly: aer has 88, able-carry has 8. A paging
     bug that costs aer 40% of its models drops 35 bags — 7% of the catalogue,
     against a 25% tolerance. Nothing moves. brand_count does not move, because

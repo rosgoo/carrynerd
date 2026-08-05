@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-gearherd domain resolver — turns a brand name into a verified storefront.
+carrynerd domain resolver — turns a brand name into a verified storefront.
 
 `brands-master.json` holds 170 researched brands and only 40 have somewhere to
 fetch from. Names like "Code of Bell" or "Alpha One-Niner" need a domain before

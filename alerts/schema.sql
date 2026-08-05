@@ -1,4 +1,4 @@
--- gearherd alerts — the only runtime database in the system.
+-- carrynerd alerts — the only runtime database in the system.
 --
 -- Email addresses are the one piece of state that cannot live in git: the data
 -- plane is public and fully version-controlled, and an address committed once
@@ -111,3 +111,14 @@ create index if not exists events_rate
 -- Per-bag drilldown, and the join that turns two counts into one rate.
 create index if not exists events_bag
   on events (bag_id, name);
+
+-- Belt and braces against the hosted layer. Supabase fronts the public schema
+-- with a REST API whose anon key is designed to be handed to browsers, and
+-- subscriptions is the one table that must never be readable that way. Row
+-- level security with no policies denies the REST roles everything; the app's
+-- own connection is the table owner, which RLS does not bind, so nothing in
+-- alerts/ or src/ changes behaviour. On plain Postgres this is a no-op with
+-- the same shape: deny roles that were never granted anything anyway.
+alter table subscriptions enable row level security;
+alter table sent_alerts   enable row level security;
+alter table events        enable row level security;

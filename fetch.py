@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-gearherd fetcher — pulls public Shopify product catalogs.
+carrynerd fetcher — pulls public Shopify product catalogs.
 
 Only touches endpoints that stores publish for anyone: /products.json (the
 storefront JSON feed Shopify serves by default) and /robots.txt. No login, no
@@ -59,11 +59,11 @@ LOG_PART = os.path.join(HERE, "data", "fetch-log.part-{}.json")
 # Put a real contact URL here before running this at any scale.
 # No placeholder URL when the contact is unset: a UA carrying example.com is a
 # stock bot signature (Bonfus's WAF 403s exactly that and nothing else), and a
-# fake contact address is worse than none. Set GEARHERD_CONTACT to the real
+# fake contact address is worse than none. Set CARRYNERD_CONTACT to the real
 # /bot page before running at scale.
-CONTACT = os.environ.get("GEARHERD_CONTACT", "")
-UA = (f"gearherd/0.1 (product catalog indexer; +{CONTACT})" if CONTACT
-      else "gearherd/0.1 (product catalog indexer)")
+CONTACT = os.environ.get("CARRYNERD_CONTACT", "")
+UA = (f"carrynerd/0.1 (product catalog indexer; +{CONTACT})" if CONTACT
+      else "carrynerd/0.1 (product catalog indexer)")
 
 # Kept pages, shared with enrich.py: same directory, same gitignore, same
 # reason. Brands' full marketing copy, a working file rather than a dataset,
@@ -317,7 +317,7 @@ def fetch_bellroy(brand, pacer):
     — richer than Shopify plus enrichment (internal AND external dims, net
     weight, material composition, GTINs). Two requests per run, politer than
     paginating a products.json. The identifiers can rotate, so they are fetched
-    fresh every time and never cached. Mapping notes: Notes/gearherd/bellroy-api.md.
+    fresh every time and never cached. Mapping notes: Notes/carrynerd/bellroy-api.md.
     """
     domain = brand["domain"]
     result = {

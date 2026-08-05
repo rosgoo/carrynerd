@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-gearherd normalizer — turns raw Shopify catalogs into one comparable schema.
+carrynerd normalizer — turns raw Shopify catalogs into one comparable schema.
 
 The hard part of a bag directory is not fetching, it is that no two brands
 describe a bag the same way. Volume shows up in the title ("Travel Pack 45L"),
@@ -1046,7 +1046,7 @@ def slugify(text):
 
 # Bellroy's /v2/products API — one item per SKU (colourway × material), specs
 # under attributes.dimensions with every value wrapped in a single-item list.
-# Field notes and the endpoint recipe: Notes/gearherd/bellroy-api.md.
+# Field notes and the endpoint recipe: Notes/carrynerd/bellroy-api.md.
 
 BELLROY_IMG = ("https://bellroy-product-images.imgix.net/"
                "bellroy_dot_com_gallery_image/{currency}/{sku}/0?auto=format")
@@ -1072,7 +1072,7 @@ BELLROY_CATEGORY = {
 # Real products, not bags. Their shelf name is trusted the same way a Shopify
 # product_type is — it is the brand speaking, not a keyword guess. (Wallets
 # were in this set until the vertical opened on 2026-08-01 — see
-# Notes/gearherd/wallets-later.md for the flip record.)
+# Notes/carrynerd/wallets-later.md for the flip record.)
 BELLROY_NOT_A_BAG = {"phone_case", "tech_accessory", "key_holder"}
 
 # product_type is even blunter than the shelf: {Bag, Wheeled Luggage,
@@ -2232,7 +2232,7 @@ def build_pages(item, brand, hint=None, force=None):
                      candidates[0] if candidates else None)
     # Unlike a storefront API, a page hands back whatever the markup says, and
     # Thule's <img src> is site-root-relative ("/-/p/…"). Left alone it is
-    # resolved against gearherd.com by the browser and 74 photos 404.
+    # resolved against carrynerd.com by the browser and 74 photos 404.
     if image:
         image = urljoin(url, image)
 

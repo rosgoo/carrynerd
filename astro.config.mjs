@@ -9,10 +9,11 @@ import { indexablePaths } from './src/lib/catalog.js';
 // here only for the handful of routes that opt out with `prerender = false`
 // (the alerts endpoints, which need a database connection at request time).
 export default defineConfig({
-  // Canonical URLs, sitemap entries and JSON-LD all key off this. The name is
-  // not settled — see the open decisions in the handoff — so it reads from the
-  // environment and the placeholder is the only thing to change once it is.
-  site: process.env.SITE_URL ?? 'https://gearherd.com',
+  // Canonical URLs, sitemap entries and JSON-LD all key off this. The env
+  // override outlived the naming question it was added for: it now exists so
+  // links can stay on the old domain until the new one is attached and out of
+  // DNS quarantine — see SITE_URL in .env.template.
+  site: process.env.SITE_URL ?? 'https://carrynerd.com',
   output: 'static',
   adapter: vercel(),
   // Two exclusions, for two unrelated reasons.

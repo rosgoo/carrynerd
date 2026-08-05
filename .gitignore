@@ -57,3 +57,7 @@ data/page-cache/
 # The gate's baseline, copied from the pulled catalogue before normalize.py
 # writes over it. A build artefact of one run, never a record.
 data/bags.baseline.json
+.vercel
+.env*
+# The template carries no values and is the documentation for what .env needs.
+!.env.template

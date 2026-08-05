@@ -506,6 +506,35 @@ main { flex: 1; min-width: 0; }
 .cmp:hover { border-color: var(--accent); color: var(--accent); }
 .cmp[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 
+/* ---------- boot skeleton ----------
+   Cards with nothing in them, painted by skeletonPage() in browse.js for the
+   length of the boot request. Flat fills of --line, like everything else here —
+   the site has no gradients and its placeholders don't get one either. The
+   bars pulse rather than shimmer for the same reason, and hold still for
+   anyone who asked motion to stop. */
+
+.bone {
+  display: inline-block; vertical-align: middle;
+  width: 60%; height: 8px; background: var(--line);
+}
+.skel .shot, .bone { animation: pulse 1.1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) {
+  .skel .shot, .bone { animation: none; }
+}
+
+/* Sized so a skeleton card stands where its replacement will: the shot plate
+   already matches exactly through aspect-ratio, and the bars below borrow the
+   line heights of the text they stand in for. */
+.skel .shot { background: var(--line); }
+.skel .cbrand .bone { width: 42%; height: 7px; }
+.skel .cname .bone { width: 78%; height: 11px; margin-top: 4px; }
+.skel .spec .bone { width: 55%; height: 9px; margin: 8px 0 9px; }
+.skel .cfoot .bone { width: 54px; height: 12px; margin: 4px 0; }
+/* The table's columns are numbers except Model, which is the wide one. */
+.skel td .bone { width: 3.5em; }
+.skel td:nth-child(2) .bone { width: 9em; }
+
 /* ---------- table view ---------- */
 
 .tablewrap { padding: 0 0 120px; overflow-x: auto; }
