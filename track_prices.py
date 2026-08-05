@@ -147,7 +147,8 @@ def main():
             # are treated as matching rather than as a change, so introducing
             # this does not re-baseline all 30,459 tracked SKUs on the first run
             # and blank the site's drops for a night.
-            if previous and previous.get("basis", basis) != basis:
+            was_rebased = bool(previous and previous.get("basis", basis) != basis)
+            if was_rebased:
                 previous = None
                 del state[key]
                 rebased += 1
@@ -176,6 +177,13 @@ def main():
                 # what it is denominated in.
                 "basis": basis,
             }
+            # Said out loud, because otherwise a re-baseline is indistinguishable
+            # from a first sighting: a SKU that has been tracked for months
+            # suddenly appears with no previous price and nothing explains why.
+            # Anyone reading the series later needs to know the break is ours
+            # and not a gap in the crawl.
+            if was_rebased:
+                row["rebased"] = True
             if previous:
                 row["prev_price"] = previous.get("price")
                 if previous.get("price") and current["price"]:
