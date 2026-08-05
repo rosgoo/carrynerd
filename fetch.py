@@ -1495,6 +1495,40 @@ def parse_shard(spec):
     return index, count
 
 
+def prune_to_shard(spec):
+    """Delete raw catalogues outside this shard's slice.
+
+    A shard restores its own cache, fetches its own brands, and then hands the
+    result to `assemble` as an artifact. What it must not hand over is brands it
+    does not own — and it can hold them, because a cache entry restores as one
+    blob: any run that banked a wider set (a pre-split cache, a roster change)
+    leaves them on disk and the upload carries them along.
+
+    That is not a cosmetic waste. `assemble` merges the four artifacts into one
+    directory, and artifact extraction overwrites a file *in place* without
+    truncating it: a 301,243-byte copy of a brand landing on a 301,259-byte one
+    leaves 16 bytes past the end of the JSON, which is a catalogue that no longer
+    parses. Run 30967258125 lost 46 of 116 brands that way and normalize.py died
+    on the first of them. Disjoint artifacts are what make the merge safe, so
+    this runs on every shard, including one whose fetch failed.
+
+    Slugs absent from brands.json belong to no shard and go too. A retired brand
+    would otherwise sit in all four artifacts forever, which is exactly the
+    overlap this exists to remove.
+    """
+    index, count = parse_shard(spec)
+    with open(os.path.join(HERE, "brands.json")) as f:
+        mine = {b["slug"] for b in json.load(f)[index::count]}
+    dropped = 0
+    for path in sorted(glob.glob(os.path.join(RAW, "*.json"))):
+        if os.path.splitext(os.path.basename(path))[0] not in mine:
+            os.remove(path)
+            dropped += 1
+    kept = len(glob.glob(os.path.join(RAW, "*.json")))
+    print(f"shard {index}/{count}: kept {kept} catalogues of {len(mine)} owned, "
+          f"dropped {dropped} belonging to other shards")
+
+
 def merge_logs():
     """Fold data/fetch-log.part-*.json back into the single committed log."""
     log = {}
@@ -1531,6 +1565,10 @@ def main():
                     help="INDEX/COUNT — take every COUNTth brand, offset INDEX")
     ap.add_argument("--merge-logs", action="store_true",
                     help="fold shard logs into fetch-log.json and exit")
+    ap.add_argument("--prune-shard", default="",
+                    help="INDEX/COUNT — delete raw catalogues outside this "
+                         "shard's slice and exit, so the shards hand assemble "
+                         "disjoint sets to merge")
     ap.add_argument("--collections", action="store_true",
                     help="fetch collection membership (category ground truth)")
     ap.add_argument("--limit", type=int, default=0,
@@ -1556,6 +1594,9 @@ def main():
 
     if args.merge_logs:
         return merge_logs()
+
+    if args.prune_shard:
+        return prune_to_shard(args.prune_shard)
 
     with open(os.path.join(HERE, "brands.json")) as f:
         brands = json.load(f)

@@ -2646,10 +2646,28 @@ def main():
     currency_sources = collections.Counter()
 
     bags, rejects, quarantine = [], {}, []
+    unreadable = []
     direct_brand_names = set()
     for path in files:
-        with open(path) as f:
-            payload = json.load(f)
+        # A raw catalogue that will not parse is one brand's problem; it used to
+        # be the whole run's. The traceback that taught this was a merge in
+        # `assemble` writing one shard's copy of a brand over a longer one
+        # without truncating, leaving a valid document with 16 stray bytes after
+        # it — and normalize.py died on the third file of 116, having produced
+        # nothing, on a night whose crawl was entirely fine.
+        #
+        # Skipping is safe because it is not silent twice over: the brand's
+        # absence lands in the coverage numbers validate.py gates on, so a hole
+        # big enough to matter still stops the publish, and the file is named in
+        # meta and shouted at the end of the run.
+        try:
+            with open(path) as f:
+                payload = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            print(f"  unreadable {os.path.basename(path)} ({e}) — skipping "
+                  f"this brand", file=sys.stderr, flush=True)
+            unreadable.append({"file": os.path.basename(path), "error": str(e)})
+            continue
         code, source = observed_currency(
             payload, payload["slug"],
             page_currencies.get(payload["slug"]),
@@ -2831,6 +2849,11 @@ def main():
             b["currency"] for b in bags).most_common()),
         "currency_sources": dict(currency_sources.most_common()),
         "rejected": rejects,
+        # Empty on every healthy night. Non-empty means a brand is missing from
+        # this build for a reason that has nothing to do with the brand, which
+        # is worth a line in the published metadata rather than only in a log
+        # that ages out of Actions in ninety days.
+        "unreadable_catalogues": unreadable,
         "overrides": {
             "colour": COLOUR_OVERRIDES.report(),
             "category": CATEGORY_OVERRIDES.report(),
@@ -2865,6 +2888,15 @@ def main():
     print(json.dumps(meta, indent=2))
     print(f"\nwrote {OUT}")
     print(f"wrote {REJECTS} ({len(quarantine)} quarantined products)")
+
+    # Loud for the same reason the gate exists: a brand that dropped out because
+    # its file would not parse looks exactly like a brand that stopped selling
+    # bags, and only one of those is a bug in this pipeline.
+    if unreadable:
+        print(f"\n{len(unreadable)} raw catalogue(s) would not parse and were "
+              f"skipped — these brands are missing from this build:")
+        for row in unreadable:
+            print(f"  {row['file']}: {row['error']}")
 
     # Loud, because a stale ruling is invisible by nature: the product it was
     # about is gone, so nothing else in the output mentions it.

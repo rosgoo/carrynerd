@@ -149,22 +149,14 @@ jobs:
       # this is not a way to skip work; it is what lets a brand that fails
       # tonight keep its last good catalogue instead of vanishing from the
       # index for a day.
-      # TEMPORARY — the `raw-` line below is a migration crutch, remove it
-      # after one successful full run.
-      #
-      # There are no raw-s<N>- entries yet, so without a fallback the first run
-      # starts every shard from an empty cache. If that run is rate-limited
-      # part-way, a *partial* slice becomes shard N's cache and the next run
-      # restores the partial rather than the good merged copy. The old merged
-      # rawall- entry survives, but nothing except a skip_fetch assemble reads
-      # it. Falling back to raw- for one run means the migration inherits the
-      # full set and only splits once it has actually succeeded.
-      #
-      # The cost while it is here is the waste this change was meant to remove:
-      # restoring the merged cache puts every brand on disk, so each shard
-      # saves a near-copy of the whole catalogue, ~500 MB a run. Acceptable
-      # once. Delete the `raw-` line as soon as a full run has banked its
-      # per-shard entries — see progress.md.
+      # The `raw-` fallback that used to sit below is gone, and it is worth
+      # saying why rather than leaving it to be re-added. It did what it
+      # promised — the migration inherited the full catalogue instead of
+      # starting empty — but it also handed every shard all 116 brands, and the
+      # upload below ships whatever is on disk. Four artifacts holding the same
+      # paths is what broke run 30967258125: see the prune step, which is the
+      # real fix and makes the fallback safe to want again. It is still not
+      # needed, because the per-shard entries now exist.
       #
       # Shard-scoped, because the shard stride is deterministic: fetch.py
       # slices brands[index::count], so shard N handles the same brands every
@@ -176,9 +168,7 @@ jobs:
         with:
           path: raw
           key: raw-s${{ matrix.shard }}-${{ github.run_id }}
-          restore-keys: |
-            raw-s${{ matrix.shard }}-
-            raw-
+          restore-keys: raw-s${{ matrix.shard }}-
 
       # --limit caps the crawl-style adapters, the way enrich is capped. The
       # feed adapters are unaffected: /products.json returns a whole catalogue
@@ -202,6 +192,23 @@ jobs:
             --page-delay ${{ env.PAGE_DELAY }} \
             --only "${{ inputs.only }}"
 
+      # Everything below this line copies raw/ somewhere else, so this is where
+      # it has to be true that raw/ holds this shard's brands and nothing else.
+      # A restored cache can be wider than the slice — a pre-split entry, a
+      # roster change, the `raw-` fallback that used to be above — and assemble
+      # merges the four artifacts by extracting them over each other, which
+      # overwrites in place without truncating. Two shards shipping the same
+      # brand at different sizes leaves a valid catalogue with stray bytes after
+      # it, and normalize.py cannot read it. Disjoint artifacts remove the
+      # collision rather than hoping extraction order is kind.
+      #
+      # if: always() for the same reason the two steps below have it: a shard
+      # that was rate-limited or timed out still uploads what it restored, and
+      # that is exactly the copy that would carry other shards' brands.
+      - name: Keep only this shard's catalogues
+        if: always()
+        run: python3 fetch.py --prune-shard ${{ matrix.shard }}/${{ env.SHARDS }}
+
       # Banked here rather than after assemble, which is where it used to live
       # and where it kept being lost. A run cancelled before publishing, or an
       # assemble that fails, threw away hours of crawling that had already
@@ -210,16 +217,16 @@ jobs:
       # of the shard means the crawl is banked the moment it exists, and
       # everything downstream is free to fail.
       #
-      # This saves the shard's slice and not the whole catalogue, without
-      # needing a filter: the restore above is scoped to this shard's own key,
-      # so raw/ only ever contains the brands this shard fetches. Restoring the
-      # merged cache here instead would put every brand on disk and then save
-      # four near-copies of it, about 500 MB a run for nothing.
+      # This saves the shard's slice and not the whole catalogue: the restore
+      # above is scoped to this shard's own key and the prune step enforces it,
+      # so raw/ holds only the brands this shard fetches. Restoring the merged
+      # cache here instead would put every brand on disk and then save four
+      # near-copies of it, about 500 MB a run for nothing.
       #
-      # The cost is one migration run where every shard starts empty and
-      # refetches its slice. assemble is unaffected — it merges the artifacts
-      # regardless — and the artifacts shrink to a quarter each as a side
-      # effect.
+      # The prune also repairs an entry that was banked wider than the slice —
+      # every current raw-s<N>- entry is, having been saved before the fallback
+      # was removed — so this heals itself in one run rather than needing the
+      # keys reset.
       - name: Bank this shard's catalogues
         uses: actions/cache/save@v4
         if: always()
@@ -289,12 +296,23 @@ jobs:
       # happily match raw-s0- and hand this job one shard's catalogues while
       # looking like a hit — which on a skip_fetch run is a catalogue missing
       # three quarters of its brands, and the gate would be right to reject it.
+      #
+      # rawmerged- rather than rawall- because the newest rawall- entry is
+      # damaged. The save step below has if: always(), so run 30967258125 banked
+      # the merged directory as it stood when normalize.py died — 46 of 116
+      # catalogues with a second document's bytes trailing the first. Restoring
+      # it is not fatal now that normalize.py skips what it cannot parse, but a
+      # skip_fetch run would quietly publish a catalogue missing 40% of its
+      # brands, and the entry cannot be deleted or overwritten because cache
+      # keys are immutable. Retiring the prefix is how you throw one away. The
+      # cost is that until this run's save lands there is no merged entry, so a
+      # skip_fetch run in that window has nothing to assemble from.
       - name: Restore raw catalogues
         uses: actions/cache/restore@v4
         with:
           path: raw
-          key: rawall-${{ github.run_id }}
-          restore-keys: rawall-
+          key: rawmerged-${{ github.run_id }}
+          restore-keys: rawmerged-
 
       # The kept HTML, so --cache-pages means something on an ephemeral runner.
       # Deliberately a cache rather than a commit: it must survive between runs
@@ -318,12 +336,49 @@ jobs:
       # skip_fetch run, which never produced any, and a night where every shard
       # died. Both should assemble from the cached raw/ rather than take the
       # whole job down — which is the same reasoning as assemble's if: always().
+      # Unpacked to a staging directory, one subdirectory per artifact, rather
+      # than merged straight over raw/ with merge-multiple. Both the staging and
+      # the copy below matter, and neither is a style choice.
+      #
+      # Artifact extraction writes over an existing file in place and does not
+      # truncate it. A shorter copy landing on a longer one therefore leaves the
+      # tail of the longer behind, and `{...}{...` is not JSON. merge-multiple
+      # made that happen between artifacts; extracting onto the restored cache
+      # makes it happen against yesterday's copy, which needs only a brand that
+      # shrank overnight. The prune step means the artifacts no longer collide,
+      # but that is a property of what the shards upload, and this job should
+      # not depend on it staying true.
       - uses: actions/download-artifact@v4
         continue-on-error: true
         with:
           pattern: raw-shard-*
-          merge-multiple: true
-          path: .
+          path: shard-artifacts
+
+      # cp is the whole point: it opens the destination truncating, so a shorter
+      # catalogue replaces a longer one instead of being laid over it. Copying
+      # artifact by artifact keeps that true even if two of them carry the same
+      # brand again.
+      #
+      # Still "on top of the cached copies": a brand whose shard died keeps
+      # yesterday's catalogue rather than vanishing, which is what the gate's
+      # coverage check would otherwise reject the whole night for.
+      - name: Land the shard artifacts on the cached catalogues
+        run: |
+          mkdir -p raw data/page-cache
+          for a in shard-artifacts/raw-shard-*; do
+            [ -d "$a" ] || continue
+            echo "landing $a"
+            if [ -d "$a/raw" ]; then
+              cp -rf "$a/raw/." raw/
+            fi
+            if [ -d "$a/data/page-cache" ]; then
+              cp -rf "$a/data/page-cache/." data/page-cache/
+            fi
+            for part in "$a"/data/fetch-log.part-*.json; do
+              if [ -f "$part" ]; then cp -f "$part" data/; fi
+            done
+          done
+          echo "raw/ holds $(ls raw/*.json 2>/dev/null | wc -l) catalogues"
 
       - name: Merge shard fetch logs
         run: python3 fetch.py --merge-logs
@@ -430,11 +485,12 @@ jobs:
         # The shards bank their own slices during fetch; this is what a
         # skip_fetch run restores, and the only place the whole catalogue
         # exists in one entry. Cache keys are immutable, so this only ever
-        # writes a fresh run-id key.
+        # writes a fresh run-id key — which is also why a bad merge cannot be
+        # repaired in place and the prefix had to be retired once already.
         if: always()
         with:
           path: raw
-          key: rawall-${{ github.run_id }}
+          key: rawmerged-${{ github.run_id }}
 
       # Same reasoning, and if: always() for the same reason as the artifact
       # upload: a night that fails the gate has still paid for these pages, and
