@@ -68,9 +68,12 @@ def main():
                     help="comma-separated brand slugs whose price state to drop "
                          "before comparing, so the next observation baselines "
                          "instead of reading as a change. For when a brand's "
-                         "prices were wrong rather than different — a currency "
-                         "correction, a parser fix — and the delta is an "
-                         "artefact of ours, not a move by the seller")
+                         "prices were wrong rather than different and the delta "
+                         "is an artefact of ours, not a move by the seller. A "
+                         "change of currency or market no longer needs this — "
+                         "it re-baselines on its own; this is for the ones only "
+                         "a person can call, like a parser fix that leaves the "
+                         "unit alone and changes the number")
     args = ap.parse_args()
 
     payload = load_json(BAGS, None)
@@ -83,18 +86,25 @@ def main():
 
     # A price that was wrong is not a price that moved.
     #
-    # Correcting Db and Mismo from NOK/DKK to USD changes 554 models by 6-10x
-    # in one run. Without this, every one of those reads as a colossal price
-    # drop: ~550 rows in the append-only ledger that no seller ever did,
-    # `lowest_ever` pinned to a number that was never charged, and — because
-    # alerts/match.py runs off exactly these events — a mailshot announcing the
-    # biggest sale in the site's history on the night we fixed a bug.
+    # The cost of getting this wrong is not hypothetical. Pointing Db's feed at
+    # /en-us took 364 models from ~2,500 to ~259 in one run, and every one was
+    # published as a ~91% discount: 364 rows in an append-only ledger recording
+    # a sale no seller ever ran, and 550 events handed to alerts/match.py, which
+    # would have mailed the biggest sale in the site's history on the night we
+    # fixed a bug. It did not, only because DATABASE_URL was unset.
+    #
+    # The loop below now catches that class on its own — a price quoted in a
+    # different currency or market re-baselines rather than subtracting. This
+    # flag is what is left over: the corrections where the unit is unchanged and
+    # only our reading of the number was wrong, which no rule can recognise
+    # because the new number is a perfectly ordinary price. A parser fix is the
+    # example. Somebody has to say so.
     #
     # Dropping the state makes the corrected price a `first_seen` baseline
     # instead of a delta. It forfeits those SKUs' recorded low, which is the
-    # right trade: the low was denominated in the wrong currency and was never
-    # true. History already written stays written — this only governs what the
-    # *next* observation is compared against.
+    # right trade: the low was never a price anyone was charged. History already
+    # written stays written — this only governs what the *next* observation is
+    # compared against.
     forget = {s.strip() for s in args.forget.split(",") if s.strip()}
     if forget:
         stale = [k for k in state if k.split("__", 1)[0] in forget]
@@ -103,19 +113,51 @@ def main():
         print(f"forgot {len(stale)} SKU states across {len(forget)} brand(s): "
               f"{', '.join(sorted(forget))}")
 
-    rows, changes, first_run = [], 0, not state
+    rows, changes, first_run, rebased = [], 0, not state, 0
 
     for bag in bags:
+        # What the number is denominated in. Two prices are only comparable
+        # when this matches, and it is not the currency code alone: Db's feed
+        # moved from the bare path to /en-us and every model went from ~2,500
+        # to ~259 with "USD" on both sides, because the old number was NOK that
+        # nothing had labelled. Currency catches a relabel, market catches a
+        # move between storefronts, and the pair catches both.
+        basis = f"{bag.get('currency') or 'USD'}@{bag.get('price_market') or 'default'}"
         for i, variant in enumerate(bag.get("variants") or []):
             key = variant_key(bag, variant, i)
             current = {
                 "price": variant.get("price"),
                 "compare_at": variant.get("compare_at"),
                 "available": bool(variant.get("available")),
+                "basis": basis,
             }
             previous = state.get(key)
 
-            if previous and all(previous.get(f) == current[f] for f in current):
+            # A price in a different unit is not a price that moved. Subtracting
+            # 259 USD from 2,500 NOK is a category error, and publishing the
+            # result called it the biggest sale in the site's history across 364
+            # models. Drop the state and let the new number baseline, which is
+            # what --forget does by hand for the case a person has to judge: a
+            # parser fix, where the unit is unchanged and only we were wrong.
+            # This is the case nobody needs to judge, so it does not wait for a
+            # human to notice. The recorded low goes with it — it was in the old
+            # unit and was never a price anyone was charged.
+            #
+            # Entries written before this field existed carry no basis. Those
+            # are treated as matching rather than as a change, so introducing
+            # this does not re-baseline all 30,459 tracked SKUs on the first run
+            # and blank the site's drops for a night.
+            if previous and previous.get("basis", basis) != basis:
+                previous = None
+                del state[key]
+                rebased += 1
+
+            if previous and all(previous.get(f) == current[f]
+                                for f in current if f != "basis"):
+                # Carry the basis forward on an otherwise unchanged SKU, so a
+                # pre-existing entry acquires one without being called a change.
+                if previous.get("basis") != basis:
+                    state[key] = {**previous, "basis": basis}
                 continue
 
             row = {
@@ -128,6 +170,11 @@ def main():
                 "price": current["price"],
                 "compare_at": current["compare_at"],
                 "available": current["available"],
+                # A recorded price with no unit on it is what let 2,500 NOK and
+                # 259 USD sit in the same series looking like a discount. Rows
+                # written before this line lack it; from here the ledger says
+                # what it is denominated in.
+                "basis": basis,
             }
             if previous:
                 row["prev_price"] = previous.get("price")
@@ -240,6 +287,7 @@ def main():
         "last_run": now,
         "rows_appended": len(rows),
         "changes_this_run": changes,
+        "rebased_this_run": rebased,
     }
     with open(BAGS, "w") as f:
         json.dump(payload, f, separators=(",", ":"))
@@ -250,6 +298,13 @@ def main():
     else:
         print(f"{len(rows)} rows appended, {changes} price/stock changes, "
               f"{annotated} bags annotated")
+    # Loud, because a re-baseline is a decision the tracker made on its own. A
+    # handful is a brand switching storefront; thousands means a currency or
+    # locale edit landed wider than whoever made it thought.
+    if rebased:
+        print(f"{rebased} SKU(s) re-baselined: the currency or market their "
+              f"price is quoted in changed, so this run's number was recorded "
+              f"as a new baseline rather than compared against the old one")
     print(f"tracking {len(state)} SKUs -> {HISTORY}")
 
 

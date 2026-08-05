@@ -2769,6 +2769,14 @@ def main():
                 # adapters cannot fall out of step the way six copies would.
                 bag["currency"] = brand["currency"]
                 bag["currency_source"] = brand["currency_source"]
+                # Which storefront quoted the number, carried for the same
+                # reason the currency is. A price only means something against
+                # the market that charged it, and the market can change under a
+                # stable currency code: Db's feed moved from the bare path to
+                # /en-us and went 2,500 to 259 with "USD" on both sides of the
+                # move. track_prices.py compares against this, so a change of
+                # market re-baselines instead of being published as a 90% sale.
+                bag["price_market"] = brand["locale"] or "default"
                 bags.append(bag)
             else:
                 rejects[why] = rejects.get(why, 0) + 1
