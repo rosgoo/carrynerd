@@ -15,6 +15,7 @@ find are null — never guessed.
 Usage: python3 normalize.py
 """
 
+import collections
 import glob
 import html
 import json
@@ -22,6 +23,7 @@ import os
 import re
 import sys
 import time
+from urllib.parse import urljoin
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RAW = os.path.join(HERE, "raw")
@@ -33,6 +35,11 @@ REJECTS = os.path.join(HERE, "data", "rejected.json")
 # Human rulings on the tail the patterns cannot reach. See `Overrides`.
 COLOUR_OVERRIDES_PATH = os.path.join(HERE, "data", "colour-overrides.json")
 CATEGORY_OVERRIDES_PATH = os.path.join(HERE, "data", "category-overrides.json")
+# Read, not written, here: enrich.py owns this file and runs after us. It has
+# been recording each product page's stated priceCurrency all along and nothing
+# ever read it — which is why Db shipped as dollars for as long as it did while
+# a cache entry three directories away said NOK. See observed_currency().
+ENRICH_CACHE = os.path.join(HERE, "data", "enrich-cache.json")
 
 CM_PER_IN = 2.54
 G_PER_LB = 453.592
@@ -142,6 +149,22 @@ NOT_A_BAG = re.compile(
     # A "Multi-Pack" is a quantity, not a bag — CamelBak sells straws and
     # bite valves that way and `\bpacks?\b` took every one of them.
     r"straws?|multi[- ]?packs?|\d+\s*pk|packs? of \d+|packages?|"
+    # Pack hardware: the parts a pack is assembled from, and the covers it
+    # ships under. None of it has a capacity of its own, so every litre figure
+    # these carried was lifted off the pack they attach to — ULA's entire
+    # accessory shelf was indexed at 30 L, Bonfus's at 55 L, LiteAF's at 20 L.
+    # Sorting the index by price per litre floated all of them above the real
+    # bags, which is how they were found.
+    #
+    # Belts match only alongside the word that makes them a component. A "Belt
+    # Bag" and a "belt pack" are real hip packs and a bare `\bbelts?\b` takes
+    # both; a pocket or pouch that hangs off a hip belt is a real small bag
+    # with a real capacity, hence the lookahead rather than a longer list.
+    r"(?:hip|waist|webbing)[- ]?belts?(?!\s*(?:pocket|pouch|bags?|packs?))|"
+    r"belt extenders?|shock ?cords?|bungee (?:cords?|attachments?)|"
+    r"frame ?sheets?|frame ?stays?|alumini?um stays?|"
+    r"foam (?:back )?panels?|wheel wells?|casters?|stick[- ]?em tabs?|"
+    r"pack ?covers?|rain ?kilts?|pack ?liners?|"
     # Climbing hardware, which an alpine brand sells beside its packs.
     # `sling` is the sharp one: it is a real bag category *and* the word for a
     # loop of webbing, so Mammut's "Contact Sling 8.0 180cm" was being indexed
@@ -414,6 +437,72 @@ def find_volume(text):
         if 0.5 <= v <= 150:
             return round(v, 1)
     return None
+
+
+# A litre figure in prose is only this product's capacity if the prose is
+# talking about this product. Two ways it isn't, and both put a number shaped
+# like an answer in front of the first-match-wins sweep above.
+#
+# A hydration pack states two capacities and means different things by them:
+# CamelBak's "Octane 16 ... with Fusion 2L Reservoir" is a 16-litre pack
+# holding a 2-litre bladder, and the only one with a unit attached is the
+# bladder. Publishing that as the pack's volume is worse than publishing none.
+#
+# Both lookbehinds guard the same spec-block shape, where rows run back to back
+# with no punctuation between them: "Capacity: 20 liters  Hydration Bladder
+# Capacity: No". The first is the digit boundary VOLUME_RE has always had and
+# this pattern was missing — without it the match can start at the *second*
+# digit and read "0 liters Hydration Bladder", which is true of the text and
+# says nothing about the product. The second keeps the next row's label from
+# reaching back over the gap to claim a figure that carries its own: a stated
+# capacity is the pack's, whatever the row after it happens to mention.
+VOLUME_RESERVOIR = re.compile(
+    r"(?<![A-Za-z0-9.])(?<![:\-]\s)"
+    r"\d{1,3}(?:[.,]\d)?\s*(?:L|l|lt|lit(?:er|re)s?)\s*\W{0,3}\s*"
+    r"(?:\w+\s+){0,2}(?:reservoir|bladder|crux)", re.I)
+
+# The other way: an accessory names the pack it attaches to. Bonfus sell a €6
+# webbing belt whose copy reads "can be easily attached to or removed from our
+# Iterus 38L", and the index published the belt as a 38-litre bag — top of the
+# list when you sort by price per litre, which is how this was found.
+#
+# Scoped to the clause, not to the number: a sentence that has started listing
+# other products keeps listing them, and Dakine's "Fits Session 16L, Drafter
+# 18L, Drafter 14L" would otherwise give up the first figure and hand over the
+# second. A newline ends a clause too — without that, a spec block following
+# "fits laptops up to 16in" loses its own capacity to the line above it.
+#
+# Deliberately not "designed for": brands write "designed for the on-the-go
+# traveler ... this versatile 17L bag", where the phrase introduces a buyer
+# rather than another product. "designed to fit" only ever introduces a thing.
+#
+# The clause also ends where the sentence turns back to the product — Sherpani's
+# "this personal item bag fits under most airline seats and offers 18 liters of
+# organized space" is one sentence doing both jobs, and running to the full stop
+# takes the bag's own capacity with it. A conjunction followed by a verb is the
+# handover; a conjunction followed by another noun is still the list, which is
+# what keeps "Hugger 25L and Hugger 30L Backpack" whole.
+VOLUME_CROSSREF = re.compile(
+    r"\b(?:fits?|fitting|attach(?:e[sd]|ing)?|compatible|designed to fit|"
+    r"works? with|pairs? with|use[sd]? with|insert for|liner for|cover for|"
+    r"replacement for|newer version|older version|upgrade (?:to|from)|"
+    r"consider our|removed? from|combination with|combined with|addition to|"
+    r"organi[sz]\w+ insert)\b"
+    r"(?:(?!\b(?:and|or|plus|but|which|that)\s+(?:also\s+)?"
+    r"(?:offers?|provides?|holds?|carries|features?|has|have|gives?|"
+    r"delivers?|boasts?|includes?)\b)[^.;:|!?\n])*", re.I)
+
+
+def find_volume_bag(text):
+    """
+    find_volume over prose, minus any capacity that belongs to something other
+    than the bag being described — a water bladder, or a pack the copy is
+    cross-referencing. Use this for anything written as sentences; find_volume
+    itself is still right for a title or a spec-table cell, where there is no
+    room for a second product to be mentioned.
+    """
+    text = VOLUME_RESERVOIR.sub(" ", text or "")
+    return find_volume(VOLUME_CROSSREF.sub(" ", text))
 
 
 DIM_CM = re.compile(
@@ -846,7 +935,7 @@ def build_shopify(product, brand, hint=None, force=None):
                 vol_src = "variant-option"
                 break
     if volume is None:
-        volume = find_volume(body)
+        volume = find_volume_bag(body)
         vol_src = "description" if volume else None
 
     dims, dims_src = find_dims_cm(body)
@@ -871,7 +960,9 @@ def build_shopify(product, brand, hint=None, force=None):
         "name": title,
         "category": category,
         "category_source": cat_src,
-        "url": f"https://{brand['domain']}/products/{handle}",
+        # The locale prefix rides along, so a reader clicking through from a
+        # USD listing lands on the USD page rather than the store default.
+        "url": f"https://{brand['domain']}{'/' + brand['locale'] if brand.get('locale') else ''}/products/{handle}",
         "image": (images[0].get("src") if images else None),
         # 87% of products carry more than one shot, mean 12.3, and the catalog
         # was keeping exactly one. Referenced at source per the crawl posture,
@@ -1203,7 +1294,7 @@ def build_campsaver(item, brand, hint=None, force=None):
 
     desc = strip_html(ld.get("description") or "")
     dims_cm, dims_src = find_dims_cm(desc)
-    volume = find_volume(desc)
+    volume = find_volume_bag(desc)
     vol_src = "campsaver:description" if volume else None
     if volume is None:
         m = CUIN_RE.search(desc)
@@ -1325,7 +1416,7 @@ def build_woocommerce(product, brand, hint=None, force=None):
     volume = find_volume(title)
     vol_src = "title" if volume else None
     if volume is None:
-        volume = find_volume(desc)
+        volume = find_volume_bag(desc)
         vol_src = "description" if volume else None
     dims, dims_src = find_dims_cm(desc)
 
@@ -1579,7 +1670,7 @@ def build_magento(product, brand, hint=None, force=None):
         volume = find_volume(title)
         vol_src = "title" if volume else None
     if volume is None:
-        volume = find_volume(desc)
+        volume = find_volume_bag(desc)
         vol_src = "description" if volume else None
 
     variants_in = product.get("variants") or []
@@ -1903,24 +1994,12 @@ def _page_table_specs(tables):
 # on the label and read only what follows it — a bare sweep over forty
 # kilobytes of page text will find a number shaped like an answer somewhere,
 # which is how an index ends up publishing a related product's capacity.
-# A hydration pack states two capacities and means different things by them:
-# CamelBak's "Octane 16 ... with Fusion 2L Reservoir" is a 16-litre pack
-# holding a 2-litre bladder, and the only one with a unit attached is the
-# bladder. Publishing that as the pack's volume is worse than publishing none.
-VOLUME_RESERVOIR = re.compile(
-    r"\d{1,3}(?:[.,]\d)?\s*(?:L|l|lt|lit(?:er|re)s?)\s*\W{0,3}\s*"
-    r"(?:\w+\s+){0,2}(?:reservoir|bladder|crux)", re.I)
 
 # Nav thumbnails, payment badges and logos, which every storefront serves
 # before it serves the product shot.
 PAGE_IMAGE_NOISE = re.compile(
     r"/navigation/|/nav/|logo|sprite|icon|placeholder|badge|flag|payment|"
     r"social|swatch|\.svg(?:$|[?#])", re.I)
-
-
-def find_volume_bag(text):
-    """find_volume, minus any capacity that belongs to a water bladder."""
-    return find_volume(VOLUME_RESERVOIR.sub(" ", text or ""))
 
 
 PAGE_LABEL = {
@@ -1930,7 +2009,7 @@ PAGE_LABEL = {
 }
 
 
-def _page_near_label(text, key, finder, span=140):
+def page_near_label(text, key, finder, span=140):
     for m in PAGE_LABEL[key].finditer(text or ""):
         value = finder(text[m.end():m.end() + span])
         if value:
@@ -2045,15 +2124,15 @@ def build_pages(item, brand, hint=None, force=None):
 
     # Labelled prose, which is how Deuter, CamelBak and Tatonka all publish.
     if dims is None:
-        found = _page_near_label(text, "dims",
+        found = page_near_label(text, "dims",
                                  lambda s: find_dims_cm(s, slash=True)[0])
         if found:
             dims, dims_src = found, "label"
     if volume is None:
-        volume = _page_near_label(text, "volume", find_volume_bag)
+        volume = page_near_label(text, "volume", find_volume_bag)
         vol_src = "label" if volume else None
     if weight is None:
-        weight = _page_near_label(
+        weight = page_near_label(
             text, "weight", lambda s: find_weight_labelled(s) or find_weight_g(s))
         w_src = "label" if weight else None
 
@@ -2151,6 +2230,11 @@ def build_pages(item, brand, hint=None, force=None):
         image = next((src for src in candidates
                       if re.search(r"product|catalog|media", src, re.I)),
                      candidates[0] if candidates else None)
+    # Unlike a storefront API, a page hands back whatever the markup says, and
+    # Thule's <img src> is site-root-relative ("/-/p/…"). Left alone it is
+    # resolved against gearherd.com by the browser and 74 photos 404.
+    if image:
+        image = urljoin(url, image)
 
     colors = [v["color"] for v in variants if v.get("color")]
     handle = re.sub(r"\.html?$", "", url.rstrip("/").rsplit("/", 1)[-1])
@@ -2412,19 +2496,175 @@ def merge_models(bags):
     return merged
 
 
+# Keys a storefront states its currency under, across every source we read.
+# WooCommerce says `currency_code`, Magento and Bellroy say `currency`,
+# schema.org says `priceCurrency`. Shopify's /products.json says nothing at
+# all, which is the entire reason this module exists.
+CURRENCY_KEYS = {"currency", "currency_code", "pricecurrency", "currencycode"}
+# ISO 4217 is three letters. Guards against picking up a `currency: {...}`
+# object or a display string like "US Dollar".
+CURRENCY_RE = re.compile(r"^[A-Za-z]{3}$")
+
+
+def walk_currency(node, out, depth=0):
+    """Collect every currency code stated anywhere in a product record."""
+    if depth > 8:
+        return
+    if isinstance(node, list):
+        for n in node:
+            walk_currency(n, out, depth + 1)
+    elif isinstance(node, dict):
+        for key, value in node.items():
+            if (key.lower() in CURRENCY_KEYS and isinstance(value, str)
+                    and CURRENCY_RE.match(value)):
+                out[value.upper()] += 1
+            elif isinstance(value, (dict, list)):
+                walk_currency(value, out, depth + 1)
+
+
+# A market path is a statement about which storefront we are pricing against,
+# and the region subtag is what settles the currency: /en-us/ is the US market
+# and the US market bills dollars. Only regions we might plausibly fetch are
+# here, and an unrecognised one deliberately falls through to the next signal
+# rather than guessing — a wrong guess here is the exact failure being fixed.
+LOCALE_CURRENCY = {
+    "us": "USD", "gb": "GBP", "uk": "GBP", "ca": "CAD", "au": "AUD",
+    "nz": "NZD", "jp": "JPY", "ch": "CHF", "se": "SEK", "no": "NOK",
+    "dk": "DKK", "pl": "PLN", "cz": "CZK", "hk": "HKD", "sg": "SGD",
+    **{c: "EUR" for c in ("de", "fr", "it", "es", "nl", "be", "at", "ie",
+                          "fi", "pt", "gr", "sk", "si", "ee", "lv", "lt",
+                          "lu", "cy", "mt", "eu")},
+}
+
+
+def locale_currency(locale):
+    """USD from "en-us". None when the region is unknown or absent."""
+    if not locale:
+        return None
+    parts = re.split(r"[-_]", locale.strip("/").lower())
+    return LOCALE_CURRENCY.get(parts[-1]) if len(parts) > 1 else None
+
+
+def observed_currency(payload, slug, page_currencies, declared):
+    """What currency does this brand actually price in, and how do we know?
+
+    Five of the six sources state it outright and we were throwing it away.
+    Reading it turned up four brands published as dollars that never were —
+    Vaude and Deuter and Tatonka in euros, Rab in pounds — on top of the two
+    found by hand. The evidence had been sitting in raw/ the whole time.
+
+    Shopify is the exception and the majority: /products.json carries no
+    currency field anywhere, so for those brands the best available evidence is
+    the product page, whose schema.org offers block states priceCurrency.
+    enrich.py has been parsing and caching that all along.
+
+    Order is strongest evidence first. A source's own statement beats a page
+    scrape, which beats a human's note in the roster, which beats the
+    assumption. Whatever wins is recorded on every bag as `currency_source`,
+    the same way volume and dimensions carry theirs — the point of this index
+    is that you can always ask a number where it came from.
+    """
+    counts = collections.Counter()
+    # A sample, not the whole catalogue: currency is a property of the store,
+    # so 25 products settle it and 1,400 only cost time.
+    for product in (payload.get("products") or [])[:25]:
+        walk_currency(product, counts)
+    if counts:
+        return counts.most_common(1)[0][0], "feed"
+
+    # Above the page scrape on purpose. When a locale is configured we are
+    # deliberately fetching a specific market, and enrich.py's cache may still
+    # hold pages crawled at the old URL — Db's cached entries say NOK because
+    # that is what its pages said before the /en-us/ switch. Trusting the stale
+    # scrape over the market we are actually pulling would undo the fix.
+    from_locale = locale_currency(payload.get("locale"))
+    if from_locale:
+        return from_locale, "locale"
+
+    if page_currencies:
+        # Majority across the brand's cached pages. Not unanimity: a single
+        # page can carry a stray offer in another currency (a marketplace
+        # widget, a pre-order in the brand's home market) without that being
+        # what the store charges.
+        return page_currencies.most_common(1)[0][0], "product-page"
+
+    if declared:
+        return declared.upper(), "roster"
+
+    # Not "we checked and it is dollars" — "nothing said otherwise". The
+    # currency gate in validate.py exists to catch exactly this case going
+    # wrong, because it is the only one with no evidence under it.
+    return "USD", "assumed"
+
+
 def main():
     files = sorted(glob.glob(os.path.join(RAW, "*.json")))
     if not files:
         sys.exit("no raw catalogs — run fetch.py first")
+
+    # What currency a storefront quotes in, declared per brand.
+    #
+    # No feed states it. Shopify's /products.json, WooCommerce's Store API and
+    # the rest all emit bare numbers, so a Danish store selling in DKK is
+    # byte-identical to one selling in USD and the index read both as dollars —
+    # which is how Db, Mismo and Bedouin Foundry ended up published at the
+    # wrong price with nothing to catch it.
+    #
+    # There are two honest answers to that and the roster carries both. Where
+    # the brand runs a US market, `locale` points fetch.py at it and the prices
+    # arrive in dollars for real (see Db). Where it does not, or where the
+    # native price is the true one, `currency` says so and the number is shown
+    # as what it is — £340, not $340. Nothing is ever converted: a rate would
+    # be a number we made up, it would drift between crawls, and it would make
+    # the price ledger a record of the exchange rate rather than of the seller.
+    #
+    # Read from brands.json rather than the raw payload deliberately. This is
+    # curation, not crawl output, so it takes effect on the next normalize
+    # instead of waiting for the brand's turn in the crawl. It is the *fallback*
+    # — see observed_currency(), which prefers what the source itself says.
+    declared = {}
+    try:
+        with open(os.path.join(HERE, "brands.json")) as f:
+            declared = {b["slug"]: (b.get("currency") or "").upper()
+                        for b in json.load(f)}
+    except (OSError, json.JSONDecodeError, TypeError, KeyError) as e:
+        sys.exit(f"brands.json unreadable ({e}) — refusing to normalize, "
+                 f"because every price would silently default to USD")
+
+    # Currencies enrich.py already read off product pages, folded per brand.
+    # Absent on a first run, which is fine: the roster and the gate cover it.
+    page_currencies = collections.defaultdict(collections.Counter)
+    try:
+        with open(ENRICH_CACHE) as f:
+            for bag_id, entry in json.load(f).items():
+                code = (entry or {}).get("currency")
+                if isinstance(code, str) and CURRENCY_RE.match(code):
+                    page_currencies[bag_id.split("__", 1)[0]][code.upper()] += 1
+    except (OSError, json.JSONDecodeError, AttributeError):
+        pass
+
+    currency_sources = collections.Counter()
 
     bags, rejects, quarantine = [], {}, []
     direct_brand_names = set()
     for path in files:
         with open(path) as f:
             payload = json.load(f)
+        code, source = observed_currency(
+            payload, payload["slug"],
+            page_currencies.get(payload["slug"]),
+            declared.get(payload["slug"]))
+        currency_sources[source] += 1
         brand = {
             "slug": payload["slug"], "name": payload["name"],
             "domain": payload["domain"], "fetched_at": payload.get("fetched_at"),
+            "currency": code, "currency_source": source,
+            # The market prefix fetch.py pulled the feed under, if any. Carried
+            # so product URLs land on the same storefront the prices came from:
+            # linking a reader from a USD listing to the kroner page would be
+            # its own version of the bug this is all about, and it would also
+            # feed enrich.py the wrong page to read a currency off.
+            "locale": (payload.get("locale") or "").strip("/"),
         }
         platform = payload.get("platform") or "shopify"
         if platform != "campsaver":
@@ -2490,8 +2730,9 @@ def main():
             return (product.get("title"),
                     product.get("product_type") or None,
                     (product.get("tags") or [])[:6],
-                    f"https://{brand['domain']}/products/"
-                    f"{product.get('handle') or ''}")
+                    f"https://{brand['domain']}"
+                    f"{'/' + brand['locale'] if brand.get('locale') else ''}"
+                    f"/products/{product.get('handle') or ''}")
 
         for product in items:
             hint = (hints.get(str(product.get("id")))
@@ -2504,6 +2745,12 @@ def main():
             bag, why = builder(product, brand, hint,
                                force=None if ruling is MISSING else ruling)
             if bag:
+                # Stamped here rather than in each of the six builders: it is a
+                # property of the storefront the product came from, identical
+                # for every product in the file, and one line that covers all
+                # adapters cannot fall out of step the way six copies would.
+                bag["currency"] = brand["currency"]
+                bag["currency_source"] = brand["currency_source"]
                 bags.append(bag)
             else:
                 rejects[why] = rejects.get(why, 0) + 1
@@ -2576,6 +2823,13 @@ def main():
         "categories": sorted({b["category"] for b in bags}),
         "products_merged": before - len(bags),
         "models_collapsed": collapsed,
+        # Both halves of the currency picture, because either one alone is
+        # misleading. The mix says what is actually being published; the
+        # provenance says how much of it we know versus assume, and "assumed"
+        # trending up is the early warning that a source stopped stating it.
+        "currencies": dict(collections.Counter(
+            b["currency"] for b in bags).most_common()),
+        "currency_sources": dict(currency_sources.most_common()),
         "rejected": rejects,
         "overrides": {
             "colour": COLOUR_OVERRIDES.report(),

@@ -30,6 +30,7 @@ Usage:
 """
 
 import argparse
+import collections
 import datetime
 import json
 import os
@@ -244,7 +245,12 @@ def baseline(path=None):
 # Brands that are meant to have stopped. A retired or walled entry going stale
 # is the intended outcome, not a fault, and a check that shouts about it is a
 # check people learn to skip.
-DORMANT = {"retired", "walled", "unreachable", "custom", "no-adapter"}
+#
+# `todo` joins them for the same reason and from the other direction: it marks a
+# brand that is wired but has never worked, so it has no catalogue to go stale
+# in the first place. It is here so that the day one of them starts working and
+# is switched back on, freshness starts watching it again automatically.
+DORMANT = {"retired", "walled", "unreachable", "custom", "no-adapter", "todo"}
 
 
 def freshness(rep, stale_days, fail_days):
@@ -310,6 +316,126 @@ def freshness(rep, stale_days, fail_days):
                  f"{sample(stale, 6)}")
     if not dead and not stale:
         rep.note(f"freshness: every active brand fetched within {stale_days}d")
+
+
+# The most expensive median any genuine brand in this catalogue reaches is
+# Eberlestock at $429, and the next is a bespoke leather maker at $340. Nothing
+# that sells bags in dollars has a median in four figures. A brand that does is
+# not expensive, it is quoting a different currency: Db's NOK median read as
+# $1,999 and Mismo's DKK median as $3,600, both roughly an order of magnitude
+# above the catalogue's own ~$95.
+#
+# So the ceiling sits far above every real brand and far below both faults. It
+# is a smoke alarm and not a price policy — it cannot tell kroner from dollars,
+# it can only tell that a number is not a bag price.
+USD_MEDIAN_CEILING = 1000.0
+
+
+def currency(payload, rep, ceiling):
+    """Is a brand quoting something that is not dollars?
+
+    Shopify's /products.json carries no currency field anywhere in the payload,
+    so a store selling in DKK is byte-for-byte indistinguishable from one
+    selling in USD. There is nothing to parse and nothing to assert on. The
+    only signal available is the prices themselves being implausible, which is
+    a weak check — and it went unmade for long enough that 554 models, 7% of
+    the index, were served at 6-10x their real price, fed the ledger, and would
+    have mailed alerts about drops that never happened.
+
+    Weak and present beats rigorous and absent. This is the backstop under
+    fetch.py's per-brand `locale`: the locale is what fixes the prices, and
+    this is what stops a missing or wrong one from being invisible again.
+    """
+    locales, roster_currency = {}, {}
+    roster = os.path.join(HERE, "brands.json")
+    try:
+        with open(roster) as f:
+            entries = json.load(f)
+        locales = {b["slug"]: b.get("locale") for b in entries}
+        roster_currency = {b["slug"]: (b.get("currency") or "").upper()
+                           for b in entries if b.get("currency")}
+    except (OSError, json.JSONDecodeError, TypeError, KeyError):
+        # The roster is advisory here — it sharpens the message, it is not what
+        # the check stands on. A median in four figures is wrong either way.
+        rep.note("brands.json unreadable — currency check ran without locales")
+
+    # A brand that has *declared* it sells in pounds is not the fault this is
+    # looking for — it is the fix. The ceiling is a dollar heuristic and means
+    # nothing applied to another currency, so declared brands are counted and
+    # skipped rather than measured against it. What is left is the dangerous
+    # case: a brand still labelled USD whose prices are not dollars.
+    prices, declared, sources = {}, {}, collections.Counter()
+    for bag in payload.get("bags") or []:
+        code = (bag.get("currency") or "USD").upper()
+        sources[bag.get("currency_source") or "unknown"] += 1
+        if code != "USD":
+            declared[bag.get("brand_slug")] = code
+            continue
+        price = bag.get("price_min")
+        if isinstance(price, (int, float)) and price > 0:
+            prices.setdefault(bag.get("brand_slug"), []).append(price)
+
+    # The roster going stale against the evidence. normalize.py prefers what the
+    # source says, so the *published* price is already right — this is a note
+    # that a hand-written declaration has been overtaken and should be cleared,
+    # not a claim that anything shipped wrong. A fail here would block a build
+    # over a comment.
+    published = {}
+    for bag in payload.get("bags") or []:
+        published.setdefault(bag.get("brand_slug"),
+                             ((bag.get("currency") or "USD").upper(),
+                              bag.get("currency_source")))
+    stale_roster = []
+    for slug, want in sorted(roster_currency.items()):
+        got, src = published.get(slug, (None, None))
+        if got and want and got != want and src in ("feed", "product-page",
+                                                    "locale"):
+            stale_roster.append(f"{slug} (roster says {want}, {src} says {got})")
+    if stale_roster:
+        rep.warn("currency:roster",
+                 f"{len(stale_roster)} brand(s) whose declared currency the "
+                 f"evidence disagrees with: {sample(stale_roster, 4)}. The "
+                 f"evidence won, so prices are right — clear the stale "
+                 f"declaration in brands.json.")
+
+    suspect = []
+    for slug, values in sorted(prices.items()):
+        # Under a handful of models the median is one product rather than a
+        # distribution, and the bounds check already covers absurd singletons.
+        if len(values) < MIN_BRAND_BAGS:
+            continue
+        values.sort()
+        median = values[len(values) // 2]
+        if median <= ceiling:
+            continue
+        locale = locales.get(slug)
+        why = (f"locale {locale!r} did not take" if locale
+               else "no locale configured")
+        suspect.append(f"{slug} (median ${median:,.0f} over {len(values)} "
+                       f"bags, {why})")
+
+    if suspect:
+        rep.fail("currency",
+                 f"{len(suspect)} brand(s) priced implausibly for USD: "
+                 f"{sample(suspect, 4)}. A four-figure median is a storefront "
+                 f"quoting its own currency, not an expensive brand. Set the "
+                 f"brand's `locale` in brands.json to a market that prices in "
+                 f"USD (Shopify mirrors the feed under it, e.g. \"en-us\"), or "
+                 f"retire the brand. Publishing this ships wrong prices and "
+                 f"mails wrong alerts.")
+    else:
+        extra = ""
+        if declared:
+            named = sorted(f"{s} {c}" for s, c in declared.items())
+            extra = f"; {len(declared)} non-USD ({sample(named, 3)})"
+        rep.note(f"currency: no USD brand's median price exceeds "
+                 f"${ceiling:,.0f}{extra}")
+        # How much of the catalogue's currency is known versus assumed. Worth a
+        # line every night: "assumed" climbing means a source stopped stating
+        # it, which is the silent half of this failure mode.
+        if sources:
+            rep.note("currency provenance: " + ", ".join(
+                f"{n} bags {src}" for src, n in sources.most_common()))
 
 
 # Below this many bags in the baseline, a percentage is noise rather than
@@ -390,6 +516,87 @@ def per_brand(payload, prev, rep, fail_drop, warn_drop):
         rep.note(f"per-brand: no brand lost more than {warn_drop:.0%} of its bags")
 
 
+# Volume read off a page rather than out of a feed field or a title. These are
+# the sources that sweep prose, and so the ones that can pick up furniture.
+SWEPT_VOLUME_SOURCES = ("product-page", "description", "pages:description")
+
+# Below this a repeated figure is a coincidence: three 30 L daypacks from one
+# brand is an ordinary catalogue, not a bug.
+MIN_SWEPT_VOLUMES = 4
+
+# And below this it is one product wearing several coats. Feeds routinely list
+# every colourway as its own row — Zorali ships eight Escapade Backpacks,
+# Filson five All-Weather Totes — and eight rows agreeing on 30 L is one
+# product saying it once, which is not the failure here.
+#
+# Distinct prices rather than distinct names, because names do not separate
+# them: a colourway is named for a place or a plant ("Daintree", "Wattle
+# Seed"), so no colour vocabulary strips it reliably, and the classifier's own
+# list says as much. Price does separate them, and separates exactly along the
+# line that matters — chrome does not care what it is attached to, so it lands
+# on the $12 shock cord and the $380 pack alike, while a colourway family sits
+# at one price by definition.
+MIN_SWEPT_PRICES = 3
+
+
+def swept_volume(payload, rep, share=0.6):
+    """Is one brand's volume actually one number, copied off its own chrome?
+
+    A litre figure is the only spec that carries its own unit inline, which
+    makes it the one storefronts print as furniture: nav rails read "Aerus 55L
+    Duos 2p Framus 58L", filter sidebars read "20L 30L 35L 40L 46L". A parser
+    sweeping a product page for the first thing shaped like a capacity finds
+    those before it finds the product, and the tell is that it finds the *same*
+    one every time — the chrome does not change between products.
+
+    That is what this looks for, because it is the only cheap signal that
+    separates the failure from the data. Every individual answer is plausible:
+    30 L is a real daypack size, and nothing about ULA's Circuit at 30 L looks
+    wrong until you notice its Catalyst, its rain kilt and its framesheet are
+    all 30 L too. Bounds checks cannot see it, coverage cannot see it — it
+    raises coverage — and per-brand counts cannot see it. Sorting the live site
+    by price per litre was what surfaced it, which is a reader's job, not a
+    gate's.
+
+    Warns rather than fails: a brand really can build one line at one size, and
+    a small catalogue reaches four products quickly.
+    """
+    # Keyed by source as well as brand, because these are separate parsers with
+    # separate failure modes and pooling them hides the one that is broken. ULA
+    # read 30 L off its nav rail for all 31 products it swept a page for, and
+    # its 24 description-derived volumes are fine — pooled, that is 32/55, which
+    # sits just under any threshold worth setting. Split, the page sweep is
+    # 31/31 and unmissable.
+    swept = {}
+    for bag in payload.get("bags") or []:
+        source = bag.get("volume_source")
+        if source in SWEPT_VOLUME_SOURCES and bag.get("volume_l"):
+            swept.setdefault((bag.get("brand_slug"), source), []).append(
+                (bag["volume_l"], bag.get("price_min")))
+
+    suspects = []
+    for (slug, source), rows in sorted(swept.items()):
+        volumes = [v for v, _ in rows]
+        if len(volumes) < MIN_SWEPT_VOLUMES:
+            continue
+        top = max(set(volumes), key=volumes.count)
+        n = volumes.count(top)
+        prices = {p for v, p in rows if v == top and p is not None}
+        if n / len(volumes) >= share and len(prices) >= MIN_SWEPT_PRICES:
+            suspects.append(f"{slug} {n}/{len(volumes)} at {top}L via {source} "
+                            f"across {len(prices)} price points")
+
+    if suspects:
+        rep.warn("volume:swept",
+                 f"{len(suspects)} brand(s) report one repeated volume from "
+                 f"page text: {sample(suspects, 6)}. Check the product page for "
+                 f"a nav rail or filter sidebar listing capacities — that is "
+                 f"the number, not the product's.")
+    else:
+        rep.note(f"volume: no brand's page-derived volumes collapse to one "
+                 f"figure ({sum(len(v) for v in swept.values())} checked)")
+
+
 def regression(payload, prev, rep, max_drop, max_coverage_drop):
     meta, pmeta = payload.get("meta") or {}, prev.get("meta") or {}
 
@@ -447,6 +654,10 @@ def main():
     ap.add_argument("--fail-days", type=int, default=14,
                     help="fail when an active brand's catalogue is this old and "
                          "still being served as current (default 14)")
+    ap.add_argument("--max-usd-median", type=float, default=USD_MEDIAN_CEILING,
+                    help=f"fail when a brand's median price exceeds this, which "
+                         f"means its storefront is quoting another currency "
+                         f"(default {USD_MEDIAN_CEILING:,.0f})")
     ap.add_argument("--baseline", default="",
                     help="the published catalogue to compare against. Defaults "
                          "to `git show HEAD:data/bags.json`, which only works "
@@ -471,6 +682,8 @@ def main():
     structural(payload, rep)
     brandmark(rep)
     freshness(rep, args.stale_days, args.fail_days)
+    currency(payload, rep, args.max_usd_median)
+    swept_volume(payload, rep)
 
     prev = baseline(args.baseline or None)
     if prev is None and args.require_baseline:

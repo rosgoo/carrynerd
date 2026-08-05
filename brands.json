@@ -97,7 +97,9 @@
   {
     "slug": "db",
     "name": "Db Journey",
-    "domain": "dbjourney.com"
+    "domain": "dbjourney.com",
+    "locale": "en-us",
+    "note": "Norwegian store: the bare /products.json quotes NOK, which is why 364 models sat in the index at ~10x their real price with a $1,999 median. Confirmed by hand that dbjourney.com/en-us/ serves USD, so the feed under that prefix does too."
   },
   {
     "slug": "brevite",
@@ -107,7 +109,9 @@
   {
     "slug": "moment",
     "name": "Moment",
-    "domain": "www.shopmoment.com"
+    "domain": "www.shopmoment.com",
+    "platform": "todo",
+    "note": "Marked todo 2026-08-04: http_404 on every attempt, and it has never once produced a catalogue \u2014 no raw/ file exists, so it contributes zero models to the index. It was still being crawled nightly, costing ~1-2 min of pacing to fetch nothing; eleven brands like it were 14% of the crawl. todo means wired but not working, and skipped until someone fixes the adapter \u2014 deliberately not \"retired\", which would say we had stopped wanting it. www.shopmoment.com serves no /products.json. Moment is a camera-bag maker and the camera-bag facet is nearly empty, so this one is worth an adapter when there is time."
   },
   {
     "slug": "lo-and-sons",
@@ -137,7 +141,9 @@
   {
     "slug": "july",
     "name": "July",
-    "domain": "july.com"
+    "domain": "july.com",
+    "platform": "todo",
+    "note": "Marked todo 2026-08-04: http_404 on every attempt, and it has never once produced a catalogue \u2014 no raw/ file exists, so it contributes zero models to the index. It was still being crawled nightly, costing ~1-2 min of pacing to fetch nothing; eleven brands like it were 14% of the crawl. todo means wired but not working, and skipped until someone fixes the adapter \u2014 deliberately not \"retired\", which would say we had stopped wanting it. july.com serves no /products.json."
   },
   {
     "slug": "hyperlite",
@@ -183,7 +189,9 @@
   {
     "slug": "wotancraft",
     "name": "Wotancraft",
-    "domain": "wotancraft.com"
+    "domain": "wotancraft.com",
+    "platform": "todo",
+    "note": "Marked todo 2026-08-04: http_0 on every attempt, and it has never once produced a catalogue \u2014 no raw/ file exists, so it contributes zero models to the index. It was still being crawled nightly, costing ~1-2 min of pacing to fetch nothing; eleven brands like it were 14% of the crawl. todo means wired but not working, and skipped until someone fixes the adapter \u2014 deliberately not \"retired\", which would say we had stopped wanting it. Connection times out from a runner every attempt. Reachable by hand, so this reads as a geo or ASN block rather than an outage."
   },
   {
     "slug": "heimplanet",
@@ -198,7 +206,9 @@
   {
     "slug": "rickshaw",
     "name": "Rickshaw Bagworks",
-    "domain": "rickshawbags.com"
+    "domain": "rickshawbags.com",
+    "platform": "todo",
+    "note": "Marked todo 2026-08-04: bad_json on every attempt, and it has never once produced a catalogue \u2014 no raw/ file exists, so it contributes zero models to the index. It was still being crawled nightly, costing ~1-2 min of pacing to fetch nothing; eleven brands like it were 14% of the crawl. todo means wired but not working, and skipped until someone fixes the adapter \u2014 deliberately not \"retired\", which would say we had stopped wanting it. /products.json answers 200 with something that is not the feed, which usually means a storefront proxy in front of Shopify. Worth one look at the real myshopify host, the way Troubadour was resolved."
   },
   {
     "slug": "bellroy",
@@ -209,12 +219,16 @@
   {
     "slug": "osprey",
     "name": "Osprey",
-    "domain": "osprey.com"
+    "domain": "osprey.com",
+    "platform": "todo",
+    "note": "Marked todo 2026-08-04: http_403 on every attempt, and it has never once produced a catalogue \u2014 no raw/ file exists, so it contributes zero models to the index. It was still being crawled nightly, costing ~1-2 min of pacing to fetch nothing; eleven brands like it were 14% of the crawl. todo means wired but not working, and skipped until someone fixes the adapter \u2014 deliberately not \"retired\", which would say we had stopped wanting it. Blocked at the edge from a datacenter IP. Osprey is a brand worth having, so this is a candidate for the residential-IP enrichment pass rather than a dead end."
   },
   {
     "slug": "the-north-face",
     "name": "The North Face",
-    "domain": "thenorthface.com"
+    "domain": "thenorthface.com",
+    "platform": "todo",
+    "note": "Marked todo 2026-08-04: http_403 on every attempt, and it has never once produced a catalogue \u2014 no raw/ file exists, so it contributes zero models to the index. It was still being crawled nightly, costing ~1-2 min of pacing to fetch nothing; eleven brands like it were 14% of the crawl. todo means wired but not working, and skipped until someone fixes the adapter \u2014 deliberately not \"retired\", which would say we had stopped wanting it. Blocked at the edge, same as Osprey and Kipling."
   },
   {
     "slug": "tom-bihn",
@@ -271,12 +285,16 @@
   {
     "slug": "baggu",
     "name": "Baggu",
-    "domain": "baggu.com"
+    "domain": "baggu.com",
+    "platform": "todo",
+    "note": "Marked todo 2026-08-04: http_404 on every attempt, and it has never once produced a catalogue \u2014 no raw/ file exists, so it contributes zero models to the index. It was still being crawled nightly, costing ~1-2 min of pacing to fetch nothing; eleven brands like it were 14% of the crawl. todo means wired but not working, and skipped until someone fixes the adapter \u2014 deliberately not \"retired\", which would say we had stopped wanting it. baggu.com serves no /products.json despite looking like Shopify; the feed is probably disabled."
   },
   {
     "slug": "bedouin-foundry",
     "name": "Bedouin Foundry",
-    "domain": "bedouinfoundry.com"
+    "domain": "bedouinfoundry.com",
+    "currency": "GBP",
+    "note": "UK maker; bedouinfoundry.com quotes pounds. Labelled rather than relocalised on purpose — this is the price the seller charges, and showing it as £340 is honest where converting it to a dollar figure we invented would not be. Confirmed by hand 2026-08-03."
   },
   {
     "slug": "eagle-creek",
@@ -291,7 +309,9 @@
   {
     "slug": "ebags",
     "name": "eBags",
-    "domain": "ebagsbrand.com"
+    "domain": "ebagsbrand.com",
+    "platform": "todo",
+    "note": "Marked todo 2026-08-04: http_404 on every attempt, and it has never once produced a catalogue \u2014 no raw/ file exists, so it contributes zero models to the index. It was still being crawled nightly, costing ~1-2 min of pacing to fetch nothing; eleven brands like it were 14% of the crawl. todo means wired but not working, and skipped until someone fixes the adapter \u2014 deliberately not \"retired\", which would say we had stopped wanting it. ebagsbrand.com serves no /products.json. eBags is a retailer brand under Samsonite; likely not Shopify at all."
   },
   {
     "slug": "ecohub",
@@ -328,7 +348,9 @@
   {
     "slug": "samsonite",
     "name": "Samsonite",
-    "domain": "shop.samsonite.com"
+    "domain": "shop.samsonite.com",
+    "platform": "todo",
+    "note": "Marked todo 2026-08-04: http_404 on every attempt, and it has never once produced a catalogue \u2014 no raw/ file exists, so it contributes zero models to the index. It was still being crawled nightly, costing ~1-2 min of pacing to fetch nothing; eleven brands like it were 14% of the crawl. todo means wired but not working, and skipped until someone fixes the adapter \u2014 deliberately not \"retired\", which would say we had stopped wanting it. shop.samsonite.com serves no /products.json \u2014 Salesforce Commerce Cloud, needs its own adapter."
   },
   {
     "slug": "sherpani",
@@ -597,7 +619,9 @@
   {
     "slug": "haize-project",
     "name": "Haize Project",
-    "domain": "haizeproject.com"
+    "domain": "haizeproject.com",
+    "platform": "todo",
+    "note": "Marked todo 2026-08-04: bad_json on every attempt, and it has never once produced a catalogue \u2014 no raw/ file exists, so it contributes zero models to the index. It was still being crawled nightly, costing ~1-2 min of pacing to fetch nothing; eleven brands like it were 14% of the crawl. todo means wired but not working, and skipped until someone fixes the adapter \u2014 deliberately not \"retired\", which would say we had stopped wanting it. /products.json answers 200 with a non-feed body \u2014 same shape as Rickshaw."
   },
   {
     "slug": "hanchor",
@@ -636,7 +660,9 @@
   {
     "slug": "kipling",
     "name": "Kipling",
-    "domain": "kipling.com"
+    "domain": "kipling.com",
+    "platform": "todo",
+    "note": "Marked todo 2026-08-04: http_403 on every attempt, and it has never once produced a catalogue \u2014 no raw/ file exists, so it contributes zero models to the index. It was still being crawled nightly, costing ~1-2 min of pacing to fetch nothing; eleven brands like it were 14% of the crawl. todo means wired but not working, and skipped until someone fixes the adapter \u2014 deliberately not \"retired\", which would say we had stopped wanting it. Blocked at the edge, same as Osprey."
   },
   {
     "slug": "kl-ttermusen",
@@ -677,7 +703,9 @@
   {
     "slug": "mismo",
     "name": "Mismo",
-    "domain": "mismo.dk"
+    "domain": "mismo.dk",
+    "note": "Danish store with no USD market \u2014 /en-us/ does not exist, so there is no locale that fixes this the way Db's did. Labelled instead: the bare feed quotes DKK and that is now what the index says it quotes. Prices are never converted, so kr 5,500 shows as DKK 5,500 rather than as a dollar figure we invented. Was published as $3,600 until 2026-08-04.",
+    "currency": "DKK"
   },
   {
     "slug": "mixed-works",
@@ -846,7 +874,8 @@
     "slug": "vaude",
     "name": "Vaude",
     "domain": "www.vaude.com",
-    "platform": "magento"
+    "platform": "retired",
+    "note": "Retired 2026-08-04. Measured at 40.1 min for 303 products on the 2026-08-03 run \u2014 30% of the entire night's crawl time for one brand, and 7.9 s/product against a feed brand's 0.3. The cost is the Magento GraphQL adapter paging a product at a time, not the pacing, so no DELAY change recovers it. normalize.py globs raw/ and never reads this file, so the 292 models already fetched stay in the index; only the refetch stops, and validate.py exempts retired entries from the freshness check so it goes stale deliberately rather than by neglect. The \"magento\" platform above is what raw/vaude.json still records and what normalize reads; restore it here to turn the crawl back on."
   },
   {
     "slug": "vertx",

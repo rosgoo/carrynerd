@@ -62,6 +62,10 @@ on:
         description: "Comma-separated brand slugs to fetch, instead of the whole roster"
         type: string
         default: ""
+      forget_prices:
+        description: "Brand slugs whose price state to reset — for a currency or parser correction, so the fix does not read as a sale"
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -349,8 +353,16 @@ jobs:
         continue-on-error: true
         run: python3 enrich.py --limit 60 --delay ${{ env.ENRICH_DELAY }} --cache-pages
 
+      # `forget_prices` is empty on every scheduled run, which is the point: a
+      # reset is a claim that our own numbers were wrong, and that is a thing a
+      # person decides once, not a setting a cron carries. See the note on the
+      # flag in track_prices.py — without it, correcting Db and Mismo's currency
+      # mails a fake 90%-off announcement for 554 models.
       - name: Track prices
-        run: python3 track_prices.py --events-out data/price-events.json
+        run: |
+          python3 track_prices.py \
+            --events-out data/price-events.json \
+            --forget "${{ inputs.forget_prices }}"
 
       # Cached by image URL in data/image-bg.json, which is committed, so a
       # normal night samples only the photos that changed. Runs after enrich

@@ -78,7 +78,7 @@ CREATE INDEX IF NOT EXISTS crawl_at   ON crawl (committed_at);
 # A brand that is meant to have stopped is not eroding. Kept in step with
 # validate.py's list of the same name, and for the same reason: a check that
 # shouts about the intended outcome is a check people learn to skip.
-DORMANT = {"retired", "walled", "unreachable", "custom", "no-adapter"}
+DORMANT = {"retired", "walled", "unreachable", "custom", "no-adapter", "todo"}
 
 
 def git(repo, *args):

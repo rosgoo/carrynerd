@@ -64,6 +64,13 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--events-out", default="",
                     help="write this run's changes here for the alert matcher")
+    ap.add_argument("--forget", default="",
+                    help="comma-separated brand slugs whose price state to drop "
+                         "before comparing, so the next observation baselines "
+                         "instead of reading as a change. For when a brand's "
+                         "prices were wrong rather than different — a currency "
+                         "correction, a parser fix — and the delta is an "
+                         "artefact of ours, not a move by the seller")
     args = ap.parse_args()
 
     payload = load_json(BAGS, None)
@@ -73,6 +80,28 @@ def main():
     bags = payload["bags"]
     state = load_json(STATE, {})
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # A price that was wrong is not a price that moved.
+    #
+    # Correcting Db and Mismo from NOK/DKK to USD changes 554 models by 6-10x
+    # in one run. Without this, every one of those reads as a colossal price
+    # drop: ~550 rows in the append-only ledger that no seller ever did,
+    # `lowest_ever` pinned to a number that was never charged, and — because
+    # alerts/match.py runs off exactly these events — a mailshot announcing the
+    # biggest sale in the site's history on the night we fixed a bug.
+    #
+    # Dropping the state makes the corrected price a `first_seen` baseline
+    # instead of a delta. It forfeits those SKUs' recorded low, which is the
+    # right trade: the low was denominated in the wrong currency and was never
+    # true. History already written stays written — this only governs what the
+    # *next* observation is compared against.
+    forget = {s.strip() for s in args.forget.split(",") if s.strip()}
+    if forget:
+        stale = [k for k in state if k.split("__", 1)[0] in forget]
+        for key in stale:
+            del state[key]
+        print(f"forgot {len(stale)} SKU states across {len(forget)} brand(s): "
+              f"{', '.join(sorted(forget))}")
 
     rows, changes, first_run = [], 0, not state
 
@@ -190,6 +219,10 @@ def main():
                 # exist. normalize.py owns this slug; everything else reads it.
                 "slug": bag.get("slug"),
                 "category": bag.get("category"),
+                # Carried so the email can name the price correctly. Prices are
+                # never converted, so a bare "$" on a brand that charges pounds
+                # is a wrong number in someone's inbox.
+                "currency": bag.get("currency") or "USD",
                 "url": bag.get("url"),
                 "image": bag.get("image"),
                 "lowest_ever": bag.get("lowest_ever"),

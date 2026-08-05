@@ -209,6 +209,21 @@ class Pacer:
 
 def fetch_brand(brand, pacer):
     domain = brand["domain"]
+    # /products.json prices in the store's *base* currency and says so nowhere:
+    # there is no currency field anywhere in the payload. So a brand selling
+    # from a .dk or .no storefront publishes DKK or NOK here, normalize.py
+    # reads them as dollars, and nothing downstream can tell — which is exactly
+    # what happened to Db (NOK) and Mismo (DKK), 554 bags priced 6-10x wrong
+    # for as long as they were in the index.
+    #
+    # Shopify mirrors the whole storefront under a market path prefix, feed
+    # included, so /en-us/products.json is the same catalogue quoted in USD.
+    # Opt-in per brand rather than applied to everyone, because a store with no
+    # en-us market 404s the prefixed path, and losing a catalogue outright is a
+    # worse failure than the one being fixed. The currency gate in validate.py
+    # is what stops a missing or wrong locale publishing quietly.
+    locale = (brand.get("locale") or "").strip("/")
+    prefix = f"/{locale}" if locale else ""
     result = {
         "slug": brand["slug"],
         "name": brand["name"],
@@ -217,11 +232,14 @@ def fetch_brand(brand, pacer):
         "platform": None,
         "status": None,
         "note": "",
+        # Recorded rather than inferred, so the gate can tell "this brand has
+        # no locale configured" from "the locale is set and did not help".
+        "locale": locale or None,
         "products": [],
     }
 
     pacer.wait()
-    allowed, note = robots_allows(domain)
+    allowed, note = robots_allows(domain, f"{prefix}/products.json")
     if not allowed:
         result["status"] = "skipped"
         result["note"] = note
@@ -229,7 +247,7 @@ def fetch_brand(brand, pacer):
 
     products, page = [], 1
     while page <= MAX_PAGES:
-        url = f"https://{domain}/products.json?limit={PAGE_LIMIT}&page={page}"
+        url = f"https://{domain}{prefix}/products.json?limit={PAGE_LIMIT}&page={page}"
         body = None
         for attempt in range(MAX_RETRIES):
             pacer.wait()
@@ -248,6 +266,16 @@ def fetch_brand(brand, pacer):
             # 404 = not Shopify (or feed disabled); anything else, back off once.
             result["status"] = f"http_{status}"
             result["note"] = headers.get("x-error", "") or "no products.json"
+            # Deliberately no retry on the bare path. Falling back would restore
+            # the catalogue *and* the wrong currency, and it would do it
+            # silently — the brand would go on looking healthy while publishing
+            # kroner as dollars. Name the locale as the suspect instead and let
+            # the run keep yesterday's data, which is what a failed refetch
+            # already does everywhere else.
+            if locale and status == 404:
+                result["note"] = (f"/{locale}/products.json 404s — that market "
+                                  f"may not exist on this store; check the "
+                                  f"locale before removing it")
             return result
         if body is None:
             result["status"] = "rate_limited"
@@ -1616,14 +1644,29 @@ def main():
         elif platform == "shopify":
             res = fetch_brand(brand, pacer)
         else:
-            # A detected platform with no adapter yet (squarespace, custom).
-            # Skip loudly rather than hammering it with Shopify requests.
-            print(f"    no adapter for platform {platform!r}, skipping",
-                  flush=True)
+            # Two different things land here and the log should not call them
+            # the same thing.
+            #
+            # `custom` and anything unrecognised are genuinely missing adapters
+            # — a platform we detected and cannot read yet. The states below are
+            # decisions: `retired` works and costs too much, `todo` is wired and
+            # has never worked, `walled`/`unreachable` are shut out. Recording
+            # the decision as its own status is what lets the fetch log answer
+            # "why did this brand fetch nothing" without opening brands.json,
+            # and it is why eleven brands could sit in the roster failing every
+            # night while the log said only "no-adapter".
+            #
+            # Either way: skip before any request. Nothing below this point
+            # touches the network or the pacer, which is the whole saving.
+            declared = platform in ("retired", "todo", "walled", "unreachable")
+            print(f"    {'marked' if declared else 'no adapter for'} "
+                  f"{platform!r}, skipping", flush=True)
             log[brand["slug"]] = {"slug": brand["slug"], "name": brand["name"],
                                   "domain": brand["domain"],
                                   "platform": platform,
-                                  "status": "no-adapter", "note": "",
+                                  "status": platform if declared
+                                            else "no-adapter",
+                                  "note": brand.get("note", "")[:200],
                                   "product_count": 0}
             with open(log_path, "w") as f:
                 json.dump(log, f, indent=2, sort_keys=True)

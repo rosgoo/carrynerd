@@ -54,6 +54,10 @@ def bag_page(event):
             f"{event.get('slug') or model}/")
 
 
+SYMBOLS = {"USD": "$", "GBP": "£", "EUR": "€",
+           "CAD": "CA$", "AUD": "AU$", "JPY": "¥"}
+
+
 def esc(s):
     return (str(s).replace("&", "&amp;").replace("<", "&lt;")
             .replace(">", "&gt;").replace('"', "&quot;"))
@@ -64,8 +68,13 @@ def render(event, unsub_url):
     site's TypeScript because this is the only place drop emails are sent —
     the confirmation email is the API route's job and they have no overlap."""
     name = f"{event['brand']} {event['name']}"
-    now = f"${event['price']:g}"
-    was = f"${event['prev_price']:g}" if event.get("prev_price") else None
+    # Never converted, so the symbol has to follow the seller. Falls back to
+    # "$" only because every brand was USD before currencies were declared and
+    # an older events file has no code in it.
+    sym = SYMBOLS.get((event.get("currency") or "USD").upper(),
+                      f"{(event.get('currency') or '').upper()} ")
+    now = f"{sym}{event['price']:g}"
+    was = f"{sym}{event['prev_price']:g}" if event.get("prev_price") else None
     page = bag_page(event)
 
     subject = f"{name} dropped to {now}" + (f" (was {was})" if was else "")

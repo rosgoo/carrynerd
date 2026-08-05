@@ -28,8 +28,9 @@ import re
 import sys
 import time
 
-from normalize import (CM_PER_IN, FEATURES, MATERIALS, detect, find_dims_cm,
-                       find_laptop_in, find_volume, find_weight_g, strip_html)
+from normalize import (CM_PER_IN, FEATURES, MATERIALS, PAGE_LABEL, VOLUME_RE,
+                       detect, find_dims_cm, find_laptop_in, find_volume_bag,
+                       find_weight_g, page_near_label, strip_html)
 from fetch import Pacer, get
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -145,6 +146,12 @@ SCOPE_END = re.compile(
     r"shop the look|customers also (?:bought|viewed)|frequently bought|"
     r"pairs? well with|more from|similar items?|others? also|"
     r"customer reviews?|write a review|based on \d+ reviews?|"
+    # Merchandising rails, which are the same leak wearing a different heading:
+    # LiteAF ends every product page with "Top rated products LiteAF Multi-Day
+    # 35L Frameless Ultralight Backpack", and a $8 pack of adhesive tabs was
+    # reading that as its own capacity.
+    r"top (?:rated|selling) products?|best ?sellers?|featured products?|"
+    r"new arrivals?|trending now|recently viewed|shop by|product filters?|"
     r"join our newsletter|sign up|subscribe|follow us|"
     r"all rights reserved)\b", re.I)
 
@@ -228,6 +235,56 @@ def walk_ld(node, out):
                 walk_ld(node[key], out)
 
 
+# How close two capacities have to sit to be reading as one list, and how many
+# distinct ones it takes before that list is furniture rather than a spec.
+CAPACITY_RUN_SPAN = 200
+CAPACITY_RUN_COUNT = 3
+
+
+def strip_capacity_lists(text):
+    """
+    Blank the spans that name several capacities at once.
+
+    A product states its own capacity once. A nav rail, a filter sidebar and a
+    related-products carousel all name a handful together — Bonfus's menu reads
+    "Aerus 55L Duos 2p Middus 1p Framus 58L Maxus 80L", LiteAF's facets read
+    "20L 30L 35L 40L 46L" — and a parser reading the first figure it meets takes
+    one of those and publishes it as the product's.
+
+    Anchoring on a Volume/Capacity label deals with the whole-page fallback, but
+    not with this: on a store whose menu markup sits inside the product region,
+    the rail lands in the scoped text too, where a labelled figure is not
+    required and should not be. So the shape is what gets recognised. Blanking
+    the run rather than rejecting the source keeps a page that carries both a
+    menu and a real spec, which is most of them.
+
+    A labelled run is left alone, because the other thing that lists several
+    capacities together is a pack itemising itself. ULA prints "TOTAL VOLUME:
+    3,274 CI | 54 L ... Main Body: 2184 CI | 35.8 L ... Internal Zip Pockets:
+    210 CI | 3.4 L", which is four figures inside 200 characters and the best
+    volume data on the page. The rail names products and the breakdown names
+    compartments, and the label is what tells them apart.
+    """
+    marks = [(m.start(), m.end(), m.group(1)) for m in VOLUME_RE.finditer(text or "")]
+    if len(marks) < CAPACITY_RUN_COUNT:
+        return text
+
+    out, run = text, []
+    for mark in marks + [None]:
+        if run and (mark is None or mark[0] - run[-1][1] > CAPACITY_RUN_SPAN):
+            start, end = run[0][0], run[-1][1]
+            # Reach back past the first figure so a heading introducing the
+            # block ("PACK VOLUME") counts as labelling it.
+            labelled = PAGE_LABEL["volume"].search(
+                text, max(0, start - CAPACITY_RUN_SPAN), end)
+            if len({v for _, _, v in run}) >= CAPACITY_RUN_COUNT and not labelled:
+                out = out[:start] + " " * (end - start) + out[end:]
+            run = []
+        if mark is not None:
+            run.append(mark)
+    return out
+
+
 def parse_product_page(html_text):
     """Returns dict of whatever we could establish from one product page."""
     found = {}
@@ -298,7 +355,9 @@ def parse_product_page(html_text):
     # from a backpack elsewhere in the same HTML. Above this size the page is a
     # catalogue, not a product, and the scoped sources are all we trust.
     whole_page = text if len(text) < 60_000 else ""
-    for source in (scoped, detail, found.get("ld_description", ""), whole_page):
+    for source, product_scoped in ((scoped, True), (detail, True),
+                                   (found.get("ld_description", ""), True),
+                                   (whole_page, False)):
         if not source:
             continue
         if "dims_cm" not in found:
@@ -311,7 +370,22 @@ def parse_product_page(html_text):
             if lap:
                 found["laptop_in"] = lap
         if "volume_l" not in found:
-            vol = find_volume(source)
+            # A litre figure is the one spec that carries its own label, which
+            # makes it the one every storefront prints as furniture. Nav rails
+            # and filter facets read "20L 30L 35L 40L 46L", and on the
+            # whole-page fallback that is what a bare sweep finds first: every
+            # ULA product came back 30 L, every Bonfus 55 L, every LiteAF 20 L
+            # — one number per brand, off the chrome, on packs and accessories
+            # alike. The size guard above does not help, because a 5 KB
+            # accessory page has a filter sidebar too.
+            #
+            # So off the scoped text a sweep is still right, and off the whole
+            # page only a labelled figure counts. Dims and weights keep the
+            # sweep: chrome rarely prints an H x W x D or a gram figure, and
+            # when it does it is a real one.
+            pruned = strip_capacity_lists(source)
+            vol = (find_volume_bag(pruned) if product_scoped
+                   else page_near_label(pruned, "volume", find_volume_bag))
             if vol:
                 found["volume_l"] = vol
                 found["volume_source"] = "product-page"
