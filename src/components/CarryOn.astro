@@ -35,6 +35,9 @@ const mark = (v) =>
     {regions.map(({ label, rows }) => rows.length > 0 && (
       <details open={label === 'Americas'}>
         <summary>{label}</summary>
+        {/* Six columns, two of them a dimension triple. Below about 500px it
+            scrolls inside its own box rather than taking the page sideways. */}
+        <div class="xscroll">
         <table class="spectable">
           <thead>
             <tr>
@@ -58,6 +61,7 @@ const mark = (v) =>
             ))}
           </tbody>
         </table>
+        </div>
       </details>
     ))}
     <p class="note">

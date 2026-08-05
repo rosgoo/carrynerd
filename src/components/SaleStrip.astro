@@ -1,0 +1,74 @@
+---
+/* Newly on sale — the drops this crawl actually saw.
+ *
+ * Reads bags.json, not the ledger. track_prices.py has already worked out
+ * which models moved and annotated each one with `price_direction`,
+ * `previous_price` and `at_lowest`; re-deriving that here would mean parsing
+ * 30k history rows at build time to reach the same 50 answers.
+ *
+ * "Newly" is load-bearing and is why this filters on `price_direction` rather
+ * than on `on_sale`. `on_sale` is a standing state — 1,168 models carry a
+ * compare-at price, most of them permanently, and a strip of those is a
+ * clearance aisle nobody returns to. A drop recorded on the last run is news,
+ * and it is the thing the price ledger exists to know that a storefront's own
+ * badge cannot tell you.
+ */
+import { fmtPrice } from '../lib/format.js';
+import { bagHref } from '../lib/catalog.js';
+
+const { bags = [], limit = 12 } = Astro.props;
+
+// A 1% move is a rounding artefact or a currency wobble, not a sale worth
+// putting at the top of the page. 5% is the floor for calling it news.
+const MIN_OFF = 0.05;
+
+const drops = bags
+  .filter(
+    (bag) =>
+      bag.price_direction === 'down' &&
+      typeof bag.previous_price === 'number' &&
+      typeof bag.price_min === 'number' &&
+      bag.price_min > 0 &&
+      bag.previous_price > bag.price_min,
+  )
+  .map((bag) => ({ bag, off: 1 - bag.price_min / bag.previous_price }))
+  .filter((row) => row.off >= MIN_OFF)
+  .sort((a, b) => b.off - a.off || a.bag.price_min - b.bag.price_min)
+  .slice(0, limit);
+---
+{drops.length > 0 && (
+  <section class="salestrip" aria-labelledby="salestrip-h">
+    <div class="salehead">
+      <h2 id="salestrip-h">Newly on sale</h2>
+      <p class="note">
+        {drops.length === 1
+          ? 'One price fell on the last crawl.'
+          : `${drops.length} prices fell on the last crawl.`}
+        {' '}Measured against what we recorded ourselves, not against a
+        storefront’s own “was” price.
+      </p>
+    </div>
+
+    <ul class="salerow">
+      {drops.map(({ bag, off }) => (
+        <li class="salecard">
+          <a href={bagHref(bag)}>
+            <span class="saleshot" style={bag.image_bg && `--shot-bg:${bag.image_bg}`}>
+              {bag.image
+                ? <img src={bag.image} alt="" loading="lazy" width="120" height="120" />
+                : <span class="none">NO IMAGE</span>}
+              <b class="saleoff">−{Math.round(off * 100)}%</b>
+            </span>
+            <span class="salebrand">{bag.brand}</span>
+            <span class="salename">{bag.name}</span>
+            <span class="saleprice">
+              <strong>{fmtPrice(bag.price_min, bag.currency)}</strong>
+              <s>{fmtPrice(bag.previous_price, bag.currency)}</s>
+            </span>
+            {bag.at_lowest && <span class="tag lowest">Lowest recorded</span>}
+          </a>
+        </li>
+      ))}
+    </ul>
+  </section>
+)}

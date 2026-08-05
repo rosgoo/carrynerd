@@ -10,7 +10,7 @@ import { catLabel, featureLabel, sourceLabel } from '../../../lib/labels.js';
 import { SITE_NAME } from '../../../lib/brand.js';
 import {
   fmtPrice, fmtPriceRange, fmtWeight, fmtDims, fmtVolume, fmtLaptop,
-  fmtLinear, gramsPerLitre, pricePerLitre,
+  fmtLinear, gramsPerLitre, pricePerLitre, currencySymbol,
 } from '../../../lib/format.js';
 
 export function getStaticPaths() {
@@ -34,13 +34,13 @@ const related = [
 
 const specs = [
   ['Category', catLabel(bag.category), bag.category_source],
-  ['Price', fmtPriceRange(bag.price_min, bag.price_max), null],
+  ['Price', fmtPriceRange(bag.price_min, bag.price_max, bag.currency), null],
   ['Volume', fmtVolume(bag.volume_l), bag.volume_source],
   ['Dimensions', fmtDims(bag.dims_cm), bag.dims_source],
   ['Linear (h+w+d)', fmtLinear(bag.linear_cm), bag.dims_source],
   ['Weight', fmtWeight(bag.weight_g), bag.weight_source],
   ['Grams per litre', gramsPerLitre(bag) ? gramsPerLitre(bag).toFixed(0) : null, null],
-  ['Price per litre', pricePerLitre(bag) ? `$${pricePerLitre(bag).toFixed(2)}` : null, null],
+  ['Price per litre', pricePerLitre(bag) ? `${currencySymbol(bag.currency)}${pricePerLitre(bag).toFixed(2)}` : null, null],
   ['Laptop', fmtLaptop(bag.laptop_in), null],
   ['Colourways', bag.colors?.length || null, null],
   ['SKUs', bag.variant_count || null, null],
@@ -112,7 +112,7 @@ const facts = [
 ].filter(Boolean).join(', ');
 const description =
   `${bag.brand} ${bag.name}${facts ? `: ${facts}` : ''}. ` +
-  `${fmtPriceRange(bag.price_min, bag.price_max)} across ${bag.variant_count ?? 0} SKUs. ` +
+  `${fmtPriceRange(bag.price_min, bag.price_max, bag.currency)} across ${bag.variant_count ?? 0} SKUs. ` +
   'Specs normalised from the brand’s own product feed, with sources shown.';
 ---
 {/* Held out of search results until the model has specs worth arriving for —
@@ -157,16 +157,16 @@ const description =
         <h1>{bag.name}</h1>
 
         <div class="pricebox">
-          <strong>{fmtPriceRange(bag.price_min, bag.price_max)}</strong>
+          <strong>{fmtPriceRange(bag.price_min, bag.price_max, bag.currency)}</strong>
           {bag.previous_price && bag.price_direction === 'down' && (
-            <span class="was">was {fmtPrice(bag.previous_price)}</span>
+            <span class="was">was {fmtPrice(bag.previous_price, bag.currency)}</span>
           )}
           {bag.at_lowest && <span class="tag lowest">Lowest recorded</span>}
           {!bag.in_stock && <span class="tag oos">Out of stock</span>}
           {bag.on_sale && <span class="tag sale">On sale</span>}
         </div>
         {bag.lowest_ever != null && bag.lowest_ever !== bag.price_min && (
-          <p class="note">Lowest we have recorded: {fmtPrice(bag.lowest_ever)}</p>
+          <p class="note">Lowest we have recorded: {fmtPrice(bag.lowest_ever, bag.currency)}</p>
         )}
 
         <dl class="keyspecs">
@@ -259,9 +259,9 @@ const description =
                 </td>
                 <td class="mono">{v.sku || '—'}</td>
                 <td>
-                  {fmtPrice(v.price)}
+                  {fmtPrice(v.price, bag.currency)}
                   {v.compare_at && v.price && v.compare_at > v.price && (
-                    <s> {fmtPrice(v.compare_at)}</s>
+                    <s> {fmtPrice(v.compare_at, bag.currency)}</s>
                   )}
                 </td>
                 <td class={v.available ? 'instock' : 'nil'}>
@@ -276,9 +276,9 @@ const description =
 
     <Offers bag={bag} />
 
-    <PriceHistory series={series} changes={changes} since={trackingSince} />
+    <PriceHistory series={series} changes={changes} since={trackingSince} currency={bag.currency} />
 
-    <WatchForm bagId={bag.id} name={`the ${bag.name}`} />
+    <WatchForm bagId={bag.id} name={`the ${bag.name}`} currency={bag.currency} />
 
     {related.length > 0 && (
       <section>
@@ -288,7 +288,7 @@ const description =
             <li>
               <a href={bagHref(b)}>
                 <b>{b.brand}</b> {b.name}
-                <em>{[fmtVolume(b.volume_l), fmtPrice(b.price_min)].filter(Boolean).join(' · ')}</em>
+                <em>{[fmtVolume(b.volume_l), fmtPrice(b.price_min, b.currency)].filter(Boolean).join(' · ')}</em>
               </a>
             </li>
           ))}

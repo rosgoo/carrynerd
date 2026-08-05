@@ -34,7 +34,7 @@ const offers = urls.map((url, i) => ({
   host: host(url),
   // Only the canonical listing can be tied to the tracked price; the extra
   // fabric/colourway listings share a model but not necessarily a price.
-  price: i === 0 ? fmtPriceRange(bag.price_min, bag.price_max) : null,
+  price: i === 0 ? fmtPriceRange(bag.price_min, bag.price_max, bag.currency) : null,
   primary: i === 0,
 }));
 ---

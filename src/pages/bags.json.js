@@ -25,7 +25,7 @@ import { bags, meta } from '../lib/catalog.js';
 export const prerender = true;
 
 const FIELDS = [
-  'id', 'slug', 'name', 'brand', 'brand_slug', 'category', 'url',
+  'id', 'slug', 'name', 'brand', 'brand_slug', 'category', 'url', 'currency',
   'image', 'image_bg', 'in_stock', 'on_sale', 'price_min', 'price_max',
   'volume_l', 'volume_source', 'dims_cm', 'dims_source', 'linear_cm',
   'weight_g', 'weight_source', 'laptop_in', 'features', 'features_source',

@@ -27,12 +27,16 @@ const { brand } = Astro.props;
  */
 const domain = roster.find((b) => b.slug === brand.slug)?.domain ?? null;
 const prices = brand.bags.map((b) => b.price_min).filter((p) => p != null);
+// Every model on this page came from one storefront, so one currency covers
+// the lot. Read off the bags rather than the roster because aggregator-
+// sourced brands are not in the roster at all.
+const cur = brand.bags[0]?.currency ?? 'USD';
 const cats = [...new Set(brand.bags.map((b) => b.category))].map(catLabel);
 
 const title = `${brand.name} bags — every model, specs & prices | ${SITE_NAME}`;
 const description =
   `All ${brand.bags.length} ${brand.name} models in the index` +
-  (prices.length ? `, from ${fmtPrice(Math.min(...prices))}` : '') +
+  (prices.length ? `, from ${fmtPrice(Math.min(...prices), cur)}` : '') +
   `. Volume, weight and dimensions normalised for comparison.`;
 
 const jsonLd = {
@@ -69,7 +73,7 @@ const jsonLd = {
     <p class="note">
       {brand.bags.length} {brand.bags.length === 1 ? 'model' : 'models'}
       {cats.length > 0 && ` · ${cats.join(', ')}`}
-      {prices.length > 0 && ` · ${fmtPrice(Math.min(...prices))}–${fmtPrice(Math.max(...prices))}`}
+      {prices.length > 0 && ` · ${fmtPrice(Math.min(...prices), cur)}–${fmtPrice(Math.max(...prices), cur)}`}
       {domain && (
         <Fragment>
           {' · '}
@@ -80,6 +84,10 @@ const jsonLd = {
       )}
     </p>
 
+    {/* Six columns of figures do not fit a phone at any padding worth having,
+        so the table scrolls inside its own box rather than taking the page
+        sideways with it. */}
+    <div class="xscroll">
     <table class="spectable brandtable">
       <thead>
         <tr><th>Model</th><th>Category</th><th>Volume</th><th>Weight</th><th>H×W×D</th><th>Price</th></tr>
@@ -92,12 +100,13 @@ const jsonLd = {
             <td class={bag.volume_l == null ? 'nil' : ''}>{fmtVolume(bag.volume_l) ?? '—'}</td>
             <td class={bag.weight_g == null ? 'nil' : ''}>{fmtWeight(bag.weight_g) ?? '—'}</td>
             <td class={bag.dims_cm == null ? 'nil' : ''}><Measure value={fmtDims(bag.dims_cm)} /></td>
-            <td>{fmtPrice(bag.price_min)}</td>
+            <td>{fmtPrice(bag.price_min, bag.currency)}</td>
           </tr>
         ))}
       </tbody>
     </table>
+    </div>
 
-    <WatchForm brandSlug={brand.slug} name={`anything from ${brand.name}`} />
+    <WatchForm brandSlug={brand.slug} name={`anything from ${brand.name}`} currency={cur} />
   </div>
 </Base>

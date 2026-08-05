@@ -28,7 +28,7 @@ const description =
               <b>{brand.name}</b>
               <em>
                 {brand.bags.length} {brand.bags.length === 1 ? 'model' : 'models'}
-                {prices.length > 0 && ` · from ${fmtPrice(Math.min(...prices))}`}
+                {prices.length > 0 && ` · from ${fmtPrice(Math.min(...prices), brand.bags[0]?.currency)}`}
               </em>
             </a>
           </li>

@@ -5,7 +5,7 @@ import { fmtPrice, fmtDate } from '../lib/format.js';
    construction — one point per actual move. Drawing it as a step line rather
    than a smooth curve is the honest rendering: the price held flat between
    recorded changes, it did not drift. */
-const { series = [], changes = [], since = null } = Astro.props;
+const { series = [], changes = [], since = null, currency = 'USD' } = Astro.props;
 
 const W = 640;
 const H = 140;
@@ -39,11 +39,11 @@ const ticks = hi === lo ? [hi] : [lo, (lo + hi) / 2, hi];
   {series.length >= 2 ? (
     <>
       <svg viewBox={`0 0 ${W} ${H}`} class="sparkfull" role="img"
-           aria-label={`Price history: ${series.length} recorded changes between ${fmtPrice(lo)} and ${fmtPrice(hi)}`}>
+           aria-label={`Price history: ${series.length} recorded changes between ${fmtPrice(lo, currency)} and ${fmtPrice(hi, currency)}`}>
         {ticks.map((t) => (
           <>
             <line x1={PAD.left} x2={W - PAD.right} y1={y(t)} y2={y(t)} class="gridline" />
-            <text x={PAD.left - 6} y={y(t) + 3} class="axis" text-anchor="end">{fmtPrice(Math.round(t))}</text>
+            <text x={PAD.left - 6} y={y(t) + 3} class="axis" text-anchor="end">{fmtPrice(Math.round(t), currency)}</text>
           </>
         ))}
         <path d={path} class="sparkline" />
@@ -52,7 +52,7 @@ const ticks = hi === lo ? [hi] : [lo, (lo + hi) / 2, hi];
         <text x={W - PAD.right} y={H - 6} class="axis" text-anchor="end">{series.at(-1).date}</text>
       </svg>
       <p class="note">
-        Lowest recorded {fmtPrice(lo)} · highest {fmtPrice(hi)} ·
+        Lowest recorded {fmtPrice(lo, currency)} · highest {fmtPrice(hi, currency)} ·
         {series.length} recorded changes since {fmtDate(since)}.
       </p>
     </>
@@ -74,10 +74,10 @@ const ticks = hi === lo ? [hi] : [lo, (lo + hi) / 2, hi];
           <tr>
             <td>{row.ts.slice(0, 10)}</td>
             <td>{row.color || row.sku || '—'}</td>
-            <td>{fmtPrice(row.prev_price)}</td>
-            <td>{fmtPrice(row.price)}</td>
+            <td>{fmtPrice(row.prev_price, currency)}</td>
+            <td>{fmtPrice(row.price, currency)}</td>
             <td class={row.direction === 'down' ? 'down' : 'up'}>
-              {row.direction === 'down' ? '▼' : '▲'} {fmtPrice(Math.abs(row.delta ?? 0))}
+              {row.direction === 'down' ? '▼' : '▲'} {fmtPrice(Math.abs(row.delta ?? 0), currency)}
             </td>
           </tr>
         ))}

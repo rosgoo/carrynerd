@@ -2,7 +2,12 @@
 /* Price-drop signup. Posts to /api/watch, which writes a *pending* row and
    sends a confirmation email — nothing is ever sent to an address that has not
    completed double opt-in. */
-const { bagId = null, brandSlug = null, name } = Astro.props;
+import { currencySymbol } from '../lib/format.js';
+
+// The threshold is typed in whatever the seller charges in, because that is
+// what the alert compares against — a "$" on a bag priced in pounds invites
+// a number in the wrong currency and then silently never fires.
+const { bagId = null, brandSlug = null, name, currency = 'USD' } = Astro.props;
 ---
 <form class="watch" data-watch>
   {bagId && <input type="hidden" name="bag_id" value={bagId} />}
@@ -16,7 +21,7 @@ const { bagId = null, brandSlug = null, name } = Astro.props;
     <input type="email" name="email" required placeholder="you@example.com"
            autocomplete="email" aria-label="Email address" />
     <input type="number" name="max_price" min="0" step="10"
-           placeholder="under $" aria-label="Only alert below this price" />
+           placeholder={`under ${currencySymbol(currency)}`} aria-label="Only alert below this price" />
     <button class="btn" type="submit">Watch</button>
   </div>
   <p class="watchmsg" role="status" aria-live="polite" hidden></p>

@@ -20,6 +20,10 @@
   --mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo,
           Consolas, "Liberation Mono", monospace;
   --rail: 264px;
+  /* One header row. --head is the height of the whole sticky header, which is
+     what the rail, the toolbar and the sticky table head hang off; on narrow
+     screens the search field takes a second row and the two diverge. */
+  --bar: 52px;
   --head: 52px;
 
   /* The image plate is white in both themes and is deliberately NOT
@@ -108,10 +112,14 @@ html:not([data-units="in"]) .u-in { display: none; }
 /* ---------- header ---------- */
 
 header {
-  position: sticky; top: 0; z-index: 60; height: var(--head);
+  position: sticky; top: 0; z-index: 60; height: var(--bar);
   display: flex; align-items: stretch; gap: 0;
   background: var(--panel); border-bottom: 1px solid var(--line);
 }
+/* The browse header carries the search field, so it is the one that grows to
+   two rows on a phone. Every other page keeps a single --bar row. */
+.browsehead { height: var(--head); }
+header .spacer { flex: 1; }
 
 .brand {
   display: flex; align-items: center; gap: 9px;
@@ -147,9 +155,20 @@ header {
   display: flex; align-items: center; gap: 6px; text-transform: uppercase;
 }
 .hbtn:hover { color: var(--ink); background: var(--raised); }
-.hbtn[aria-pressed="true"] { color: var(--accent-ink); background: var(--accent); }
+.hbtn[aria-pressed="true"],
+.hbtn[aria-expanded="true"] { color: var(--accent-ink); background: var(--accent); }
 
+/* Hamburger. Drawn from borders rather than an SVG or a glyph so it inherits
+   the button's colour, including the inverted colour it takes while open. */
 #railtoggle { display: none; }
+.burger .bars {
+  display: block; position: relative; width: 13px; height: 9px;
+  border-top: 1px solid currentColor; border-bottom: 1px solid currentColor;
+}
+.burger .bars::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 4px;
+  border-top: 1px solid currentColor;
+}
 
 /* ---------- layout ---------- */
 
@@ -163,6 +182,35 @@ header {
 }
 .rail::-webkit-scrollbar { width: 8px; }
 .rail::-webkit-scrollbar-thumb { background: var(--line-2); }
+
+/* Only exists while the rail is a drawer. Sticky rather than fixed so the
+   close control stays reachable however far down the filters you have
+   scrolled — the panel is a full screen of them. */
+.railhead {
+  display: none; position: sticky; top: 0; z-index: 2;
+  align-items: center; justify-content: space-between; height: var(--bar);
+  padding: 0 0 0 14px; background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+.railhead b {
+  font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-dim); font-weight: 600;
+}
+.railclose {
+  align-self: stretch; width: 46px; display: flex;
+  align-items: center; justify-content: center;
+  border-left: 1px solid var(--line); color: var(--ink-dim); font-size: 15px;
+}
+.railclose:hover { color: var(--accent); background: var(--raised); }
+
+/* The header nav, relocated into the panel below the mobile breakpoint. See
+   mountChrome() in browse.js. */
+.rail .hbtns { flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+.rail .hbtns .hbtn {
+  flex: 1 0 auto; height: 42px; justify-content: center;
+  border-left: none; border-right: 1px solid var(--line);
+}
+.rail .hbtns .hbtn:last-child { border-right: none; }
 
 .fgroup { border-bottom: 1px solid var(--line); }
 .fgroup > summary {
@@ -461,7 +509,12 @@ main { flex: 1; min-width: 0; }
 /* ---------- table view ---------- */
 
 .tablewrap { padding: 0 0 120px; overflow-x: auto; }
-table { border-collapse: collapse; width: 100%; font-size: 11.5px; white-space: nowrap; }
+table { border-collapse: collapse; width: 100%; font-size: 11.5px; }
+/* Scoped to the browse table view, which is the only table on the site inside
+   a horizontal scroller. Unscoped, this held the offers, colourway and spec
+   tables on every model page open past the viewport, and since nothing wraps
+   those they took the whole page wider than the screen with them. */
+.tablewrap table { white-space: nowrap; }
 /* Scoped to the browse table view. Unscoped, this stuck the header of every
    table on the site — including the offers and colourway tables on a model
    page, which then floated over their own rows as you scrolled past. */
@@ -526,7 +579,9 @@ td.nil, .nil { color: var(--ink-mute); }
   white-space: nowrap;
 }
 .sheet header .btn, .drawer header .btn { flex-shrink: 0; margin-left: auto; }
-.sheet .inner, .drawer .inner { overflow-y: auto; overscroll-behavior: contain; flex: 1; min-height: 0; }
+/* Both axes: the comparison table grows a column per bag and has to scroll
+   sideways inside the sheet rather than pushing the sheet off screen. */
+.sheet .inner, .drawer .inner { overflow: auto; overscroll-behavior: contain; flex: 1; min-height: 0; }
 
 .drawer {
   position: absolute; top: 0; right: 0; bottom: 0; width: min(460px, 100%);
@@ -576,14 +631,47 @@ td.nil, .nil { color: var(--ink-mute); }
 @media (max-width: 900px) {
   .stats { display: none; }
   #railtoggle { display: flex; }
+  .railhead { display: flex; }
   .rail {
     position: fixed; top: var(--head); left: 0; bottom: 0; z-index: 55;
+    height: auto; overscroll-behavior: contain;
     transform: translateX(-100%); transition: transform .16s ease;
   }
   .rail.on { transform: none; }
+  /* The panel covers the page, so the page behind it must not scroll with it. */
+  body.railopen { overflow: hidden; }
   .sheet { inset: 0; }
-  .tablewrap thead th { top: calc(var(--head) + 41px); }
 }
+
+/* Below this the header cannot hold the wordmark, a usable search field and
+   six controls on one line — the search field is what lost, collapsing to a
+   sliver while the buttons ran off the right edge and took the page's width
+   with them. So the search field takes a row of its own, and the controls move
+   into the filter panel, which goes full width. See mountChrome() in
+   browse.js; the breakpoint there has to agree with this one. */
+@media (max-width: 760px) {
+  :root { --bar: 48px; --head: 96px; }
+
+  header {
+    flex-wrap: wrap; height: auto; min-height: var(--bar);
+    align-content: flex-start;
+  }
+  .brand, .hbtn { height: var(--bar); }
+  /* Nothing sits next to the wordmark any more, so its divider would be a
+     hairline stranded in the middle of an empty row. */
+  .brand { margin-right: auto; border-right: none; }
+  .searchwrap {
+    /* Ordered last so it wraps below the row it shares a header with, rather
+       than pushing the hamburger onto a third row. */
+    order: 9; flex: 0 0 100%; height: var(--bar);
+    border-top: 1px solid var(--line);
+  }
+
+  .browsehead .hbtns { display: none; }
+  .rail { width: 100%; }
+  .rail .hbtns { display: flex; }
+}
+
 @media (max-width: 560px) {
   .grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
   .specs { grid-template-columns: repeat(2, 1fr); }
@@ -601,7 +689,7 @@ a.brand { text-decoration: none; }
 .page {
   max-width: 940px; margin: 0 auto; padding: 0 0 80px;
   border-left: 1px solid var(--line); border-right: 1px solid var(--line);
-  min-height: calc(100vh - var(--head));
+  min-height: calc(100vh - var(--bar));
 }
 .page section { border-top: 1px solid var(--line); padding-bottom: 4px; }
 .page h1 {
@@ -686,6 +774,20 @@ a.brand { text-decoration: none; }
   font-size: 9px; letter-spacing: .09em; text-transform: uppercase;
   color: var(--ink-mute); font-weight: 500; background: var(--panel);
 }
+/* A content table too wide to fold onto a phone scrolls inside its own box.
+   Nothing else on a content page scrolls sideways, so the scrollbar is the
+   only signal that there is more table — hence a visible one. */
+.xscroll { overflow-x: auto; scrollbar-width: thin; }
+.xscroll::-webkit-scrollbar { height: 8px; }
+.xscroll::-webkit-scrollbar-thumb { background: var(--line-2); }
+/* Rows hold their line and the box scrolls. Left to wrap, a 60px-wide column
+   folds "55 × 35 × 23 cm" into four lines and the row stops being readable at
+   all — which is worse than reaching for it. The model name is the exception:
+   it is prose, it is the widest column, and it is what the scroll would have
+   to start from. */
+.xscroll table { white-space: nowrap; }
+.xscroll th:first-child, .xscroll td:first-child { white-space: normal; min-width: 132px; }
+
 .brandtable td:first-child { font-family: inherit; }
 .brandtable a { color: var(--ink); text-decoration: none; font-weight: 550; }
 .brandtable a:hover { color: var(--accent); }
@@ -711,6 +813,12 @@ td.instock { color: var(--ok); }
 .related a, .nojs-index a {
   display: flex; align-items: baseline; gap: 8px; padding: 9px 14px;
   text-decoration: none; font-size: 12.5px;
+  /* The model name is an anonymous flex item, so it cannot be given a
+     min-width and will not shrink below its longest word. On a phone it took
+     the trailing spec line off the right edge of the page with it; wrapping
+     drops that line underneath instead, where margin-left:auto still keeps it
+     right-aligned. */
+  flex-wrap: wrap; overflow-wrap: anywhere;
 }
 .related a:hover, .nojs-index a:hover { background: var(--raised); }
 .related b, .nojs-index b {
@@ -735,6 +843,11 @@ td.instock { color: var(--ok); }
 .watchrow input {
   background: var(--bg); border: 1px solid var(--line); color: var(--ink);
   font: inherit; font-size: 12px; padding: 7px 9px; min-width: 0;
+  /* The header is sticky on every page that carries this form. Tapping a
+     field makes the browser scroll it into view, and without this it comes to
+     rest underneath the header — you end up typing into something you cannot
+     see. */
+  scroll-margin-top: calc(var(--bar) + 10px);
 }
 .watchrow input[type="email"] { flex: 1 1 220px; }
 .watchrow input[type="number"] { width: 96px; font-family: var(--mono); }
@@ -743,9 +856,31 @@ td.instock { color: var(--ok); }
 .watchmsg { padding: 8px 14px 0; font-size: 11px; color: var(--ok); margin: 0; }
 .watchmsg.bad { color: var(--warn); }
 
+/* Three controls will not sit on one phone-width line, and wrapping them left
+   the address and the threshold sharing the first row with the button stranded
+   underneath, left-aligned against nothing. Two deliberate rows instead: the
+   address, which is the field that matters, gets the width; the threshold and
+   the button split the row beneath it.
+   16px is not a size choice — iOS zooms the whole page in when you focus an
+   input smaller than that, and it does not zoom back out afterwards, which is
+   what makes the page look broken rather than merely small. */
+@media (max-width: 560px) {
+  .watchrow { display: grid; grid-template-columns: 1fr auto; align-items: stretch; }
+  .watchrow input { font-size: 16px; }
+  .watchrow input[type="email"] { grid-column: 1 / -1; }
+  .watchrow input[type="number"] { width: auto; }
+  .watchrow .btn { padding: 9px 16px; }
+}
+
+/* A sibling of .inner rather than the last thing inside it, so the drawer's
+   flex column parks it against the bottom edge and it stays on screen however
+   far down the variants you are. Padded past the button's usual 6px because
+   this one is a full-width bar and, on a phone, the last reachable thing
+   before the browser chrome. */
 .detfull {
-  display: block; margin: 0; text-align: center; text-decoration: none;
-  border: none; border-top: 1px solid var(--line); padding: 11px;
+  display: block; flex-shrink: 0; margin: 0; text-align: center;
+  text-decoration: none; border: none; border-top: 1px solid var(--line);
+  padding: 13px 11px;
 }
 
 /* ---------- confirmation pages ---------- */
@@ -822,3 +957,100 @@ td.name a:hover { color: var(--accent); text-decoration: underline; }
    colour would make it louder than the name it sits above. */
 a.cbrand { color: var(--ink-mute); text-decoration: none; }
 a.cbrand:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+
+/* ---------- newly on sale ----------
+   A band above the shell, spanning the rail and the grid. It borrows the
+   card's hairline-and-panel construction rather than introducing a second
+   visual language, but lays out as one horizontally scrolling row: the strip
+   is a headline, and a wrapping grid of drops would compete with the results
+   it sits above instead of introducing them. */
+.salestrip {
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.salehead {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  padding: 11px 16px 0;
+}
+.salehead h2 {
+  font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--accent); font-weight: 600;
+}
+/* .note is a block with its own padding on the content pages; here it is a
+   trailing clause on the heading line. */
+.salehead .note { padding: 0; border: none; margin: 0; font-size: 11px; }
+
+.salerow {
+  display: flex; gap: 10px; list-style: none; margin: 0;
+  padding: 10px 16px 14px;
+  overflow-x: auto; scrollbar-width: thin;
+  /* Cards stop at the padding edge rather than butting against the viewport,
+     which is what makes a horizontal scroll read as scrollable. */
+  scroll-snap-type: x proximity;
+}
+.salerow::-webkit-scrollbar { height: 8px; }
+.salerow::-webkit-scrollbar-thumb { background: var(--line-2); }
+
+.salecard {
+  flex: 0 0 148px; scroll-snap-align: start;
+  border: 1px solid var(--line); background: var(--bg);
+  transition: border-color .12s;
+}
+.salecard:hover { border-color: var(--accent); }
+.salecard > a {
+  display: flex; flex-direction: column; gap: 3px;
+  text-decoration: none; color: inherit; padding-bottom: 8px;
+}
+
+.saleshot {
+  position: relative; aspect-ratio: 1; background: var(--shot-bg);
+  display: flex; align-items: center; justify-content: center;
+  border-bottom: 1px solid var(--line); margin-bottom: 5px;
+}
+.saleshot img {
+  max-width: 100%; max-height: 100%; padding: 10px;
+  object-fit: contain;
+}
+.saleshot .none {
+  color: var(--shot-ink); font-size: 8px; letter-spacing: .1em;
+}
+
+/* The number that earns the strip its place at the top of the page. */
+.saleoff {
+  position: absolute; left: 0; bottom: 0;
+  background: var(--accent); color: var(--accent-ink);
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  padding: 1px 5px; font-variant-numeric: tabular-nums;
+}
+
+.salebrand {
+  padding: 0 8px; font-size: 9px; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--ink-mute);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.salename {
+  padding: 0 8px; font-size: 11.5px; line-height: 1.25; color: var(--ink);
+  /* Two lines then ellipsis: model names run long and a ragged strip of
+     different-height cards reads as broken rather than as variety. */
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.salecard:hover .salename { text-decoration: underline; text-underline-offset: 2px; }
+
+.saleprice {
+  padding: 2px 8px 0; display: flex; align-items: baseline; gap: 6px;
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+}
+.saleprice strong { font-size: 13px; font-weight: 600; color: var(--accent); }
+.saleprice s { font-size: 10px; color: var(--ink-mute); }
+
+.salecard .tag {
+  margin: 3px 8px 0; align-self: flex-start;
+  border-color: var(--ok); color: var(--ok);
+}
+
+@media (max-width: 560px) {
+  .salecard { flex-basis: 132px; }
+  .salehead .note { display: none; }
+}

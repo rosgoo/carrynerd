@@ -92,7 +92,12 @@ const fmtWeight = b => b.weight_g ? (b.weight_g >= 1000
   : `${b.weight_g}<em style="font-size:8px">g</em>`) : null;
 const fmtDims   = b => dualDims(b.dims_cm);
 const fmtLap    = b => b.laptop_in ? `${b.laptop_in}″` : null;
-const fmtPrice  = n => n == null ? "—" : "$" + (Number.isInteger(n) ? n : n.toFixed(2));
+/* Prices are never converted, so every one has to carry its own symbol.
+   normalize.py stamps each bag with the currency its storefront quotes; a
+   bare "$" here is what published Bedouin Foundry's pounds as dollars. */
+const CUR_SYMBOLS = { USD: "$", GBP: "£", EUR: "€", CAD: "CA$", AUD: "AU$", JPY: "¥" };
+const cur = c => CUR_SYMBOLS[(c || "USD").toUpperCase()] ?? `${(c || "").toUpperCase()} `;
+const fmtPrice  = (n, c) => n == null ? "—" : cur(c) + (Number.isInteger(n) ? n : n.toFixed(2));
 const gpl = b => (b.weight_g && b.volume_l) ? b.weight_g / b.volume_l : null;
 const ppl = b => (b.price_min && b.volume_l) ? b.price_min / b.volume_l : null;
 
@@ -230,8 +235,8 @@ function card(b) {
       ${cell("H×W×D", fmtDims(b))}${cell("Laptop", fmtLap(b))}
     </div>
     <div class="cfoot">
-      <div class="price">${fmtPrice(b.price_min)}${
-        b.price_max && b.price_max !== b.price_min ? `<s>–${fmtPrice(b.price_max)}</s>` : ""}</div>
+      <div class="price">${fmtPrice(b.price_min, b.currency)}${
+        b.price_max && b.price_max !== b.price_min ? `<s>–${fmtPrice(b.price_max, b.currency)}</s>` : ""}</div>
       <div class="dots">${swatches}${extra}</div>
       <button class="cmp" data-cmp aria-pressed="${on}" title="Add to comparison">${on ? "✓" : "+"}</button>
     </div>
@@ -260,7 +265,7 @@ function tableShell() {
   const head = ["Brand", "Model", "Category", "Vol L", "Weight g",
                 `H×W×D ${dual("cm", "in")}`,
                 `Linear ${dual("cm", "in")}`,
-                "Laptop", "Price", "g/L", "$/L", "Colours"];
+                "Laptop", "Price", "g/L", "Price/L", "Colours"];
   return `<div class="tablewrap"><table>
     <thead><tr>${head.map(h => `<th>${h}</th>`).join("")}</tr></thead>
     <tbody></tbody></table></div>`;
@@ -277,7 +282,7 @@ function row(b) {
     ${td(dualDims(b.dims_cm))}
     ${td(dualLen(b.linear_cm))}
     ${td(b.laptop_in ? b.laptop_in + "″" : null)}
-    ${td(b.price_min ? fmtPrice(b.price_min) : null)}
+    ${td(b.price_min ? fmtPrice(b.price_min, b.currency) : null)}
     ${td(gpl(b) ? gpl(b).toFixed(0) : null)}
     ${td(ppl(b) ? ppl(b).toFixed(1) : null)}
     ${td((b.colors || []).length || null)}
@@ -570,13 +575,13 @@ function renderCompare() {
   const rows = [
     ["Brand",      b => esc(b.brand), null],
     ["Category",   b => esc(CAT_LABELS[b.category] || b.category), null],
-    ["Price",      b => fmtPrice(b.price_min), b => b.price_min, "min"],
+    ["Price",      b => fmtPrice(b.price_min, b.currency), b => b.price_min, "min"],
     ["Volume",     b => b.volume_l ? b.volume_l + " L" : null, b => b.volume_l, "max"],
     ["Weight",     b => b.weight_g ? b.weight_g + " g" : null, b => b.weight_g, "min"],
     ["Dimensions", b => dualDims(b.dims_cm, { sep: " × ", suffix: true }), null],
     ["Linear",     b => dualLen(b.linear_cm, true), b => b.linear_cm, "min"],
     ["Grams / L",  b => gpl(b) ? gpl(b).toFixed(0) : null, b => gpl(b), "min"],
-    ["Price / L",  b => ppl(b) ? "$" + ppl(b).toFixed(1) : null, b => ppl(b), "min"],
+    ["Price / L",  b => ppl(b) ? cur(b.currency) + ppl(b).toFixed(1) : null, b => ppl(b), "min"],
     ["Laptop",     b => b.laptop_in ? b.laptop_in + "″" : null, null],
     ["Colourways", b => (b.colors || []).length || null, null],
     ["SKUs",       b => b.variant_count || null, null],
@@ -650,9 +655,9 @@ function openDetail(id) {
               plate(v.image_bg)}>` : ""}${
         esc(v.color || v.title || "—")}</td>
       <td>${esc(v.sku || "—")}</td>
-      <td>${v.price ? fmtPrice(v.price) : "—"}${
+      <td>${v.price ? fmtPrice(v.price, b.currency) : "—"}${
         v.compare_at && v.price && v.compare_at > v.price
-          ? ` <s style="color:var(--ink-mute)">${fmtPrice(v.compare_at)}</s>` : ""}</td>
+          ? ` <s style="color:var(--ink-mute)">${fmtPrice(v.compare_at, b.currency)}</s>` : ""}</td>
       <td style="color:${v.available ? "var(--ok)" : "var(--ink-mute)"}">${
         v.available ? "in stock" : "out"}</td>
     </tr>`).join("");
@@ -663,8 +668,8 @@ function openDetail(id) {
       <img src="${esc(thumb(b.image, THUMB.hero))}" alt="${esc(b.name)}"></div>` : ""}
     ${row("Brand", `<a href="/brands/${esc(b.brand_slug)}/">${esc(b.brand)} →</a>`)}
     ${row("Category", esc(CAT_LABELS[b.category] || b.category))}
-    ${row("Price", b.price_min === b.price_max ? fmtPrice(b.price_min)
-        : `${fmtPrice(b.price_min)} – ${fmtPrice(b.price_max)}`)}
+    ${row("Price", b.price_min === b.price_max ? fmtPrice(b.price_min, b.currency)
+        : `${fmtPrice(b.price_min, b.currency)} – ${fmtPrice(b.price_max, b.currency)}`)}
     ${row("Volume", b.volume_l ? b.volume_l + " L" : null, b.volume_source)}
     ${row("Dimensions", dualDims(b.dims_cm, { sep: " × ", digits: 1, suffix: true }), b.dims_source)}
     ${row("Linear", dualLen(b.linear_cm, true))}
@@ -687,8 +692,10 @@ function openDetail(id) {
          data-buy-model="${esc(b.name)}"
          data-buy-price="${esc(b.price_min ?? "")}">Open on ${esc(b.brand)} ↗</a>
     </div>
-    ${watchForm(b)}
-    <a class="btn detfull" href="${esc(bagHref(b))}">Full specs &amp; price history →</a>`;
+    ${watchForm(b)}`;
+  // Lives in the drawer's own markup, pinned below the scrolling body — see
+  // index.astro. Only the destination changes per bag.
+  $("#detfull").href = bagHref(b);
   $("#detoverlay").classList.add("on");
   // The drawer is the other place a bag gets looked at and bought from, and the
   // only one that never loads a model page. Without this the clicks it produces
@@ -833,6 +840,54 @@ function syncUnits() {
     : String(Math.round(inches() ? toIn(S.linearMax) : S.linearMax));
 }
 
+/* ---------- responsive chrome ---------- */
+
+// Everything here is layout, not data, so it is mounted before the catalog is
+// fetched: a failed fetch leaves a degraded page, and a degraded page still
+// has to have a reachable theme toggle and a search field you can see.
+//
+// The breakpoint has to agree with the one in app.css, which hides the header
+// copy of the nav at the same width this moves it into the panel.
+const NARROW = matchMedia("(max-width: 760px)");
+
+function mountChrome() {
+  const rail = $("#rail");
+  const nav = $("#hbtns");
+  const toggle = $("#railtoggle");
+  // Captured before the first move, while the nav is still where the markup
+  // put it.
+  const bar = nav.parentElement;
+
+  const placeNav = () => {
+    const home = NARROW.matches ? rail : bar;
+    if (nav.parentElement === home) return;
+    // Under the panel's own heading, above the filter groups.
+    if (home === rail) rail.insertBefore(nav, rail.firstElementChild.nextSibling);
+    else bar.insertBefore(nav, toggle);
+  };
+
+  const setRail = on => {
+    rail.classList.toggle("on", on);
+    toggle.setAttribute("aria-expanded", String(on));
+    document.body.classList.toggle("railopen", on);
+  };
+
+  placeNav();
+  NARROW.addEventListener("change", () => {
+    placeNav();
+    // Crossing the breakpoint restyles the panel underneath the reader. Closing
+    // it is the only state that reads the same on both sides of the line, and
+    // it is what keeps the body scroll lock from being stranded.
+    setRail(false);
+  });
+
+  toggle.addEventListener("click", () => setRail(!rail.classList.contains("on")));
+  $("#railclose").addEventListener("click", () => setRail(false));
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") setRail(false);
+  });
+}
+
 /* ---------- events ---------- */
 
 function wire() {
@@ -948,7 +1003,7 @@ function wire() {
     ids.forEach(syncSelection);
   });
 
-  $("#railtoggle").addEventListener("click", () => $("#rail").classList.toggle("on"));
+  // The rail toggle is wired in mountChrome(), with the rest of the chrome.
 
   // The theme toggle lives in the layout now — every page has one, so wiring it
   // here as well would bind it twice and cancel itself out.
@@ -964,6 +1019,7 @@ function wire() {
 /* ---------- boot ---------- */
 
 (async function init() {
+  mountChrome();
   try {
     const res = await fetch("/bags.json", { cache: "no-cache" });
     if (!res.ok) throw new Error(res.status);

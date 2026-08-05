@@ -2,13 +2,30 @@
    its own compact variants because it renders into a dense grid; these are the
    long-form ones for a page that has room to breathe. */
 
-export const fmtPrice = (n) =>
-  n == null ? '—' : '$' + (Number.isInteger(n) ? n : n.toFixed(2));
+/* Prices carry their currency because they are never converted.
+ *
+ * A handful of brands sell from storefronts that quote something other than
+ * dollars, and normalize.py stamps each bag with which. Rendering those as "$"
+ * was the bug that put Bedouin Foundry's £340 bags in the index as $340 — the
+ * number was right and the symbol made it a lie.
+ *
+ * The symbol, not the ISO code, for the currencies a reader recognises on
+ * sight; the code for everything else, because "kr" is Danish, Norwegian and
+ * Swedish at once and an ambiguous symbol is worse than a plain one. */
+const SYMBOLS = { USD: '$', GBP: '£', EUR: '€', CAD: 'CA$', AUD: 'AU$', JPY: '¥' };
 
-export const fmtPriceRange = (min, max) =>
+export const currencySymbol = (code) =>
+  SYMBOLS[(code || 'USD').toUpperCase()] ?? `${(code || '').toUpperCase()} `;
+
+export const fmtPrice = (n, currency = 'USD') =>
+  n == null
+    ? '—'
+    : currencySymbol(currency) + (Number.isInteger(n) ? n : n.toFixed(2));
+
+export const fmtPriceRange = (min, max, currency = 'USD') =>
   min == null ? '—'
-  : max == null || max === min ? fmtPrice(min)
-  : `${fmtPrice(min)} – ${fmtPrice(max)}`;
+  : max == null || max === min ? fmtPrice(min, currency)
+  : `${fmtPrice(min, currency)} – ${fmtPrice(max, currency)}`;
 
 export const fmtWeight = (g) =>
   g == null ? null : g >= 1000 ? `${(g / 1000).toFixed(2)} kg` : `${g} g`;
