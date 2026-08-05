@@ -78,7 +78,7 @@ const jsonLd = {
     ? {
         offers: {
           '@type': 'AggregateOffer',
-          priceCurrency: 'USD',
+          priceCurrency: bag.currency ?? 'USD',
           lowPrice: bag.price_min,
           highPrice: bag.price_max ?? bag.price_min,
           offerCount: bag.variant_count ?? 1,
@@ -119,7 +119,7 @@ const description =
     see isIndexable in lib/catalog.js. noindex,follow, not nofollow: the page
     is ordinary, linked and crawlable, it simply is not a landing page yet. */}
 <Base title={title} description={description} image={bag.image}
-      noindex={!isIndexable(bag)} nofollow={false}>
+      ogType="product" noindex={!isIndexable(bag)} nofollow={false}>
   <Fragment slot="head">
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
     <script type="application/ld+json" set:html={JSON.stringify(breadcrumbs)} />

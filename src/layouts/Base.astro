@@ -8,6 +8,7 @@ const {
   title,
   description = 'A searchable, comparable index of bags normalised across brands from public product feeds.',
   image = null,
+  ogType = 'website',
   noindex = false,
   // Separate from noindex, because the two cases want different things.
   // /internal/ is a working list that should be neither indexed nor crawled
@@ -30,7 +31,8 @@ const robots = noindex ? `noindex,${nofollow ? 'nofollow' : 'follow'}` : null;
 <link rel="canonical" href={canonical} />
 {robots && <meta name="robots" content={robots} />}
 
-<meta property="og:type" content="website" />
+<meta property="og:type" content={ogType} />
+<meta property="og:site_name" content={SITE_NAME_DISPLAY} />
 <meta property="og:title" content={title} />
 <meta property="og:description" content={description} />
 <meta property="og:url" content={canonical} />
