@@ -31,6 +31,7 @@ is a hand-off, not an artifact, and the workflow throws it away afterwards.
 """
 
 import argparse
+import collections
 import json
 import os
 from datetime import datetime, timezone
@@ -51,12 +52,35 @@ def load_json(path, default):
         return default
 
 
-def variant_key(bag, variant, index):
-    """SKU when the brand supplies one, otherwise a stable positional key."""
-    if variant.get("sku"):
-        return f"{bag['id']}::{variant['sku']}"
+def variant_key(bag, variant, index, ambiguous=()):
+    """SKU when the brand supplies one, otherwise a stable positional key.
+
+    A SKU earns the job only if it names one variant. Some storefronts ship a
+    placeholder instead: Cotopaxi's Allpa 28L lists every colourway under
+    `A28-CHOICE` at two prices, 190 and 205. Keyed on that, several variants
+    collapse onto one row of state, whichever was walked last wins, and the
+    recorded price alternates between them on every single run — an endless
+    up/down that the site published as a standing 7% sale nobody was running.
+    Twenty-three of the twenty-four bags with a colliding SKU were on the strip,
+    out of 7,653.
+
+    So a repeated SKU is not a SKU. Those variants fall back to position, which
+    is what the ones with no SKU at all already use. `ambiguous` is passed in
+    rather than derived here because it is a property of the whole variant list,
+    and recomputing it per variant would make this quadratic on a 119-variant
+    model.
+    """
+    sku = variant.get("sku")
+    if sku and sku not in ambiguous:
+        return f"{bag['id']}::{sku}"
     label = variant.get("color") or variant.get("title") or str(index)
     return f"{bag['id']}::#{index}:{label}"
+
+
+def ambiguous_skus(variants):
+    """SKUs that appear on more than one variant, and so identify none of them."""
+    counts = collections.Counter(v.get("sku") for v in variants if v.get("sku"))
+    return {sku for sku, n in counts.items() if n > 1}
 
 
 def main():
@@ -123,8 +147,9 @@ def main():
         # nothing had labelled. Currency catches a relabel, market catches a
         # move between storefronts, and the pair catches both.
         basis = f"{bag.get('currency') or 'USD'}@{bag.get('price_market') or 'default'}"
+        ambiguous = ambiguous_skus(bag.get("variants") or [])
         for i, variant in enumerate(bag.get("variants") or []):
-            key = variant_key(bag, variant, i)
+            key = variant_key(bag, variant, i, ambiguous)
             current = {
                 "price": variant.get("price"),
                 "compare_at": variant.get("compare_at"),
@@ -227,8 +252,9 @@ def main():
     annotated = 0
     for bag in bags:
         prices, lows, changed, direction, prev = [], [], None, None, None
+        ambiguous = ambiguous_skus(bag.get("variants") or [])
         for i, variant in enumerate(bag.get("variants") or []):
-            entry = state.get(variant_key(bag, variant, i))
+            entry = state.get(variant_key(bag, variant, i, ambiguous))
             if not entry:
                 continue
             if entry.get("price"):
