@@ -1,4 +1,4 @@
-# gearherd
+# carrynerd
 
 A searchable, comparable index of bags — normalised across brands from public
 product feeds.
@@ -124,7 +124,7 @@ Set a real contact URL before running at any scale — it goes in the
 User-Agent so store operators can reach you:
 
 ```bash
-export GEARHERD_CONTACT="https://yoursite.com/bot"
+export CARRYNERD_CONTACT="https://yoursite.com/bot"
 ```
 
 ### Crawl history
@@ -142,7 +142,7 @@ reports any brand sitting below its own 21-night median. It reports and never
 blocks — a slow signal that can turn a build red is one that gets muted.
 
 ```bash
-python3 scripts/crawl_history.py --repo ../gearherd-data   # local checkout
+python3 scripts/crawl_history.py --repo ../carrynerd-data   # local checkout
 python3 scripts/crawl_history.py --out crawl-history.db    # clones DATA_REPO
 ```
 
@@ -215,15 +215,25 @@ for that. So:
 
 - **A real HTML page per model** at `/bags/<brand>/<model>/` — spec table with
   provenance on every value, colourways with their own SKUs, price history, and
-  schema.org `Product` markup. (Ironic, but gearherd is the site actually filling
+  schema.org `Product` markup. (Ironic, but carrynerd is the site actually filling
   in `width`/`height`/`depth`, which is why nobody's `Product` block is worth
   reading.)
 - **Brand pages** at `/brands/<brand>/`, and a sitemap, so every model page has
   a crawl path that does not depend on running JavaScript.
-- **The browse UI is a client-side island** loading `/bags.json` — the same
-  faceted filtering, grid/table views, six-way comparison and detail drawer as
-  before. At a few hundred models, or 5,000, filtering one JSON file in the
-  browser is fine. Shard it per category when it passes a few MB.
+- **The browse UI is a client-side island** with faceted filtering, grid/table
+  views, six-way comparison and a detail drawer — but the filtering itself runs
+  on the server, at `GET /api/browse`. The island holds the state, serialises it
+  into the same query string the address bar shows, and paints a page of results
+  at a time; matching, sorting, the facet counts and the totals are all computed
+  where the catalogue lives. `?boot=1` returns the rail, the slider bounds and
+  the coverage meter alongside the first page, so a shared filtered link costs
+  one request. `GET /api/catalog?ids=…` remains as the by-id lookup.
+  The reason is that no single URL may return the whole catalogue: the enriched
+  specs are the work, and a page cap (60 by default, 100 hard) means acquiring
+  them takes ~135 enumerated requests instead of one download — which is
+  something a WAF rate limit can see and throttle. The cost is a round trip per
+  filter change, paid deliberately, and softened by an hour of `s-maxage` on
+  every answer.
 - The homepage server-renders a plain list of every model underneath the
   island, so a crawler with no JS still finds all of them.
 
@@ -316,5 +326,9 @@ brands that have no affiliate programme.
   (address, criteria) and a 15-minute floor on resending a confirmation. That
   bounds the damage but does not stop a determined sender from burning the
   Resend quota.
+- `/api/catalog` caps a request at 100 ids, which makes copying the catalogue a
+  crawl rather than a download — but nothing in the code counts requests across
+  time. Rate limiting and BotID are configured in the Vercel dashboard, not
+  here, and until they are set up the cap is the only thing standing in the way.
 - No airline carry-on matrix yet. The `linear_cm` field and the two size
   presets are the groundwork for it.

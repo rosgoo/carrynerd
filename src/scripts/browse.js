@@ -1,16 +1,30 @@
-/* gearherd — the browse/compare island.
+/* carrynerd — the browse/compare island.
  *
- * Loads the whole catalog once and filters in memory. That is deliberate: at a
- * few thousand models it beats a round trip per keystroke, and it means the
- * catalog needs no runtime service behind it. The per-model pages are static
- * HTML generated at build time; this is the one interactive surface.
+ * Filtering happens at /api/browse and this file draws the answer. That is a
+ * deliberate reversal of how it worked: the island used to hold an index of the
+ * whole catalog and match against it in memory, which costs nothing per
+ * keystroke and also publishes every spec the crawl has assembled to anyone who
+ * opens a network tab once. The catalog is the work. A round trip per filter
+ * change is what it costs not to hand it over in a single file.
  *
- * Filtering in memory scales; *drawing* the answer does not, and at 7,700
- * models the two had to be separated. Matching is one pass over an array and
- * costs a few milliseconds. Rendering paints a screenful and lets an
- * IntersectionObserver ask for the rest — see render() and paintChunk(), and
- * `content-visibility` on .card in app.css, which is the half of that bargain
- * the stylesheet holds.
+ * So state lives here, matching lives there, and the two meet in a query
+ * string — the same one in the address bar, so a shareable link and a request
+ * are spelled the same way. stateParams() is the only place that mapping is
+ * written down.
+ *
+ * A response carries one page of sixty bags, whole: the specs a card prints,
+ * the photography, the storefront link and the per-variant rows. There is no
+ * second fetch to fill a card in behind the reader any more — the page cap is
+ * what keeps the expensive columns from leaving in bulk, and it does that job
+ * whether or not they travel with the specs.
+ *
+ * Drawing the answer is still the expensive half, so it is still bounded by the
+ * viewport: a render paints a page and an IntersectionObserver asks for the
+ * next one as the sentinel comes into reach. Cards that scroll out of view stay
+ * in the DOM rather than being recycled — `content-visibility` on .card in
+ * app.css is what stops them costing layout — because the alternative loses
+ * find-in-page, native scroll restoration and the link targets that make a card
+ * a card. This is progressive rendering, not virtualisation.
  */
 
 import { CAT_LABELS, FEATURE_LABELS, COLOUR_LABELS, COLOUR_SWATCH,
@@ -41,14 +55,24 @@ const facetSets = () => ({
   cat: S.cats, brand: S.brands, feat: S.feats, mat: S.mats, color: S.colors,
 });
 
-let DATA = { meta: {}, bags: [] };
+// Same reasoning, for the numeric half of the state: the URL writer, the URL
+// reader and the query builder all walk this list rather than each keeping
+// their own copy of it.
+const RANGE_KEYS = ["volMin", "volMax", "priceMin", "priceMax",
+                    "weightMin", "weightMax", "linearMax"];
+
 let VIEW = "grid";
 const compare = new Set();
 
-// id → bag. The tray, the comparison sheet and the drawer all resolve ids back
-// to records, and a linear scan of 7,700 for each one adds up on a page where
-// the whole point is that nothing scans the catalog more than it must.
+// id → bag, for every bag this session has been sent. A page of results is the
+// only door a record comes in through, so the tray, the comparison sheet and
+// the drawer can all resolve an id here rather than asking again for something
+// already on screen.
 let BY_ID = new Map();
+
+// The catalog's own numbers, from the boot response: the denominator in the
+// count line, and the strip in the header.
+let STATS = {};
 
 const S = {
   q: "", cats: new Set(), brands: new Set(), feats: new Set(), mats: new Set(),
@@ -101,86 +125,57 @@ const fmtPrice  = (n, c) => n == null ? "—" : cur(c) + (Number.isInteger(n) ? 
 const gpl = b => (b.weight_g && b.volume_l) ? b.weight_g / b.volume_l : null;
 const ppl = b => (b.price_min && b.volume_l) ? b.price_min / b.volume_l : null;
 
-/* ---------- filtering ---------- */
+/* ---------- asking the server ---------- */
 
-function haystack(b) {
-  if (!b._hay) {
-    b._hay = [b.brand, b.name, b.category, ...(b.materials || []),
-              ...(b.features || []), ...(b.colors || []), ...(b.tags || [])]
-             .join(" ").toLowerCase();
-  }
-  return b._hay;
-}
-
-function fitsUnderseat(b) {
-  if (!b.dims_cm || b.dims_cm.length < 3) return false;
-  const d = [...b.dims_cm].sort((x, y) => y - x);
-  return d[0] <= 40 && d[1] <= 30 && d[2] <= 20;
-}
-
-/* Derived once per render and read by matches(), which runs once per bag.
+/* Matching used to be a function here — haystack(), matches(), a table of
+ * comparators — and it is now a port of the same code in pages/api/browse.ts.
+ * The rules did not change: AND across the search terms, every-of on features,
+ * any-of on materials and colours, and a range that refuses to be satisfied by
+ * an unknown value. If a filter ever starts answering differently from the way
+ * this file documents it, that file is where the answer is decided.
  *
- * Splitting the query string and spreading three Sets *inside* matches() meant
- * doing all four thousands of times over for an answer that cannot change
- * during the pass — at 7,700 bags that is the allocation, not the comparing,
- * that made a keystroke cost what it did. prepareFilters() is the only writer
- * and render() is the only caller. */
-let QTERMS = [], FEATS = [], MATS = [], COLORS = [];
+ * What is left here is the asking, and the asking has to survive being
+ * interrupted. A reader typing into the search box and then clicking a facet
+ * has two answers coming, and only the second is about the page in front of
+ * them. So every state change takes a number: it aborts what the previous state
+ * left open and refuses to paint any response that lands under an older one.
+ * Both halves are needed — abort does not reach a response already sitting in
+ * the promise queue. */
+let gen = 0;        // the current state, as a number
+let ctrl = null;    // aborts what the state before it left in flight
+let loading = false;
 
-function prepareFilters() {
-  QTERMS = S.q ? S.q.toLowerCase().split(/\s+/).filter(Boolean) : [];
-  FEATS = [...S.feats];
-  MATS = [...S.mats];
-  COLORS = [...S.colors];
-}
+/* Aborting a fetch rejects a promise inside the Response that nothing here can
+ * reach — Chrome does it even when the body has already been read — so a
+ * cancelled request prints an uncaught AbortError however carefully the call
+ * site catches its own. Swallowed by name and by name only: an abort is this
+ * file doing its job, and the console has to stay somewhere a real error is
+ * visible. Nothing else on the page aborts anything. */
+addEventListener("unhandledrejection", e => {
+  if (e.reason?.name === "AbortError") e.preventDefault();
+});
 
-function matches(b) {
-  if (QTERMS.length) {
-    const hay = haystack(b);
-    for (const t of QTERMS) if (!hay.includes(t)) return false;
-  }
-  if (S.cats.size && !S.cats.has(b.category)) return false;
-  if (S.brands.size && !S.brands.has(b.brand_slug)) return false;
-  if (FEATS.length && !FEATS.every(f => (b.features || []).includes(f))) return false;
-  if (MATS.length && !MATS.some(m => (b.materials || []).includes(m))) return false;
-  // Any-of, like materials: picking black and green means "comes in either".
-  if (COLORS.length
-      && !COLORS.some(c => (b.color_families || []).includes(c))) return false;
-  // Feature and material lists are only trustworthy once enrichment has read
-  // the product page. Before that an empty list means "we never got a good
-  // look", not "it doesn't have one" — see featuresUnknown() and the count.
-  if (S.stock && !b.in_stock) return false;
-  if (S.sale && !b.on_sale) return false;
+/* One page. Agrees with the default in pages/api/browse.ts, which caps a
+ * request at 100 — the cap is what makes acquiring the catalog a crawl rather
+ * than a download, so the number to leave alone is that one, not this. */
+const PER = 60;
 
-  // Range filters exclude unknowns: a bag with no measured volume cannot be
-  // asserted to sit inside a volume window.
-  if (S.volMin != null && !(b.volume_l >= S.volMin)) return false;
-  if (S.volMax != null && !(b.volume_l <= S.volMax)) return false;
-  if (S.priceMin != null && !(b.price_min >= S.priceMin)) return false;
-  if (S.priceMax != null && !(b.price_min <= S.priceMax)) return false;
-  if (S.weightMin != null && !(b.weight_g >= S.weightMin)) return false;
-  if (S.weightMax != null && !(b.weight_g <= S.weightMax)) return false;
-  if (S.linearMax != null && !(b.linear_cm <= S.linearMax)) return false;
-  if (S.presets.has("carryon") && !(b.linear_cm && b.linear_cm <= 115)) return false;
-  if (S.presets.has("underseat") && !fitsUnderseat(b)) return false;
-  return true;
-}
+let PAGE = 0;       // the last page painted
+let TOTAL = 0;      // how many bags match in total, not how many are drawn
 
-const SORTS = {
-  brand: (a, b) => a.brand.localeCompare(b.brand) || a.name.localeCompare(b.name),
-  "price-asc":  (a, b) => nullsLast(a.price_min, b.price_min, 1),
-  "price-desc": (a, b) => nullsLast(a.price_min, b.price_min, -1),
-  "vol-asc":    (a, b) => nullsLast(a.volume_l, b.volume_l, 1),
-  "vol-desc":   (a, b) => nullsLast(a.volume_l, b.volume_l, -1),
-  "weight-asc": (a, b) => nullsLast(a.weight_g, b.weight_g, 1),
-  gpl: (a, b) => nullsLast(gpl(a), gpl(b), 1),
-  ppl: (a, b) => nullsLast(ppl(a), ppl(b), 1),
-};
-function nullsLast(x, y, dir) {
-  if (x == null && y == null) return 0;
-  if (x == null) return 1;
-  if (y == null) return -1;
-  return (x - y) * dir;
+async function ask(page, boot = false) {
+  const p = stateParams();
+  p.set("page", page);
+  p.set("per", PER);
+  if (boot) p.set("boot", "1");
+  const res = await fetch(`/api/browse?${p}`, { signal: ctrl?.signal });
+  if (!res.ok) throw new Error(res.status);
+  const data = await res.json();
+  // The one door a record comes in through. Everything downstream — the drawer,
+  // the tray, the comparison sheet — reads bags out of here rather than asking
+  // for one it has already been given.
+  for (const b of data.bags) BY_ID.set(b.id, b);
+  return data;
 }
 
 /* ---------- rendering ---------- */
@@ -188,6 +183,8 @@ function nullsLast(x, y, dir) {
 // Filtering for brown and being shown the black colourway is a small lie.
 // When a colour filter is on, the card leads with a variant that actually
 // matches it — the feed ships per-colourway photography, so this costs nothing.
+// A bag with no photograph anywhere returns the empty shot and the card draws
+// its placeholder, which is a state the markup already has.
 function shotFor(b) {
   if (!S.colors.size) return { src: b.image, bg: b.image_bg, label: null };
   const hit = (b.variants || []).find(
@@ -205,19 +202,14 @@ function plate(bg) {
   return bg ? ` style="--shot-bg:${esc(bg)}"` : "";
 }
 
-function card(b) {
-  const on = compare.has(b.id);
+/* The whole plate, not just the <img>: the photograph, the colour it was shot
+ * on and the colourway caption are one decision — see shotFor() — and drawing
+ * them from three places would be three chances for them to disagree. */
+function shotBlock(b) {
   const shot = shotFor(b);
-  const swatches = (b.colors || []).slice(0, 5)
-    .map(c => `<i class="dot" title="${esc(c)}" style="background:${cssColor(c)}"></i>`).join("");
-  const extra = (b.colors || []).length > 5 ? `<em>+${b.colors.length - 5}</em>` : "";
   const sale = b.on_sale ? '<div class="flag sale">Sale</div>' : "";
   const oos = !b.in_stock ? '<div class="flag oos">Out</div>' : "";
-  const cell = (label, val) =>
-    `<div class="spec"><em>${label}</em>${val ? `<b>${val}</b>` : nil}</div>`;
-
-  return `<article class="card${on ? " sel" : ""}" data-id="${esc(b.id)}">
-    <div class="shot" data-detail${plate(shot.bg)}>
+  return `<div class="shot" data-detail${plate(shot.bg)}>
       ${shot.src ? `<img loading="lazy" decoding="async" src="${
           esc(thumb(shot.src, THUMB.card))}" alt="${esc(b.name)}${
           shot.label ? ` in ${esc(shot.label)}` : ""}">`
@@ -225,7 +217,19 @@ function card(b) {
       ${shot.label ? `<div class="wayname">${esc(shot.label)}</div>` : ""}
       <div class="cat">${esc(CAT_LABELS[b.category] || b.category)}</div>
       <div class="flags">${sale}${oos}</div>
-    </div>
+    </div>`;
+}
+
+function card(b) {
+  const on = compare.has(b.id);
+  const swatches = (b.colors || []).slice(0, 5)
+    .map(c => `<i class="dot" title="${esc(c)}" style="background:${cssColor(c)}"></i>`).join("");
+  const extra = (b.colors || []).length > 5 ? `<em>+${b.colors.length - 5}</em>` : "";
+  const cell = (label, val) =>
+    `<div class="spec"><em>${label}</em>${val ? `<b>${val}</b>` : nil}</div>`;
+
+  return `<article class="card${on ? " sel" : ""}" data-id="${esc(b.id)}">
+    ${shotBlock(b)}
     <div class="cbody" data-detail>
       <div class="cbrand">${esc(b.brand)}</div>
       <a class="cname" href="${esc(bagHref(b))}">${esc(b.name)}</a>
@@ -260,7 +264,7 @@ function cssColor(name) {
 }
 
 // The head and one row are separate so the table can be extended a chunk at a
-// time, the same way the grid is. See paintChunk().
+// time, the same way the grid is. See paintPage().
 function tableShell() {
   const head = ["Brand", "Model", "Category", "Vol L", "Weight g",
                 `H×W×D ${dual("cm", "in")}`,
@@ -289,72 +293,107 @@ function row(b) {
   </tr>`;
 }
 
-// A bag whose feature list was only ever built from the brand's marketing copy
-// cannot be said to lack a feature. Excluding it is still the right call — a
-// filter that returns maybes is useless — but it has to be admitted to, not
-// done silently, which is what was happening before.
-function featuresUnknown(b) {
-  return b.features_source !== "product-page";
-}
-
-/* The result set is the whole catalog when nothing is filtered, and building
- * that as one HTML string was the single thing making the page hang: 7,700
- * cards is on the order of 115,000 nodes, parsed, laid out and painted from
- * scratch on every keystroke, every facet click and every frame of a slider
- * drag.
+/* The result set is the whole catalog when nothing is filtered, and drawing
+ * that as one HTML string was the single thing making this page hang: 8,000
+ * cards is on the order of 120,000 nodes, parsed, laid out and painted from
+ * scratch on every keystroke and every facet click.
  *
- * So a render paints a screenful and stops. An IntersectionObserver watching a
- * sentinel below the last card paints the next chunk as it approaches the
- * viewport, which makes the cost of a filter change a function of the viewport
- * rather than of the size of the catalog.
- *
- * Cards that scroll out of view stay in the DOM rather than being recycled —
- * `content-visibility` in app.css is what stops them costing layout — because
- * the alternative loses find-in-page, native scroll restoration and the link
- * targets that make a card a card. This is progressive rendering, not
- * virtualisation, and the distinction is deliberate.
- */
-const CHUNK = 60;
-let LIST = [];      // the current filtered, sorted result set
-let painted = 0;    // how much of LIST is actually in the DOM
+ * So the server sends a page and this paints it, and an IntersectionObserver
+ * watching a sentinel below the last card asks for the next one as it comes
+ * into reach. The cost of a filter change is a function of the viewport rather
+ * than of the size of the catalog — which is now true of the response as well
+ * as of the paint, and is the reason a round trip per filter is affordable at
+ * all. */
 let sentinelIO = null;
 
-function paintChunk() {
-  const next = LIST.slice(painted, painted + CHUNK);
-  if (!next.length) return false;
-  const host = VIEW === "grid" ? $("#results .grid") : $("#results tbody");
-  if (!host) return false;
+const paintHost = () => VIEW === "grid" ? $("#results .grid") : $("#results tbody");
+
+/* One page of bags into the DOM. `fresh` says whether this is the first page of
+ * a new answer — which rebuilds the shell and throws away the scroll position,
+ * deliberately, because the results below it are about a different question —
+ * or the next page of the one already drawn, which must not. */
+function paintPage(list, fresh) {
+  const out = $("#results");
+  if (fresh) {
+    sentinelIO?.disconnect();
+    if (!list.length) {
+      out.innerHTML = `<div class="empty"><b>No matches</b>
+        Every active range filter excludes bags whose value is unknown.
+        Widen a range or clear filters.</div>`;
+      return;
+    }
+    out.innerHTML = (VIEW === "grid" ? '<div class="grid"></div>' : tableShell())
+      + '<div id="sentinel" aria-hidden="true"></div>';
+  }
+  const host = paintHost();
+  if (!host) return;
+  // Whole cards, photography and all: a page arrives complete, so there is no
+  // placeholder state to draw and nothing to patch in behind the reader.
   host.insertAdjacentHTML("beforeend",
-    (VIEW === "grid" ? next.map(card) : next.map(row)).join(""));
-  painted += next.length;
-  return true;
+    (VIEW === "grid" ? list.map(card) : list.map(row)).join(""));
+  if (fresh) {
+    observeSentinel();
+    fill();
+  } else {
+    retireSentinel();
+  }
 }
 
-/* Keep painting while the sentinel is still within reach of the viewport.
- *
- * The observer only fires on a *change* of intersection, so a chunk that fails
- * to push the sentinel off screen — a tall window, a short chunk, a filter
- * that leaves eighty results — would otherwise stall with the observer
- * satisfied and the page half-drawn. Reading the sentinel's position back
- * forces a synchronous layout per iteration, which is why this is bounded by
- * the viewport and not by LIST.length. */
-function fill() {
-  const el = $("#sentinel");
-  if (!el) return;
-  const reach = () => el.getBoundingClientRect().top < innerHeight + 800;
-  while (painted < LIST.length && reach()) paintChunk();
-  if (painted >= LIST.length) {
-    sentinelIO?.disconnect();
-    el.remove();
+/** The sentinel has a job only while there is a page after this one. */
+function retireSentinel() {
+  if ((PAGE + 1) * PER < TOTAL) return;
+  sentinelIO?.disconnect();
+  $("#sentinel")?.remove();
+}
+
+/** The next page, appended. Resolves false when there was nothing to add —
+ *  because the answer is complete, because one is already on the way, or
+ *  because the state moved on while this was in flight. */
+async function nextPage() {
+  if (loading || (PAGE + 1) * PER >= TOTAL) return false;
+  loading = true;
+  const mine = gen;
+  try {
+    const data = await ask(PAGE + 1);
+    // A filter changed while this was in flight, so this page belongs to a
+    // grid that is no longer on screen. render() has already asked for the
+    // right one; appending this would splice the old answer onto the new.
+    if (mine !== gen) return false;
+    PAGE++;
+    paintPage(data.bags, false);
+    return true;
+  } catch (err) {
+    if (err.name !== "AbortError") console.error("carrynerd: could not load more", err);
+    return false;
+  } finally {
+    loading = false;
   }
+}
+
+/* Keep asking while the sentinel is still within reach of the viewport.
+ *
+ * The observer only fires on a *change* of intersection, so a page that fails
+ * to push the sentinel off screen — a tall window, a short last page, a filter
+ * that leaves eighty results — would otherwise stall with the observer
+ * satisfied and the page half-drawn. Bounded by the viewport rather than by the
+ * result count: this asks for one more page than it needs, never for all of
+ * them. */
+async function fill() {
+  const reach = () => {
+    const el = $("#sentinel");
+    return Boolean(el) && el.getBoundingClientRect().top < innerHeight + 800;
+  };
+  while (reach() && await nextPage());
+  retireSentinel();
 }
 
 function observeSentinel() {
   sentinelIO?.disconnect();
   const el = $("#sentinel");
   if (!el) return;
-  // The margin is what keeps the next chunk ahead of the scroll rather than
-  // arriving under it — nobody should watch a gap fill in.
+  // The margin is what keeps the next page ahead of the scroll rather than
+  // arriving under it — nobody should watch a gap fill in, and now the gap
+  // takes a round trip to fill.
   sentinelIO = new IntersectionObserver(
     entries => { if (entries.some(e => e.isIntersecting)) fill(); },
     { rootMargin: "800px 0px" },
@@ -362,60 +401,73 @@ function observeSentinel() {
   sentinelIO.observe(el);
 }
 
-function render() {
-  prepareFilters();
-
-  /* One pass, not three. Each caveat count below used to re-run matches()
-   * across the entire catalog, so a colour filter combined with a material
-   * filter cost three full passes to answer one question. They are all
-   * decided by the same per-bag verdict, so they are all taken from it. */
-  LIST = [];
-  const brandSet = new Set();
-  let skus = 0, noFeature = 0, noColour = 0;
-  const wantFeature = S.feats.size > 0 || S.mats.size > 0;
-  const wantColour = S.colors.size > 0;
-
-  for (const b of DATA.bags) {
-    if (matches(b)) {
-      LIST.push(b);
-      brandSet.add(b.brand_slug);
-      skus += b.variant_count || 0;
-    } else {
-      // Say so when a filter is dropping bags we simply have not established a
-      // value for, rather than silently returning a shorter list.
-      if (wantFeature && featuresUnknown(b)) noFeature++;
-      if (wantColour && !(b.color_families || []).length) noColour++;
-    }
-  }
-  LIST.sort(SORTS[S.sort] || SORTS.brand);
-
+/* The line above the grid. Every number in it is counted over the whole match
+ * set rather than over the page — "60 of 8,079" would be a report on the
+ * scroll, not on the filter — which is why the server sends them alongside the
+ * page instead of leaving them to be added up here.
+ *
+ * The caveat is the important half: a bag whose feature list was only ever
+ * built from marketing copy cannot be said to lack a feature. Excluding it is
+ * still the right call — a filter that returns maybes is useless — but it has
+ * to be admitted to rather than done silently. */
+function countLine({ total, counts, stats }) {
   const unknown = [];
-  if (noFeature) unknown.push(`${noFeature} with no feature detection yet`);
-  if (noColour) unknown.push(`${noColour} whose colourway names state no colour`);
+  if (counts.noFeature) unknown.push(`${counts.noFeature} with no feature detection yet`);
+  if (counts.noColour) unknown.push(`${counts.noColour} whose colourway names state no colour`);
   const caveat = unknown.length
     ? ` · <em class="warnnote">excluded: ${unknown.join(", ")} — unknown, not` +
       ` known to be absent</em>`
     : "";
 
-  $("#count").innerHTML = `<b>${LIST.length}</b> of ${DATA.bags.length} bags` +
-    ` · ${brandSet.size} brands · ${skus} SKUs` + caveat;
+  $("#count").innerHTML = `<b>${total}</b> of ${(stats || STATS).bags} bags` +
+    ` · ${counts.brands} brands · ${counts.skus} SKUs` + caveat;
+}
+
+/* Ask the current state what it matches, and draw the first page of the answer.
+ *
+ * Everything that changes a filter ends up here, so this is where a request
+ * gets its generation number and where the previous state's requests get
+ * cancelled. The old results stay on screen until the new ones land — blanking
+ * the grid for the length of a round trip would make every facet click flash —
+ * and #results carries aria-busy meanwhile, which app.css only acts on if the
+ * wait is long enough to be worth mentioning. */
+async function render({ boot = false } = {}) {
+  const mine = ++gen;
+  ctrl?.abort();
+  ctrl = new AbortController();
+  loading = false;
+  syncURL();
 
   const out = $("#results");
-  painted = 0;
-  if (!LIST.length) {
-    sentinelIO?.disconnect();
-    out.innerHTML = `<div class="empty"><b>No matches</b>
-      Every active range filter excludes bags whose value is unknown.
-      Widen a range or clear filters.</div>`;
-  } else {
-    out.innerHTML = (VIEW === "grid" ? '<div class="grid"></div>' : tableShell())
-      + '<div id="sentinel" aria-hidden="true"></div>';
-    paintChunk();
-    observeSentinel();
-    fill();
+  out.setAttribute("aria-busy", "true");
+
+  let data;
+  try {
+    data = await ask(0, boot);
+  } catch (err) {
+    // An abort is this function being right, not failing: a newer render is
+    // already on its way and owns the busy state and the message line.
+    if (err.name === "AbortError") return null;
+    console.error("carrynerd: could not reach /api/browse", err);
+    out.removeAttribute("aria-busy");
+    // On the first request there is nothing drawn yet, and the page underneath
+    // is the server-rendered list of every model — degraded, but every bag is
+    // still reachable. Later on, the results on screen are simply one filter
+    // out of date, which is worth saying rather than pretending.
+    $("#count").textContent = boot
+      ? "filters unavailable — showing all models"
+      : "could not load that filter — showing the previous results";
+    return null;
   }
+  if (mine !== gen) return null;
+
+  out.removeAttribute("aria-busy");
+  PAGE = 0;
+  TOTAL = data.total;
+  countLine(data);
+  paintPage(data.bags, true);
   renderTray();
-  syncURL();
+  return data;
 }
 
 /* Toggling a comparison used to re-render. At 7,700 cards that meant rebuilding
@@ -437,58 +489,51 @@ function syncSelection(id) {
 
 /* ---------- facets ---------- */
 
-function buildFacets() {
-  const count = (key, fn) => {
-    const m = new Map();
-    DATA.bags.forEach(b => (fn(b) || []).forEach(v =>
-      m.set(v, (m.get(v) || 0) + 1)));
-    return [...m.entries()].sort((a, b) => b[1] - a[1]);
-  };
-
-  $("#f-cat").innerHTML = count("cat", b => [b.category])
+/* Counted over the whole catalog, not over the current results, and therefore
+ * fixed for the life of a deploy — which is why the server counts them once and
+ * ships them with the boot response rather than with every answer. A count
+ * beside a facet says how many bags exist with that property; a count that
+ * moved as filters were applied would be answering a different question, and
+ * one the grid already answers. */
+function buildFacets({ facets, coverage, stats }) {
+  $("#f-cat").innerHTML = facets.categories
     .map(([v, n]) => `<button class="chip" data-f="cat" data-v="${esc(v)}" aria-pressed="false">${
       esc(CAT_LABELS[v] || v)}<span>${n}</span></button>`).join("");
 
-  $("#f-feat").innerHTML = count("feat", b => b.features)
+  $("#f-feat").innerHTML = facets.features
     .map(([v, n]) => `<button class="check" data-f="feat" data-v="${esc(v)}" aria-pressed="false"><i></i>${
       esc(FEATURE_LABELS[v] || v)}<b>${n}</b></button>`).join("");
 
-  const colorCounts = new Map();
-  DATA.bags.forEach(b => (b.color_families || []).forEach(f =>
-    colorCounts.set(f, (colorCounts.get(f) || 0) + 1)));
+  // Colours keep the printed order rather than the counted one: a swatch list
+  // reads as a spectrum, and sorting it by popularity puts black next to beige.
+  const colorCounts = new Map(facets.colors);
   $("#f-color").innerHTML = COLOUR_ORDER.filter(f => colorCounts.has(f))
     .map(f => `<button class="check" data-f="color" data-v="${esc(f)}" aria-pressed="false"><i></i><span class="sw" style="background:${
       COLOUR_SWATCH[f]}"></span>${esc(COLOUR_LABELS[f])}<b>${colorCounts.get(f)}</b></button>`).join("");
 
-  $("#f-mat").innerHTML = count("mat", b => b.materials)
+  $("#f-mat").innerHTML = facets.materials
     .map(([v, n]) => `<button class="check" data-f="mat" data-v="${esc(v)}" aria-pressed="false"><i></i>${
       esc(v)}<b>${n}</b></button>`).join("");
 
-  const brands = new Map();
-  DATA.bags.forEach(b => {
-    const e = brands.get(b.brand_slug) || { name: b.brand, n: 0 };
-    e.n++; brands.set(b.brand_slug, e);
-  });
-  $("#f-brand").innerHTML = [...brands.entries()]
-    .sort((a, b) => a[1].name.localeCompare(b[1].name))
-    .map(([slug, e]) => `<button class="check" data-f="brand" data-v="${esc(slug)}" aria-pressed="false"><i></i>${
-      esc(e.name)}<b>${e.n}</b></button>`).join("");
+  // Filed by name, not by slug and not by count: the rail prints names, and a
+  // reader looking for one scans the alphabet.
+  $("#f-brand").innerHTML = facets.brands
+    .map(([slug, name, n]) => `<button class="check" data-f="brand" data-v="${esc(slug)}" aria-pressed="false"><i></i>${
+      esc(name)}<b>${n}</b></button>`).join("");
 
   ["#f-brand", "#f-color", "#f-feat", "#f-mat"].forEach(mountFacetSearch);
 
-  const cov = DATA.meta.coverage || {};
   const labels = { volume_l: "Volume", dims_cm: "Dims", weight_g: "Weight",
                    laptop_in: "Laptop", price_min: "Price" };
-  $("#coverage").innerHTML = Object.entries(cov).map(([k, v]) =>
+  $("#coverage").innerHTML = Object.entries(coverage || {}).map(([k, v]) =>
     `<div class="covrow"><em>${labels[k] || k}</em>
       <div class="covbar"><i style="width:${v.pct}%"></i></div>
       <b>${v.pct}%</b></div>`).join("");
 
   $("#stats").innerHTML =
-    `<span><b>${DATA.meta.bag_count ?? DATA.bags.length}</b> BAGS</span>` +
-    `<span><b>${DATA.meta.brand_count ?? "—"}</b> BRANDS</span>` +
-    `<span><b>${DATA.meta.sku_count ?? "—"}</b> SKUS</span>`;
-
+    `<span><b>${stats.bags ?? "—"}</b> BAGS</span>` +
+    `<span><b>${stats.brands ?? "—"}</b> BRANDS</span>` +
+    `<span><b>${stats.skus ?? "—"}</b> SKUS</span>`;
 }
 
 /* A list long enough to scroll inside its own panel is a list you scan rather
@@ -569,6 +614,9 @@ function renderTray() {
 }
 
 function renderCompare() {
+  // Everything in the tray was ticked on a card or a row, and both are drawn
+  // from a whole record — so the photographs for the column heads are already
+  // here and the sheet draws in one go.
   const bags = [...compare].map(id => BY_ID.get(id)).filter(Boolean);
   if (!bags.length) return;
 
@@ -640,8 +688,29 @@ const watchForm = b => `
     <p class="watchmsg" role="status" aria-live="polite" hidden></p>
   </form>`;
 
-function openDetail(id) {
-  const b = BY_ID.get(id);
+/* The drawer opens from a card or a row, so the bag is in BY_ID and no request
+ * is made. The fallback is for the case that should not happen — a click
+ * arriving for an id this session was never sent — and /api/catalog is the only
+ * question this file can ask about one bag. It answers with the photography,
+ * the link and the variants and nothing else, so a drawer built from it alone
+ * is mostly dashes. That is still better than a click that does nothing. */
+async function fetchOne(id) {
+  try {
+    const res = await fetch(`/api/catalog?ids=${encodeURIComponent(id)}`);
+    if (!res.ok) throw new Error(res.status);
+    const { bags = [] } = await res.json();
+    if (!bags[0]) return null;
+    const b = { id, ...bags[0] };
+    BY_ID.set(id, b);
+    return b;
+  } catch (err) {
+    console.error("carrynerd: could not load", id, err);
+    return null;
+  }
+}
+
+async function openDetail(id) {
+  const b = BY_ID.get(id) ?? await fetchOne(id);
   if (!b) return;
   $("#dettitle").textContent = `${b.brand} — ${b.name}`;
 
@@ -684,14 +753,14 @@ function openDetail(id) {
     ${variants ? `<table class="vartable">
       <thead><tr><th>Colourway</th><th>SKU</th><th>Price</th><th>Stock</th></tr></thead>
       <tbody>${variants}</tbody></table>` : ""}
-    <div class="note">
+    ${b.url ? `<div class="note">
       <a href="${esc(b.url)}" target="_blank" rel="noopener nofollow"
          data-buy="browse_overlay"
          data-buy-id="${esc(b.id)}"
          data-buy-brand="${esc(b.brand)}"
          data-buy-model="${esc(b.name)}"
          data-buy-price="${esc(b.price_min ?? "")}">Open on ${esc(b.brand)} ↗</a>
-    </div>
+    </div>` : ""}
     ${watchForm(b)}`;
   // Lives in the drawer's own markup, pinned below the scrolling body — see
   // index.astro. Only the destination changes per bag.
@@ -705,16 +774,29 @@ function openDetail(id) {
 
 /* ---------- URL state ---------- */
 
-function syncURL() {
+/* The filter, as a query string. Written once and used twice: for the address
+ * bar and for the request. That is not a coincidence to be tidied away later —
+ * it is what makes a shared link and the thing the server is asked the same
+ * object, so a URL someone pastes cannot mean something the grid does not show.
+ *
+ * Only non-default keys are written, so an untouched control leaves no trace in
+ * either place. `view` is the exception and is added by syncURL alone: it
+ * changes how the answer is drawn, not what the answer is, and sending it would
+ * split the edge cache in two for no reason. */
+function stateParams() {
   const p = new URLSearchParams();
   if (S.q) p.set("q", S.q);
   const sets = { ...facetSets(), preset: S.presets };
   for (const k in sets) if (sets[k].size) p.set(k, [...sets[k]].join(","));
-  for (const k of ["volMin", "volMax", "priceMin", "priceMax", "weightMin", "weightMax", "linearMax"])
-    if (S[k] != null) p.set(k, S[k]);
+  for (const k of RANGE_KEYS) if (S[k] != null) p.set(k, S[k]);
   if (S.stock) p.set("stock", "1");
   if (S.sale) p.set("sale", "1");
   if (S.sort !== "brand") p.set("sort", S.sort);
+  return p;
+}
+
+function syncURL() {
+  const p = stateParams();
   if (VIEW !== "grid") p.set("view", VIEW);
   history.replaceState(null, "", p.toString() ? "?" + p : location.pathname);
 }
@@ -725,8 +807,7 @@ function loadURL() {
   $("#q").value = S.q;
   const sets = { ...facetSets(), preset: S.presets };
   for (const k in sets) (p.get(k) || "").split(",").filter(Boolean).forEach(v => sets[k].add(v));
-  for (const k of ["volMin", "volMax", "priceMin", "priceMax", "weightMin", "weightMax", "linearMax"])
-    if (p.has(k)) S[k] = Number(p.get(k));
+  for (const k of RANGE_KEYS) if (p.has(k)) S[k] = Number(p.get(k));
   S.stock = p.get("stock") === "1";
   S.sale = p.get("sale") === "1";
   S.sort = p.get("sort") || "brand";
@@ -762,20 +843,21 @@ function syncFacetButtons() {
  * and back on for the thumbs — that is what keeps the lower thumb grabbable
  * where the two overlap. */
 const DUALS = [
-  { key: "vol",    lo: "volMin",    hi: "volMax",    of: b => b.volume_l,  step: 1 },
-  { key: "price",  lo: "priceMin",  hi: "priceMax",  of: b => b.price_min, step: 5 },
-  { key: "weight", lo: "weightMin", hi: "weightMax", of: b => b.weight_g,  step: 25 },
+  { key: "vol",    lo: "volMin",    hi: "volMax",    of: "volume_l",  step: 1 },
+  { key: "price",  lo: "priceMin",  hi: "priceMax",  of: "price_min", step: 5 },
+  { key: "weight", lo: "weightMin", hi: "weightMax", of: "weight_g",  step: 25 },
 ];
 
-/* Dragging fires `input` at pointer rate, and re-rendering that often is
- * exactly what makes a slider feel heavy. One render per frame is plenty —
- * and since a render now paints one chunk rather than the whole result set,
- * a frame during a drag costs sixty cards instead of several thousand. */
-let frame = 0;
-const schedule = () => {
-  if (frame) return;
-  frame = requestAnimationFrame(() => { frame = 0; render(); });
-};
+/* Dragging fires `input` at pointer rate, and asking the server that often is
+ * not a filter, it is a flood. So a drag moves the fill and the number boxes
+ * and nothing else; the results — and the count above them, and the shareable
+ * URL — catch up when the handle is let go, on `change`, which a range input
+ * fires on pointer-up and on a keyboard commit.
+ *
+ * The count used to keep up with the handle mid-drag, off a local match pass
+ * that no longer exists. Losing it is the visible cost of moving the filter to
+ * the server, and it is the cheap half: what the drag is for is the number
+ * under the thumb, which is still live. */
 
 function paintFill(d) {
   const span = (d.bound[1] - d.bound[0]) || 1;
@@ -784,17 +866,18 @@ function paintFill(d) {
   d.el.fill.style.right = (100 - pct(d.el.hi.value)) + "%";
 }
 
-function initSliders() {
+function initSliders(bounds = {}) {
   for (const d of DUALS) {
     const root = $(`[data-dual="${d.key}"]`);
     if (!root) continue;
-    const vals = DATA.bags.map(d.of).filter(v => v != null && isFinite(v));
     // Bounds come from the catalog, not a constant, so the track always spans
-    // what actually exists. A handle parked at either end means "no bound"
-    // rather than "a bound that happens to equal the extreme" — that is what
-    // keeps an untouched slider out of the URL and out of the filter.
-    d.bound = [0, Math.max(d.step,
-      Math.ceil(Math.max(0, ...vals) / d.step) * d.step)];
+    // what actually exists — the boot response carries the largest value of
+    // each, since the client no longer holds the column to take a maximum of.
+    // A handle parked at either end means "no bound" rather than "a bound that
+    // happens to equal the extreme", which is what keeps an untouched slider
+    // out of the URL and out of the filter.
+    const top = Number(bounds[d.of]) || 0;
+    d.bound = [0, Math.max(d.step, Math.ceil(top / d.step) * d.step)];
     d.el = { lo: $(".lo", root), hi: $(".hi", root), fill: $(".fill", root) };
 
     for (const side of ["lo", "hi"]) {
@@ -812,8 +895,11 @@ function initSliders() {
         $(`#${d.key}-min`).value = S[d.lo] ?? "";
         $(`#${d.key}-max`).value = S[d.hi] ?? "";
         paintFill(d);
-        schedule();
       });
+
+      // Pointer-up, or a keyboard commit: the one boundary in a drag worth
+      // spending a request on.
+      d.el[side].addEventListener("change", () => render());
     }
   }
   syncSliders();
@@ -890,12 +976,23 @@ function mountChrome() {
 
 /* ---------- events ---------- */
 
-function wire() {
+/* Typing is the one input that fires per character, and every character is now
+ * a request. 130ms is long enough that a word costs one round trip and short
+ * enough that nobody notices waiting for it — it was already the search box's
+ * delay, and the number boxes get it too now that they are no longer free. */
+const debounce = (fn, ms = 130) => {
   let t;
-  $("#q").addEventListener("input", e => {
+  return (...args) => {
     clearTimeout(t);
-    t = setTimeout(() => { S.q = e.target.value.trim(); render(); }, 130);
-  });
+    t = setTimeout(() => fn(...args), ms);
+  };
+};
+
+function wire() {
+  $("#q").addEventListener("input", debounce(e => {
+    S.q = e.target.value.trim();
+    render();
+  }));
 
   document.addEventListener("click", e => {
     // A link is a link. The card still opens the drawer, but the model name
@@ -938,20 +1035,27 @@ function wire() {
     }
   });
 
-  const num = (id, key) => $(id).addEventListener("input", e => {
-    S[key] = e.target.value === "" ? null : Number(e.target.value);
-    syncSliders();
-    render();
-  });
+  // The handles follow every keystroke; the results wait for a pause, the same
+  // way they wait for a handle to be let go. Typing "250" into a max box is one
+  // filter, not three.
+  const num = (id, key) => {
+    const ask = debounce(render);
+    $(id).addEventListener("input", e => {
+      S[key] = e.target.value === "" ? null : Number(e.target.value);
+      syncSliders();
+      ask();
+    });
+  };
   num("#vol-min", "volMin"); num("#vol-max", "volMax");
   num("#price-min", "priceMin"); num("#price-max", "priceMax");
   num("#weight-min", "weightMin"); num("#weight-max", "weightMax");
 
+  const askLinear = debounce(render);
   $("#linear-max").addEventListener("input", e => {
     const v = e.target.value === "" ? null : Number(e.target.value);
     S.linearMax = v == null ? null
       : Number((inches() ? v * CM_PER_IN : v).toFixed(1));
-    render();
+    askLinear();
   });
 
   // Only the length inputs need touching: every other length on the page ships
@@ -1020,22 +1124,23 @@ function wire() {
 
 (async function init() {
   mountChrome();
-  try {
-    const res = await fetch("/bags.json", { cache: "no-cache" });
-    if (!res.ok) throw new Error(res.status);
-    DATA = await res.json();
-  } catch (err) {
-    // Leave the server-rendered fallback list in place — it is every model on
-    // the site, just without the filters. A degraded page beats a dead one.
-    $("#count").textContent = "filters unavailable — showing all models";
-    console.error("gearherd: could not load /bags.json", err);
-    return;
-  }
-  BY_ID = new Map(DATA.bags.map(b => [b.id, b]));
-  buildFacets();
-  // Before loadURL, which pushes any query-string bounds onto the handles.
-  initSliders();
+  // State before the first request: a link someone shared is part of the
+  // question, not a correction to the answer that follows. The facet buttons
+  // and the slider handles do not exist to be pressed yet, which is why the
+  // other half of loadURL's job is repeated below once they do.
   loadURL();
   wire();
-  render();
+
+  // boot=1 asks for the rail, the slider tracks, the coverage meter and the
+  // first page of results in one go, so arriving on a filtered link still costs
+  // exactly one request before there is something to look at. A failure leaves
+  // the server-rendered list of every model in place — see render(); a degraded
+  // page beats a dead one.
+  const data = await render({ boot: true });
+  if (!data) return;
+
+  STATS = data.stats;
+  if (data.facets) buildFacets(data);
+  initSliders(data.bounds);
+  syncFacetButtons();
 })();
