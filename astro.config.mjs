@@ -16,6 +16,20 @@ export default defineConfig({
   site: process.env.SITE_URL ?? 'https://carrynerd.com',
   output: 'static',
   adapter: vercel(),
+  // Astro distrusts the Host and X-Forwarded-Host headers unless the domain is
+  // listed here, and with the list empty it falls back to believing every
+  // request is for "localhost". Behind Vercel's proxy that made the CSRF check
+  // reject all form POSTs — the /internal/ login, and the /api/click beacon,
+  // whose sendBeacon body arrives as text/plain and counts as a form — with
+  // "Cross-site POST form submissions are forbidden", for every visitor. The
+  // vercel.app entry is for preview deployments, which sit behind Vercel SSO
+  // anyway.
+  security: {
+    allowedDomains: [
+      { hostname: 'carrynerd.com', protocol: 'https' },
+      { hostname: '**.vercel.app', protocol: 'https' },
+    ],
+  },
   // Two exclusions, for two unrelated reasons.
   //
   // /internal/ is the working list behind the coverage banners — real pages,
