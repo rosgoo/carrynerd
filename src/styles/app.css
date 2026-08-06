@@ -70,6 +70,13 @@ html, body {
   font-family: var(--mono);
   font-size: 13px; line-height: 1.45;
   -webkit-font-smoothing: antialiased;
+  /* iOS Safari "font boosting": if any block lays out wider than the viewport,
+     Safari inflates its text by an opaque per-block factor — the model page's
+     title and price were painting at twice their size, over the spec table
+     below. Chrome's responsive mode never emulates this, which is why the bug
+     only existed on the phone. The type here is sized deliberately; boost off. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 /* The graph-paper grid, moved off the image plates and onto the page itself.
@@ -436,6 +443,10 @@ main { flex: 1; min-width: 0; }
    intersecting, which just leaves the photo unfaded, as it is today. */
 .shot img, .modelshot img {
   max-width: 100%; max-height: 100%;
+  /* Flex items refuse to shrink below their automatic minimum — for a photo,
+     its natural size — and WebKit honours that before the max-width above.
+     Zeroing it makes the percentage cap the only sizing that matters. */
+  min-width: 0; min-height: 0;
   /* Explicit, and not redundant: the markup carries width/height attributes
      for CLS, and with `object-fit` gone those presentational hints would set
      a square box and stretch the photo to fill it. The plate's aspect-ratio
@@ -933,7 +944,13 @@ td.instock { color: var(--ok); }
 .midpage .btn { text-decoration: none; display: inline-block; }
 
 @media (max-width: 760px) {
-  .modelhead { grid-template-columns: 1fr; }
+  /* minmax(0), not bare 1fr: bare 1fr is minmax(auto, 1fr), and `auto` lets
+     the product photo's natural width set the track's minimum. WebKit does not
+     clamp a replaced element's intrinsic contribution by its percentage
+     max-width the way Blink does, so on an iPhone the column grew to the
+     photo's full width and dragged the whole page wider than the screen —
+     the desktop columns above already carry the same guard. */
+  .modelhead { grid-template-columns: minmax(0, 1fr); }
   .modelshot { border-right: none; border-bottom: 1px solid var(--line); aspect-ratio: 4/3; }
   .keyspecs { grid-template-columns: repeat(2, 1fr); }
   .keyspecs > div:nth-child(2) { border-right: none; }
