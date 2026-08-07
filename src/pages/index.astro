@@ -79,6 +79,36 @@ const otherCurrencies = [
         <button class="railclose" id="railclose" aria-label="Close filters">✕</button>
       </div>
 
+      {/* The one part of the rail that is about you rather than about the
+          catalog, so it sits above every filter group rather than in the
+          alphabet with them: a saved filter is how you arrive at the filters,
+          not one of them.
+
+          Ships hidden and is revealed by the island. There are no accounts
+          here — all of this lives in this browser's localStorage, see
+          lib/store.js — so with no JavaScript there is nothing to reveal, and
+          a panel offering to remember things that cannot be remembered is
+          worse than no panel. */}
+      <section class="saved" id="saved" hidden>
+        <div class="savedhead">
+          <b>Saved</b>
+          <button class="savedbtn" id="savefilter">+ Save filter</button>
+        </div>
+        <form class="savedform" id="savedform" hidden>
+          <input id="savedname" type="text" maxlength="48" autocomplete="off"
+                 spellcheck="false" placeholder="name this filter"
+                 aria-label="Name for this filter" />
+          <button class="savedok" type="submit">Save</button>
+          <button class="savedcancel" type="button" id="savedcancel"
+                  aria-label="Cancel">✕</button>
+        </form>
+        <div class="savedlist" id="savedlist"></div>
+        <p class="savedmsg" id="savedmsg" role="status" aria-live="polite" hidden></p>
+        <button class="check favonly" id="f-fav" aria-pressed="false">
+          <i></i>★ Favourites only<b id="favcount">0</b>
+        </button>
+      </section>
+
       <details class="fgroup" open>
         <summary>Availability</summary>
         <div class="fbody">
@@ -253,6 +283,11 @@ const otherCurrencies = [
     <div class="drawer">
       <header>
         <h2 id="dettitle">Detail</h2>
+        {/* Carries its own data-id, set per bag by openDetail() — the cards
+            take theirs from the article around them, and this has no article
+            around it. */}
+        <button class="fav" id="detfav" data-fav aria-pressed="false"
+                title="Save to favourites" aria-label="Save to favourites">☆</button>
         <button class="btn ghost" data-close>Close ✕</button>
       </header>
       <div class="inner" id="detbody"></div>

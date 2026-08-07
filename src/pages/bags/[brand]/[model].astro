@@ -187,6 +187,19 @@ const description =
           ))}
         </dl>
 
+        {/* Above the buy button and deliberately quieter than it: saving is
+            for the reader who is still deciding, and the storefront link is
+            what this page is for. Hidden until scripts/favbutton.js says
+            otherwise — there is no account to save it to, only this browser.
+            The link goes to the browse page filtered to the saved list. */}
+        <div class="savebar" data-favbar hidden>
+          <button type="button" data-fav-toggle={bag.id} aria-pressed="false">
+            ☆ Save to favourites
+          </button>
+          <a href="/?favonly=1">Saved bags →</a>
+          <p class="savedmsg" data-favmsg role="status" aria-live="polite" hidden></p>
+        </div>
+
         <a class="btn buy" href={bag.url} target="_blank" rel="noopener nofollow"
            data-buy="product_page"
            data-buy-id={bag.id}
@@ -305,4 +318,8 @@ const description =
     )}
 
   </div>
+
+  <script>
+    import '../../../scripts/favbutton.js';
+  </script>
 </Base>

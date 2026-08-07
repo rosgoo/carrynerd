@@ -219,6 +219,92 @@ header .spacer { flex: 1; }
 }
 .rail .hbtns .hbtn:last-child { border-right: none; }
 
+/* ---------- saved filters, at the top of the rail ----------
+   Same hairline construction as a filter group, but it is not one: no
+   disclosure triangle, nothing collapses, and it sits above the alphabet
+   rather than inside it. See the note in pages/index.astro. */
+
+.saved { border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+
+.savedhead {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 11px 14px 8px;
+}
+.savedhead b {
+  font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink); font-weight: 600;
+}
+.savedbtn {
+  border: 1px solid var(--line-2); padding: 3px 7px;
+  font-size: 9.5px; letter-spacing: .06em; color: var(--ink-dim);
+  text-transform: uppercase;
+}
+.savedbtn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+/* Disabled because there is nothing switched on to save, which is a state the
+   button is in for most of a first visit. Dimmed rather than hidden: it is
+   what tells you saving is possible at all. */
+.savedbtn:disabled { color: var(--ink-mute); border-color: var(--line); cursor: default; }
+
+.savedform { display: flex; gap: 4px; padding: 0 14px 8px; }
+/* The naming field is only there while you are naming something, and `display`
+   outranks the UA sheet's [hidden] rule — see .check[hidden] above. */
+.savedform[hidden] { display: none; }
+.savedform input {
+  flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--line-2);
+  padding: 4px 7px; font-size: 11px; outline: none;
+}
+.savedform input:focus { border-color: var(--accent); }
+.savedok {
+  border: 1px solid var(--accent); background: var(--accent);
+  color: var(--accent-ink); padding: 3px 8px; font-size: 9.5px;
+  letter-spacing: .08em; text-transform: uppercase; font-weight: 700;
+}
+.savedcancel { color: var(--ink-mute); padding: 0 4px; font-size: 12px; }
+.savedcancel:hover { color: var(--accent); }
+
+.savedlist { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 14px; }
+/* Two buttons that read as one chip: the name applies the filter, the ✕
+   forgets it. Nested buttons would not be legal, so they are siblings inside a
+   box that draws the border for both. */
+.savedchip {
+  display: flex; align-items: stretch; border: 1px solid var(--line-2);
+  max-width: 100%;
+}
+.savedchip > button:first-child {
+  padding: 3px 7px; font-size: 10px; color: var(--ink-dim);
+  max-width: 168px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; text-align: left;
+}
+.savedchip:hover { border-color: var(--ink-dim); }
+.savedchip > button:first-child:hover { color: var(--ink); }
+.savedchip .forget {
+  padding: 0 6px; font-size: 11px; line-height: 1; color: var(--ink-mute);
+  border-left: 1px solid var(--line-2);
+}
+.savedchip .forget:hover { color: var(--accent); }
+/* The chip for the filter currently on screen. Pressing it again clears the
+   filter, the same way pressing a lit facet clears that facet. */
+.savedchip:has(> button[aria-pressed="true"]) {
+  border-color: var(--accent); background: var(--accent);
+}
+.savedchip > button[aria-pressed="true"] { color: var(--accent-ink); }
+.savedchip:has(> button[aria-pressed="true"]) .forget {
+  color: var(--accent-ink); border-left-color: var(--accent-ink); opacity: .75;
+}
+
+.savednone {
+  margin: 0; padding: 0 14px; font-size: 10px; line-height: 1.6;
+  color: var(--ink-mute);
+}
+.savedmsg {
+  margin: 6px 0 0; padding: 0 14px; font-size: 10px; line-height: 1.5;
+  color: var(--warn);
+}
+
+/* The favourites filter lives here rather than under Availability: it is
+   about your list, and so is everything else in this box. */
+.saved .favonly { padding: 9px 14px 0; margin-top: 4px; }
+
 .fgroup { border-bottom: 1px solid var(--line); }
 .fgroup > summary {
   padding: 11px 14px; cursor: pointer; list-style: none;
@@ -517,6 +603,45 @@ main { flex: 1; min-width: 0; }
 .cmp:hover { border-color: var(--accent); color: var(--accent); }
 .cmp[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 
+/* The star sits beside the comparison tick and must not be mistaken for it.
+   Same 20px box, no border and no filled state: a saved bag is a filled glyph
+   in the accent, an unsaved one a hollow glyph in the muted ink. Two controls,
+   two different languages, distinguishable without reading either. */
+.fav {
+  width: 20px; height: 20px; flex-shrink: 0; font-size: 13px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ink-mute);
+}
+.fav:hover { color: var(--accent); }
+.fav[aria-pressed="true"] { color: var(--accent); }
+td.favcell { width: 26px; padding-right: 0; }
+/* The drawer's copy, beside the model name. Bigger than the one on a card:
+   it is the only control in that header besides Close. */
+.drawer header .fav { width: 26px; height: 26px; font-size: 16px; flex-shrink: 0; }
+
+/* ---------- favourites, above the results ----------
+   The bags this browser saved, drawn ahead of the page they belong to. The
+   server lifts them out of the pagination so they appear once, here, rather
+   than twice — see the pass in api/browse.ts. Marked off by the accent rule
+   below rather than by a different card, because they are the same bags. */
+.favs { border-bottom: 1px solid var(--line); background: var(--panel); }
+.favs .grid { padding-bottom: 14px; }
+.favs .tablewrap { padding-bottom: 0; }
+/* The strip is a second table, so it keeps its own column heads — but not the
+   sticky behaviour: two heads pinned to the same offset would sit on top of
+   each other the moment the page scrolled. */
+.favs .tablewrap thead th { position: static; }
+
+.favhead {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  padding: 11px 16px 0; border-top: 2px solid var(--accent);
+}
+.favhead h2 {
+  margin: 0; font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--accent); font-weight: 600;
+}
+.favnote { font-style: normal; font-size: 10px; color: var(--ink-mute); letter-spacing: .04em; }
+
 /* ---------- boot skeleton ----------
    Cards with nothing in them, painted by skeletonPage() in browse.js for the
    length of the boot request. Flat fills of --line, like everything else here —
@@ -542,9 +667,10 @@ main { flex: 1; min-width: 0; }
 .skel .cname .bone { width: 78%; height: 11px; margin-top: 4px; }
 .skel .spec .bone { width: 55%; height: 9px; margin: 8px 0 9px; }
 .skel .cfoot .bone { width: 54px; height: 12px; margin: 4px 0; }
-/* The table's columns are numbers except Model, which is the wide one. */
+/* The table's columns are numbers except Model, which is the wide one — third
+   now that the star has a column of its own. */
 .skel td .bone { width: 3.5em; }
-.skel td:nth-child(2) .bone { width: 9em; }
+.skel td:nth-child(3) .bone { width: 9em; }
 
 /* ---------- table view ---------- */
 
@@ -807,6 +933,32 @@ a.brand { text-decoration: none; }
   margin: 0; border: none; border-top: 1px solid var(--line);
   padding: 11px; text-align: center; text-decoration: none; display: block;
 }
+
+/* Saving a bag, directly above the buy button and deliberately quieter than
+   it. Both are full-width bars so the eye reads them as one stack rather than
+   as two competing calls to action. */
+.savebar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 9px 14px; border-top: 1px solid var(--line);
+}
+/* `display` outranks the UA sheet's [hidden] rule, and this bar ships hidden
+   for the readers who have no JavaScript to unhide it with — without this it
+   would be the one control on the page that does nothing. Same restatement
+   .check[hidden] needs, for the same reason. */
+.savebar[hidden] { display: none; }
+.savebar > button {
+  border: 1px solid var(--line-2); padding: 5px 10px;
+  font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.savebar > button:hover { color: var(--accent); border-color: var(--accent); }
+.savebar > button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+.savebar > a {
+  margin-left: auto; font-size: 10px; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--ink-mute); text-decoration: none;
+}
+.savebar > a:hover { color: var(--accent); }
+.savebar .savedmsg { flex: 1 0 100%; padding: 0; }
 
 .spectable { width: 100%; border-collapse: collapse; font-size: 12px; }
 .spectable th, .spectable td {

@@ -41,7 +41,15 @@ const json = (body: unknown, status = 200, cache?: string) =>
  * in between, so a query string that has been asked before can be served from
  * the edge without waking anything. That is what makes a round trip per
  * keystroke affordable — the popular filters stop being function invocations
- * within minutes of a deploy. */
+ * within minutes of a deploy.
+ *
+ * `fav` is the one parameter that is nobody else's query. A reader with
+ * favourites saved is asking a question no other reader asks, so their
+ * requests miss the shared cache and reach the function — which is the price
+ * of pinning their bags to the top of a page that is otherwise the same for
+ * everyone, and is paid only by the readers who asked for it. There is nothing
+ * private in the response either way: it is the same public catalogue, in a
+ * different order. */
 const CACHE = 'public, s-maxage=3600, stale-while-revalidate=86400';
 
 /* A screenful and a bit. browse.js asks for exactly PER_DEFAULT and appends the
@@ -50,6 +58,15 @@ const CACHE = 'public, s-maxage=3600, stale-while-revalidate=86400';
  * and the one to leave alone. */
 const PER_DEFAULT = 60;
 const PER_MAX = 100;
+
+/* Favourites are saved in the reader's browser — see lib/store.js — and sent
+ * back as ids so their bags can be lifted above the paged results. They ride
+ * outside the page: the strip is not something you scroll to the end of. The
+ * cap is what keeps that honest, and it agrees with MAX_FAVOURITES on the
+ * client so a list that was allowed to be saved is a list that is honoured in
+ * full. Anything past it is ignored rather than refused — a reader whose
+ * storage has more ids in it than this build accepts should still get a page. */
+const MAX_FAVS = 60;
 
 type Bag = Record<string, any>;
 
@@ -101,6 +118,7 @@ const project = (b: Bag) => ({
  */
 type Row = {
   bag: Bag;
+  id: string;
   hay: string;
   category: string;
   brand_slug: string;
@@ -144,6 +162,7 @@ const ROWS: Row[] = (bags as Bag[]).map((b) => {
   const linear_cm = num(b.linear_cm);
   return {
     bag: b,
+    id: b.id,
     // Field order agrees with haystack() as it stood in browse.js. It only
     // matters in that a term may span the join — "black tote" must not match a
     // bag that is a tote and comes in black — and keeping the order fixed keeps
@@ -274,6 +293,11 @@ type Query = {
   underseat: boolean;
   stock: boolean;
   sale: boolean;
+  /* The reader's own saved ids. Not a filter on their own — they only decide
+   * which matches are lifted out of the page and sent ahead of it — until
+   * `favOnly`, which is a filter and is spelled in the URL like one. */
+  favs: Set<string>;
+  favOnly: boolean;
 };
 
 const RANGES = ['volMin', 'volMax', 'priceMin', 'priceMax',
@@ -297,6 +321,8 @@ function parse(p: URLSearchParams): Query {
     underseat: presets.has('underseat'),
     stock: p.get('stock') === '1',
     sale: p.get('sale') === '1',
+    favs: new Set(list(p, 'fav').slice(0, MAX_FAVS)),
+    favOnly: p.get('favonly') === '1',
   };
   /* A bound that is not a number is dropped rather than honoured. Taken
    * literally it would compare against NaN and empty the grid, which reads to
@@ -316,13 +342,16 @@ const isFiltered = (q: Query) =>
   q.terms.length > 0 || q.cats.size > 0 || q.brands.size > 0 ||
   q.feats.length > 0 || q.mats.length > 0 || q.colours.length > 0 ||
   RANGES.some((k) => q[k] != null) ||
-  q.carryon || q.underseat || q.stock || q.sale;
+  q.carryon || q.underseat || q.stock || q.sale || q.favOnly;
 
 /* A line-for-line port of matches() in browse.js, down to the order of the
  * tests. Ranges use `!(x >= min)` rather than `x < min` so that a null fails
  * every comparison: a bag with no measured volume cannot be asserted to sit
  * inside a volume window, and reading it as zero would be an assertion. */
 function matches(r: Row, q: Query) {
+  // First, because it is the cheapest test on the list and the one most likely
+  // to reject: "favourites only" is at most sixty bags out of eight thousand.
+  if (q.favOnly && !q.favs.has(r.id)) return false;
   for (const t of q.terms) if (!r.hay.includes(t)) return false;
   if (q.cats.size && !q.cats.has(r.category)) return false;
   if (q.brands.size && !q.brands.has(r.brand_slug)) return false;
@@ -364,19 +393,36 @@ export const GET: APIRoute = ({ url }) => {
    * decided by the same per-bag verdict, so they are all taken from it — and
    * only the rows inside the requested window are ever held, which is what
    * keeps a query matching the whole catalogue from building an 8,000-element
-   * array to send sixty of them. */
+   * array to send sixty of them.
+   *
+   * A matching favourite leaves through a different door. It is sent ahead of
+   * the page, whole, and taken out of the pagination entirely — which is what
+   * stops the same bag appearing twice, once pinned at the top and once in its
+   * alphabetical place forty cards down. `total` still counts it, because the
+   * count line above the grid answers "how many bags match", and a favourite
+   * matches; `paged` is what the client's scroll arithmetic runs on. */
   const wantFeature = q.feats.length > 0 || q.mats.length > 0;
   const wantColour = q.colours.length > 0;
+  const wantFavs = q.favs.size > 0;
   const brandSet = new Set<string>();
   const pageRows: Row[] = [];
-  let total = 0, skus = 0, noFeature = 0, noColour = 0;
+  const favRows: Row[] = [];
+  let total = 0, paged = 0, skus = 0, noFeature = 0, noColour = 0;
 
   for (const r of order) {
     if (matches(r, q)) {
-      if (total >= from && total < to) pageRows.push(r);
       total++;
       brandSet.add(r.brand_slug);
       skus += r.variant_count;
+      if (wantFavs && q.favs.has(r.id)) {
+        // Collected only for the first page: the strip is painted once per
+        // answer and appending to it as the reader scrolls would mean sending
+        // it again with every page.
+        if (page === 0) favRows.push(r);
+        continue;
+      }
+      if (paged >= from && paged < to) pageRows.push(r);
+      paged++;
     } else {
       // Say so when a filter is dropping bags we simply have not established a
       // value for, rather than silently returning a shorter list.
@@ -387,9 +433,14 @@ export const GET: APIRoute = ({ url }) => {
 
   const body: Record<string, unknown> = {
     total,
+    // How many of those matches are actually paged. Equal to `total` for
+    // anyone with no favourites saved, which is why the client falls back to
+    // `total` when it is absent.
+    paged,
     page,
     per,
     bags: pageRows.map((r) => project(r.bag)),
+    ...(page === 0 && wantFavs ? { favs: favRows.map((r) => project(r.bag)) } : {}),
     counts: { brands: brandSet.size, skus, noFeature, noColour },
     // Three integers, on every response rather than only at boot: the count
     // line reads "N of 8,079 bags" on every render, and a client that had to
