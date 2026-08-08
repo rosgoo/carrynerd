@@ -4,6 +4,7 @@ import vercel from '@astrojs/vercel';
 
 import { indexablePaths } from './src/lib/catalog.js';
 import { hubPaths, indexableHubPaths } from './src/lib/hubs.js';
+import { lastmodByPath } from './src/lib/lastmod.js';
 
 // The catalog is entirely static: every model page is generated at build time
 // from data/bags.json, so `output: 'static'` is the default and the adapter is
@@ -56,6 +57,17 @@ export default defineConfig({
       if (pathname.startsWith('/bags/')) return indexablePaths.has(pathname);
       if (hubPaths.has(pathname)) return indexableHubPaths.has(pathname);
       return true;
+    },
+    // When each surviving page last actually changed — see lib/lastmod.js for
+    // which timestamp that is and why it is not the one the crawl writes.
+    // Pages the map has no honest answer for keep their bare <loc>; returning
+    // the item untouched is how this integration spells "no lastmod", and it
+    // is the right answer rather than a fallback.
+    // The 404 needs no exclusion here: the integration drops status-code pages
+    // itself.
+    serialize: (item) => {
+      const lastmod = lastmodByPath.get(new URL(item.url).pathname);
+      return lastmod ? { ...item, lastmod } : item;
     },
   })],
   build: { format: 'directory' },
