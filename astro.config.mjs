@@ -3,6 +3,7 @@ import sitemap from '@astrojs/sitemap';
 import vercel from '@astrojs/vercel';
 
 import { indexablePaths } from './src/lib/catalog.js';
+import { hubPaths, indexableHubPaths } from './src/lib/hubs.js';
 
 // The catalog is entirely static: every model page is generated at build time
 // from data/bags.json, so `output: 'static'` is the default and the adapter is
@@ -30,7 +31,7 @@ export default defineConfig({
       { hostname: '**.vercel.app', protocol: 'https' },
     ],
   },
-  // Two exclusions, for two unrelated reasons.
+  // Three exclusions, for three unrelated reasons.
   //
   // /internal/ is the working list behind the coverage banners — real pages,
   // built from the same data, but addressed to whoever is maintaining the
@@ -42,11 +43,16 @@ export default defineConfig({
   // URL while serving it noindex is a contradiction, so the same rule has to
   // drive both. It lives in lib/catalog.js precisely so these two cannot drift
   // apart; a page in one and not the other is the confusing half-state.
+  //
+  // Category hubs answer to the same rule one level up: a category with too
+  // few comparable models has nothing to compare, and lib/hubs.js decides
+  // that once for the meta tag and this list together.
   integrations: [sitemap({
     filter: (page) => {
       const { pathname } = new URL(page);
       if (pathname.startsWith('/internal/')) return false;
       if (pathname.startsWith('/bags/')) return indexablePaths.has(pathname);
+      if (hubPaths.has(pathname)) return indexableHubPaths.has(pathname);
       return true;
     },
   })],

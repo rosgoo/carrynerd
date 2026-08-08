@@ -3,6 +3,7 @@ import '../styles/app.css';
 import Logo from '../components/Logo.astro';
 import Analytics from '../components/Analytics.astro';
 import { SITE_NAME_DISPLAY } from '../lib/brand.js';
+import { hubs } from '../lib/hubs.js';
 
 interface Props {
   title: string;
@@ -86,6 +87,7 @@ const robots = noindex ? `noindex,${nofollow ? 'nofollow' : 'follow'}` : null;
     <div class="spacer"></div>
     <nav class="hbtns">
       <a class="hbtn" href="/">Browse</a>
+      <a class="hbtn" href="/carry-on/">Carry-on</a>
       <a class="hbtn" href="/brands/">Brands</a>
       <button class="hbtn units" id="units" title="Show lengths in centimetres or inches">
         <span class="u-cm">cm</span><span class="u-in">in</span>
@@ -98,9 +100,20 @@ const robots = noindex ? `noindex,${nofollow ? 'nofollow' : 'follow'}` : null;
 <slot />
 
 <footer class="sitefoot">
-  <a href="/brands/">Brands</a>
-  <a href="/privacy/">Privacy</a>
-  <a href="/bot/">About the crawler</a>
+  {/* Every category, on every page. Before the hubs existed the only route
+      between two model pages was their shared brand, which left 4,000 leaves
+      hanging off 149 twigs and nothing joining them across makers. This row is
+      the cheapest possible fix and it belongs in the layout rather than on the
+      pages, so no page can be built without it. */}
+  <nav class="footrow" aria-label="Categories">
+    {hubs.map((hub) => <a href={hub.href}>{hub.title}</a>)}
+  </nav>
+  <nav class="footrow" aria-label="Site">
+    <a href="/carry-on/">Carry-on sizes</a>
+    <a href="/brands/">Brands</a>
+    <a href="/privacy/">Privacy</a>
+    <a href="/bot/">About the crawler</a>
+  </nav>
 </footer>
 
 <script>

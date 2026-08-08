@@ -1,0 +1,279 @@
+---
+/* A category hub: /daypacks/, /duffels/, /carry-on/ for airlines.
+ *
+ * The catalogue's model pages answer "what is this bag", which nobody types
+ * until they already know the model name. This is the page for "30–40 L travel
+ * backpack" and "lightest daypack" — the queries with volume behind them — and
+ * it is also where the internal link graph gets repaired: before these, a model
+ * page reached eight siblings and its brand, and nothing reached across brands
+ * at all.
+ *
+ * Everything on it is computed from the same data the tables show. The two
+ * leaderboards are deliberately the only ranking here: we hold no ratings and
+ * no reviews, so the ordering has to be a number a reader can check against
+ * the columns beside it rather than a judgement we have not earned.
+ */
+import Base from '../../layouts/Base.astro';
+import BagTable from '../../components/BagTable.astro';
+import {
+  hubs, byDensity, rankable, COMMON_CARRYON_CM, MIN_FACET, MIN_PLAUSIBLE_GPL,
+} from '../../lib/hubs.js';
+import { bagHref } from '../../lib/catalog.js';
+import { airlines } from '../../lib/carryon.js';
+import { SITE_NAME } from '../../lib/brand.js';
+import { fmtPrice, fmtVolume, fmtWeight, pricePerLitre } from '../../lib/format.js';
+
+export function getStaticPaths() {
+  return hubs.map((hub) => ({ params: { category: hub.slug }, props: { hub } }));
+}
+
+const { hub } = Astro.props;
+const s = hub.stats;
+
+/* Two leaderboards, both computed, both stating their own denominator.
+ *
+ * Both rank only over bags that pass rankable() — a volume and a weight
+ * consistent enough with each other to be worth trusting. Without that gate
+ * the top of both tables is a list of the index's worst records rather than
+ * its best bags: a 30 L pack whose feed says it weighs one gram wins "lightest
+ * per litre" outright, and a shoe bag mis-parsed as 40 litres wins "cheapest".
+ * Neither is a finding about bags. See MIN_PLAUSIBLE_GPL in lib/hubs.js.
+ *
+ * Price per litre is USD-only for the reason statsFor() gives: nothing here
+ * converts currencies, so a table mixing them would be ranking figures rather
+ * than worth. */
+const LEADERBOARD = 25;
+const comparable = hub.bags.filter(rankable);
+
+const lightest = [...comparable].sort(byDensity).slice(0, LEADERBOARD);
+
+const valued = comparable.filter(
+  (b) => b.currency === 'USD' && pricePerLitre(b) != null,
+);
+const cheapest = [...valued]
+  .sort((a, b) => (pricePerLitre(a) ?? Infinity) - (pricePerLitre(b) ?? Infinity))
+  .slice(0, LEADERBOARD);
+
+const volumeFacets = hub.facets.filter((f) => f.kind === 'volume');
+const laptopFacets = hub.facets.filter((f) => f.kind === 'laptop');
+
+const makers = [
+  ...hub.bags
+    .reduce((by, bag) => {
+      const entry = by.get(bag.brand_slug) ?? { slug: bag.brand_slug, name: bag.brand, n: 0 };
+      entry.n += 1;
+      by.set(bag.brand_slug, entry);
+      return by;
+    }, new Map())
+    .values(),
+].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
+
+const others = hubs.filter((h) => h.key !== hub.key);
+
+const title = `${hub.title} — compared on volume, weight and dimensions | ${SITE_NAME}`;
+const description =
+  `${s.count} ${hub.counted} from ${s.brands} brands, normalised so volume, ` +
+  `weight and dimensions can be compared` +
+  (s.medianVolume != null ? `. Median ${fmtVolume(s.medianVolume)}` : '') +
+  (s.medianGpl != null ? `, ${s.medianGpl.toFixed(0)} g per litre` : '') +
+  (s.priceLow != null ? `, from ${fmtPrice(s.priceLow)}` : '') +
+  '.';
+
+/* The models this page actually stands behind, listed once for a crawler.
+ * Only the leaderboards go in: an ItemList naming rows that are not on the
+ * page is a claim about content that is not there. */
+const listed = [...new Map([...lightest, ...cheapest].map((b) => [b.id, b])).values()];
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: hub.title,
+  description,
+  url: new URL(hub.href, Astro.site).href,
+  isPartOf: { '@type': 'WebSite', name: SITE_NAME, url: new URL('/', Astro.site).href },
+  mainEntity: {
+    '@type': 'ItemList',
+    numberOfItems: listed.length,
+    itemListElement: listed.map((bag, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: `${bag.brand} ${bag.name}`,
+      url: new URL(bagHref(bag), Astro.site).href,
+    })),
+  },
+};
+
+const breadcrumbs = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Bags', item: new URL('/', Astro.site).href },
+    { '@type': 'ListItem', position: 2, name: hub.title },
+  ],
+};
+---
+{/* Held out of search results on the same terms a model page is: a hub with
+    fewer than MIN_FACET models behind it has nothing to compare, and asking
+    Google to index it would be asking it to index the shortage. Linked and
+    crawlable either way — noindex,follow. */}
+<Base title={title} description={description} noindex={!hub.indexable} nofollow={false}>
+  <Fragment slot="head">
+    {/* is:inline because this is data for a crawler, not code: it must ship in
+        the document as written rather than be bundled and fetched. */}
+    <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
+    <script type="application/ld+json" is:inline set:html={JSON.stringify(breadcrumbs)} />
+  </Fragment>
+
+  <div class="page">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/">Bags</a> <span>/</span>
+      <b>{hub.title}</b>
+    </nav>
+
+    <h1>{hub.title}</h1>
+    <p class="lead">{hub.blurb}</p>
+
+    <p class="lead">
+      The index holds {hub.total}{' '}{hub.counted}.
+      {' '}{s.count} of them — from {s.brands}{' '}{s.brands === 1 ? 'brand' : 'brands'} —
+      carry specs complete enough to compare, and those are the ones on this page.
+      {s.medianVolume != null && s.medianWeight != null && (
+        <Fragment>
+          {' '}The median is {fmtVolume(s.medianVolume)} and {fmtWeight(s.medianWeight)}
+          {s.medianGpl != null && <Fragment>, or {s.medianGpl.toFixed(0)} g per litre</Fragment>}.
+        </Fragment>
+      )}
+      {s.priceLow != null && (
+        <Fragment>
+          {' '}Prices run {fmtPrice(s.priceLow)} to {fmtPrice(s.priceHigh)}
+          {s.otherCurrency > 0 && (
+            <Fragment>
+              {' '}(the {s.otherCurrency} models priced in another currency are left out
+              of that range — nothing here is converted)</Fragment>
+          )}.
+        </Fragment>
+      )}
+      {s.measured > 0 && (
+        <Fragment>
+          {' '}Of the {s.measured} with all three dimensions known,
+          {' '}<b>{s.carryOn}</b> come in under the {COMMON_CARRYON_CM} cm linear
+          total most airlines allow.
+        </Fragment>
+      )}
+    </p>
+
+    {volumeFacets.length > 0 && (
+      <section>
+        <h2>By size</h2>
+        <div class="chiprow">
+          <div class="chips">
+            {volumeFacets.map((facet) => (
+              <a class="chip" href={facet.href}>{facet.label}<span>{facet.stats.count}</span></a>
+            ))}
+          </div>
+        </div>
+      </section>
+    )}
+
+    {laptopFacets.length > 0 && (
+      <section>
+        <h2>By laptop size</h2>
+        <div class="chiprow">
+          <div class="chips">
+            {laptopFacets.map((facet) => (
+              <a class="chip" href={facet.href}>{facet.label}<span>{facet.stats.count}</span></a>
+            ))}
+          </div>
+        </div>
+        <p class="note">
+          A bag is listed under the largest machine it takes, so every
+          {' '}{laptopFacets[laptopFacets.length - 1].label} bag also appears under the
+          smaller sizes. Sizes that would have resolved to almost the same list
+          as the one below them do not get a page.
+        </p>
+      </section>
+    )}
+
+    {lightest.length >= 5 && (
+      <section>
+        <h2>Lightest per litre</h2>
+        <p class="note">
+          The {lightest.length} lowest grams-per-litre of the {comparable.length}
+          {' '}{hub.plural} stating a volume and a weight that agree with each
+          other. It is the one ranking we can compute rather than assert — there
+          are no ratings in this index and none are invented. Anything claiming
+          under {MIN_PLAUSIBLE_GPL} g per litre is a bad number rather than a
+          light bag, so it is shown on its own page but not ranked here.
+        </p>
+        <BagTable bags={lightest} />
+      </section>
+    )}
+
+    {cheapest.length >= 5 && (
+      <section>
+        <h2>Cheapest per litre</h2>
+        <p class="note">
+          Lowest USD price per litre, of the {valued.length} priced in dollars
+          whose volume survives the same check. Capacity per dollar, not quality
+          per dollar.
+        </p>
+        <BagTable bags={cheapest} />
+      </section>
+    )}
+
+    {s.measured > 0 && (
+      <section>
+        <h2>Will it fly</h2>
+        <p class="note">
+          {s.carryOn} of the {s.measured} measured {hub.plural} clear
+          {' '}{COMMON_CARRYON_CM} cm linear. Airlines do not agree on a limit,
+          though, so the useful question is which one you are flying:
+          {' '}<a href="/carry-on/">carry-on limits for {airlines.length} airlines</a>,
+          each with the bags in this index that fit them.
+        </p>
+      </section>
+    )}
+
+    {makers.length > 0 && (
+      <section>
+        <h2>Brands making {hub.plural}</h2>
+        <ul class="related brandlist">
+          {makers.map((maker) => (
+            <li>
+              <a href={`/brands/${maker.slug}/`}>
+                <b>{maker.name}</b>
+                <em>{maker.n}{' '}{maker.n === 1 ? 'model' : 'models'}</em>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
+
+    <section>
+      <h2>Other categories</h2>
+      <div class="chiprow">
+        <div class="chips">
+          {others.map((other) => (
+            <a class="chip" href={other.href}>{other.title}<span>{other.bags.length}</span></a>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <p class="note foot">
+      Counts are of models with specs complete enough to compare — dimensions,
+      or a volume and a weight together. Every figure is taken from the brand's
+      own published data and normalised, never estimated; a “—” on any row
+      means we could not establish the value, not that it is zero. Open any
+      model to see where each number came from.
+      {!hub.indexable && (
+        <Fragment>
+          {' '}This category holds fewer than {MIN_FACET} comparable models, so
+          the page is served but kept out of search results until it has more
+          to say.
+        </Fragment>
+      )}
+    </p>
+  </div>
+</Base>

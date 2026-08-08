@@ -6,6 +6,7 @@ import Offers from '../../../components/Offers.astro';
 import Measure from '../../../components/Measure.astro';
 import CarryOn from '../../../components/CarryOn.astro';
 import { bags, bagSlug, bagHref, isIndexable, priceSeries, priceChanges, trackingSince } from '../../../lib/catalog.js';
+import { hubByCategory } from '../../../lib/hubs.js';
 import { catLabel, featureLabel, sourceLabel } from '../../../lib/labels.js';
 import { SITE_NAME } from '../../../lib/brand.js';
 import {
@@ -40,8 +41,13 @@ const related = [
 const density = gramsPerLitre(bag);
 const perLitre = pricePerLitre(bag);
 
+/* The category hub, if the category has one — the way from this bag to the
+ * comparable ones at other brands, which "Similar" below only reaches eight
+ * of. Rendered as its own row rather than inside `specs` because it is the
+ * one value on the table that is a link. */
+const hub = hubByCategory.get(bag.category) ?? null;
+
 const specs = [
-  ['Category', catLabel(bag.category), bag.category_source],
   ['Price', fmtPriceRange(bag.price_min, bag.price_max, bag.currency), null],
   ['Volume', fmtVolume(bag.volume_l), bag.volume_source],
   ['Dimensions', fmtDims(bag.dims_cm), bag.dims_source],
@@ -225,6 +231,17 @@ const description =
       <h2>Specifications</h2>
       <table class="spectable">
         <tbody>
+          <tr>
+            <th scope="row">Category</th>
+            <td>
+              {hub
+                ? <a href={hub.href}>{catLabel(bag.category)}</a>
+                : catLabel(bag.category)}
+              {sourceLabel(bag.category_source) && (
+                <i class="prov">{sourceLabel(bag.category_source)}</i>
+              )}
+            </td>
+          </tr>
           {specs.map(([label, value, source]) => (
             <tr>
               <th scope="row">{label}</th>
@@ -324,6 +341,13 @@ const description =
             </li>
           ))}
         </ul>
+        {hub && (
+          <p class="note">
+            {related.length} of {hub.bags.length} comparable {hub.plural} in the index.
+            {' '}<a href={hub.href}>All {hub.plural}</a>, ranked and split by
+            size, or <a href="/carry-on/">by the airline you are flying</a>.
+          </p>
+        )}
       </section>
     )}
 

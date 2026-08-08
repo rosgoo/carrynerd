@@ -17,6 +17,7 @@ export const CAT_LABELS = {
   duffel: "Duffel", tote: "Tote", messenger: "Messenger", briefcase: "Briefcase",
   "hip-pack": "Hip pack", luggage: "Luggage", "camera-bag": "Camera",
   "hiking-pack": "Hiking", pouch: "Pouch", "bike-bag": "Bike bag",
+  wallet: "Wallet",
 };
 
 // Where a value came from, spelled out. normalize.py records one of these on

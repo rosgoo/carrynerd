@@ -3,7 +3,7 @@
  * dimensions are not known — an empty section would imply we checked. */
 import {
   airlines, airlinesUpdated, airlineFit, complianceSummary,
-  fmtLimit, REGION_LABELS,
+  fmtLimit, airlineHref, REGION_LABELS,
 } from '../lib/carryon.js';
 import type { Bag } from '../lib/types.d.ts';
 
@@ -53,8 +53,11 @@ const mark = (v: boolean | null) =>
           <tbody>
             {rows.map(({ airline, fit }) => (
               <tr>
+                {/* Through to the carrier's own page, which answers the
+                    question this row raises next: if this one does not fit,
+                    what does. */}
                 <th scope="row">
-                  {airline.name}
+                  <a href={airlineHref(airline)}>{airline.name}</a>
                   {airline.carry_on_note && <i class="prov">{airline.carry_on_note}</i>}
                 </th>
                 <td>{fmtLimit(airline) ?? '—'}</td>
@@ -75,6 +78,8 @@ const mark = (v: boolean | null) =>
       near-miss may fit in practice — we do not estimate that. Weight caps
       apply to the packed bag and never fail a bag here, since only the empty
       weight is known. Limits change; check the airline before you fly.
+      {' '}<a href="/carry-on/">All {airlines.length} carriers side by side</a>,
+      each with the bags that fit them.
     </p>
   </section>
 )}

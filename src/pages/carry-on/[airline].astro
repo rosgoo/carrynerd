@@ -1,0 +1,285 @@
+---
+/* One airline: its published limits, and the bags in the index that meet them.
+ *
+ * Curated airline size tables are a solved problem — several sites keep good
+ * ones. What makes this page worth existing is the second half of the
+ * sentence: "…and here are the bags that fit", which requires a normalised
+ * index of external dimensions on the other side of the join.
+ *
+ * The section that could not be written anywhere else is "fits most airlines,
+ * but not this one". It is a statement about this carrier measured against the
+ * other thirty-odd, and it is the question a reader actually arrives with:
+ * not what fits, but what they have got away with before that will not work
+ * here.
+ */
+import Base from '../../layouts/Base.astro';
+import BagTable from '../../components/BagTable.astro';
+import Measure from '../../components/Measure.astro';
+import {
+  airlines, airlinesUpdated, airlinesByRegion, airlineSlug, airlineHref, fmtLimit,
+} from '../../lib/carryon.js';
+import {
+  measured, fittingCarryOn, fittingPersonal, justMisses, fitCount,
+  carryOnAirlineCount,
+} from '../../lib/carryon-index.js';
+import { hubByCategory } from '../../lib/hubs.js';
+import { bagHref } from '../../lib/catalog.js';
+import { catLabel } from '../../lib/labels.js';
+import { SITE_NAME } from '../../lib/brand.js';
+import { fmtVolume, fmtDims, fmtLinear } from '../../lib/format.js';
+import type { Bag } from '../../lib/types.d.ts';
+
+export function getStaticPaths() {
+  return airlines.map((airline) => ({
+    params: { airline: airlineSlug(airline) },
+    props: { airline },
+  }));
+}
+
+const { airline } = Astro.props;
+
+const measuredCount = measured.length;
+const fits = fittingCarryOn(airline);
+/* Bound once so the template can rely on it: not every carrier publishes a
+ * personal-item size, and the ones that do not get no section rather than an
+ * empty one. */
+const personalLimit = airline.personal_cm ?? null;
+const personal = personalLimit ? fittingPersonal(airline) : [];
+const misses = justMisses(airline);
+
+const byVolumeDesc = (a: Bag, b: Bag) => (b.volume_l ?? 0) - (a.volume_l ?? 0);
+
+/* The largest thing that still fits is the question. Sorted by volume rather
+ * than by density here — on an airline page the reader is buying capacity
+ * against a fixed frame, which is the one context where bigger is the answer. */
+const LARGEST = 100;
+const largest = fits.filter((bag) => bag.volume_l != null).sort(byVolumeDesc);
+const largestRows = largest.slice(0, LARGEST);
+
+const MISSES_SHOWN = 40;
+const missRows = misses.slice(0, MISSES_SHOWN);
+
+const PERSONAL_SHOWN = 40;
+const personalRows = personal
+  .filter((bag) => bag.volume_l != null)
+  .sort(byVolumeDesc)
+  .slice(0, PERSONAL_SHOWN);
+
+/* Where the fitting bags are, by category — a set of links out to the hubs,
+ * and a genuinely useful shape of the answer: "42 of the travel backpacks we
+ * hold fit" is more actionable than one number for the whole index. */
+const byCategory = [
+  ...fits
+    .reduce((by, bag) => by.set(bag.category, (by.get(bag.category) ?? 0) + 1), new Map())
+    .entries(),
+]
+  .map(([key, n]) => ({ key, n, hub: hubByCategory.get(key) }))
+  .sort((a, b) => b.n - a.n);
+
+const limit = fmtLimit(airline);
+const others = airlinesByRegion.map(({ key, label }) => ({
+  label,
+  list: airlines.filter((a) => a.region === key && a.name !== airline.name),
+}));
+
+const title = `${airline.name} carry-on size — and the bags that fit | ${SITE_NAME}`;
+const description =
+  `The carry-on limit published by ${airline.name} is ${limit ?? 'not stated by size'}. ` +
+  `${fits.length} of ${measuredCount} bags in this index with known dimensions ` +
+  `fit it${personalLimit ? `, and ${personal.length} fit the personal-item size` : ''}. ` +
+  `Checked ${airline.checked}.`;
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: `${airline.name} carry-on size`,
+  description,
+  url: new URL(airlineHref(airline), Astro.site).href,
+  isPartOf: { '@type': 'WebSite', name: SITE_NAME, url: new URL('/', Astro.site).href },
+  about: { '@type': 'Airline', name: airline.name, iataCode: airline.iata },
+  mainEntity: {
+    '@type': 'ItemList',
+    name: `Bags that fit the carry-on limit at ${airline.name}`,
+    numberOfItems: largestRows.length,
+    itemListElement: largestRows.map((bag, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: `${bag.brand} ${bag.name}`,
+      url: new URL(bagHref(bag), Astro.site).href,
+    })),
+  },
+};
+
+const breadcrumbs = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Bags', item: new URL('/', Astro.site).href },
+    { '@type': 'ListItem', position: 2, name: 'Carry-on', item: new URL('/carry-on/', Astro.site).href },
+    { '@type': 'ListItem', position: 3, name: airline.name },
+  ],
+};
+---
+<Base title={title} description={description} nofollow={false}>
+  <Fragment slot="head">
+    {/* is:inline because this is data for a crawler, not code: it must ship in
+        the document as written rather than be bundled and fetched. */}
+    <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
+    <script type="application/ld+json" is:inline set:html={JSON.stringify(breadcrumbs)} />
+  </Fragment>
+
+  <div class="page">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/">Bags</a> <span>/</span>
+      <a href="/carry-on/">Carry-on</a> <span>/</span>
+      <b>{airline.name}</b>
+    </nav>
+
+    <h1>{airline.name} carry-on size</h1>
+    <p class="lead">
+      {airline.name} publishes a carry-on limit of {limit ?? 'no stated size'}{personalLimit && (
+        <Fragment> and a personal item of {personalLimit.join(' × ')} cm</Fragment>
+      )}{airline.weight_kg != null && (
+        <Fragment>, with a {airline.weight_kg} kg cap on the packed bag</Fragment>
+      )}.
+      {' '}<b>{fits.length}</b> of the {measuredCount} bags in this index that
+      state all three of their dimensions fit it{personalLimit && (
+        <Fragment>; {personal.length} fit the personal item</Fragment>
+      )}.
+    </p>
+
+    <section>
+      <h2>The limit</h2>
+      <table class="spectable">
+        <tbody>
+          <tr>
+            <th scope="row">Carry-on</th>
+            <td>
+              {airline.carry_on_cm
+                ? <Measure value={fmtDims(airline.carry_on_cm)} />
+                : limit ?? '—'}
+              {airline.carry_on_note && <i class="prov">{airline.carry_on_note}</i>}
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Personal item</th>
+            <td class={personalLimit ? '' : 'nil'}>
+              {personalLimit ? <Measure value={fmtDims(personalLimit)} /> : 'not published as a size'}
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Weight cap</th>
+            <td class={airline.weight_kg == null ? 'nil' : ''}>
+              {airline.weight_kg != null ? `${airline.weight_kg} kg` : 'none published'}
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Published at</th>
+            <td>
+              <a href={airline.source} target="_blank" rel="noopener nofollow">{airline.name} baggage policy ↗</a>
+            </td>
+          </tr>
+          <tr><th scope="row">Last checked</th><td>{airline.checked}</td></tr>
+        </tbody>
+      </table>
+      <p class="note">
+        Read off the baggage policy {airline.name} publishes, on {airline.checked},
+        and reviewed across all {airlines.length} carriers on {airlinesUpdated}.
+        Airlines change these without notice — confirm before you fly.
+      </p>
+    </section>
+
+    {byCategory.length > 0 && (
+      <section>
+        <h2>What fits, by category</h2>
+        <div class="chiprow">
+          <div class="chips">
+            {byCategory.map(({ key, n, hub }) => (
+              hub
+                ? <a class="chip" href={hub.href}>{hub.title}<span>{n}</span></a>
+                : <span class="chip">{catLabel(key)}<span>{n}</span></span>
+            ))}
+          </div>
+        </div>
+      </section>
+    )}
+
+    {largestRows.length > 0 && (
+      <section>
+        <h2>The largest bags that fit</h2>
+        <p class="note">
+          Sorted by stated volume, biggest first — the most you can carry inside
+          the frame {airline.name} allows.
+          {largest.length > largestRows.length
+            ? ` Showing ${largestRows.length} of ${largest.length} that fit and state a volume; the rest are reachable from their brand pages and the category hubs above.`
+            : ` All ${largestRows.length} of the bags that fit and state a volume.`}
+        </p>
+        <BagTable bags={largestRows} metric="linear" />
+      </section>
+    )}
+
+    {missRows.length > 0 && (
+      <section>
+        <h2>Fits most airlines, but not this one</h2>
+        <p class="note">
+          Bags that clear at least 60% of the {carryOnAirlineCount} carriers we
+          track and fail here. This is the list worth reading before you fly
+          {' '}{airline.name} with a bag that has always been fine.
+          {misses.length > missRows.length && ` ${missRows.length} of ${misses.length}, most widely accepted first.`}
+        </p>
+        <ul class="related">
+          {missRows.map((bag) => (
+            <li>
+              <a href={bagHref(bag)}>
+                <b>{bag.brand}</b> {bag.name}
+                <em>
+                  fits {fitCount.get(bag.id)} of {carryOnAirlineCount}
+                  {bag.volume_l != null && ` · ${fmtVolume(bag.volume_l)}`}
+                  {' · '}<Measure value={fmtLinear(bag.linear_cm)} />
+                </em>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
+
+    {personalLimit && personalRows.length > 0 && (
+      <section>
+        <h2>Bags that fit the personal item</h2>
+        <p class="note">
+          Under the seat in front, at {personalLimit.join(' × ')} cm.
+          {personal.length > personalRows.length
+            ? ` The ${personalRows.length} largest of ${personal.length} that fit.`
+            : ` All ${personalRows.length} that fit and state a volume.`}
+        </p>
+        <BagTable bags={personalRows} metric="linear" />
+      </section>
+    )}
+
+    <section>
+      <h2>Other airlines</h2>
+      {others.map(({ label, list }) => list.length > 0 && (
+        <div class="chiprow">
+          <b class="chiplabel">{label}</b>
+          <div class="chips">
+            {list.map((other) => (
+              <a class="chip" href={airlineHref(other)}>{other.name}<span>{fittingCarryOn(other).length}</span></a>
+            ))}
+          </div>
+        </div>
+      ))}
+    </section>
+
+    <p class="note foot">
+      Fit is computed from each bag's stated dimensions against the limit
+      {' '}{airline.name} publishes, sorting both largest-axis-first so
+      orientation does not matter. Only bags stating all three axes are
+      considered — {measuredCount} of them — and the rest are neither passed nor
+      failed. Soft bags compress, so a near-miss may go in anyway; we do not
+      estimate that. Weight caps apply to the packed bag and the index knows
+      only the empty weight, so a weight cap never fails a bag here. Nothing on
+      this page is an assurance you will be let through a gate.
+    </p>
+  </div>
+</Base>

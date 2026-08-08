@@ -1117,11 +1117,16 @@ td.instock { color: var(--ok); }
 
 /* Site footer. The crawler and privacy links are not decoration: the crawler's
    User-Agent points at /bot, and the alerts plane collects addresses. */
+/* Two rows now: the category hubs, then the site's own pages. The hub row is
+   the only place every page links to every category, which is what stops the
+   model pages from being a flat field of 4,000 leaves reachable only from
+   their brand. */
 .sitefoot {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 9px;
   padding: 16px 14px; border-top: 1px solid var(--line);
   font-size: 10px; color: var(--ink-mute); max-width: 940px; margin: 0 auto;
 }
+.footrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 14px; }
 .sitefoot a { color: var(--ink-dim); text-decoration: none; letter-spacing: .06em; text-transform: uppercase; }
 .sitefoot a:hover { color: var(--accent); }
 .sitefoot span { flex: 1 1 320px; line-height: 1.6; }
@@ -1264,4 +1269,33 @@ a.cbrand:hover { color: var(--accent); text-decoration: underline; text-underlin
 @media (max-width: 560px) {
   .salecard { flex-basis: 132px; }
   .salehead .note { display: none; }
+}
+
+/* ---------- category, facet and airline pages ---------- */
+
+/* The one paragraph on these pages meant to be read rather than scanned.
+   .note is the site's footnote voice — 10px and muted, which is right under a
+   table and wrong for the sentence a search result just landed on. */
+.lead {
+  padding: 2px 14px 14px; margin: 0; max-width: 68ch;
+  font-size: 13px; line-height: 1.65; color: var(--ink-dim);
+}
+.lead b { color: var(--ink); font-weight: 600; }
+.lead a { color: var(--accent); }
+
+/* Facet, category and airline links. Reuses the filter rail's .chip so a
+   chip means the same thing everywhere: a narrowing of the current set. */
+.chiprow { padding: 0 14px 12px; }
+.chiprow .chip { text-decoration: none; }
+.chiplabel {
+  display: block; margin-bottom: 5px; font-size: 9px; font-weight: 500;
+  letter-spacing: .09em; text-transform: uppercase; color: var(--ink-mute);
+}
+
+/* The maker, ahead of the model name in a cross-brand table. Same treatment
+   the .related lists give it: present, subordinate, and not competing with the
+   model name for the click. */
+.bmaker {
+  font-weight: 400; color: var(--ink-mute); font-size: 9.5px;
+  letter-spacing: .1em; text-transform: uppercase;
 }

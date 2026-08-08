@@ -1,0 +1,198 @@
+---
+/* One slice of a category: /daypacks/20-30l/, /totes/16-inch-laptop/.
+ *
+ * These are the pages that match how the query is actually phrased — nobody
+ * searches "daypack", they search "20 litre daypack" — and they are also the
+ * place unbounded facet generation turns into scaled content abuse if it is
+ * not gated. The gate is in lib/hubs.js: a slice exists only where there are
+ * at least MIN_FACET comparable models in it, volume bands do not overlap, and
+ * a laptop size that would resolve to nearly the same list as the size below
+ * it does not get a page. So every URL here has a table on it worth reading,
+ * and there is no combinatorial tail.
+ */
+import Base from '../../layouts/Base.astro';
+import BagTable from '../../components/BagTable.astro';
+import { hubs, byDensity, COMMON_CARRYON_CM } from '../../lib/hubs.js';
+import { bagHref } from '../../lib/catalog.js';
+import { SITE_NAME } from '../../lib/brand.js';
+import { fmtPrice, fmtVolume, fmtWeight } from '../../lib/format.js';
+
+export function getStaticPaths() {
+  return hubs.flatMap((hub) =>
+    hub.facets.map((facet) => ({
+      params: { category: hub.slug, facet: facet.slug },
+      props: { hub, facet },
+    })),
+  );
+}
+
+const { hub, facet } = Astro.props;
+const s = facet.stats;
+
+/* Ranked by grams per litre, same as the hub's leaderboard, because within a
+ * fixed size band that is the comparison left to make: these bags all hold
+ * about the same amount, so what separates them is what they cost you to
+ * carry. Bags with no density go last rather than being dropped. */
+const ranked = [...facet.bags].sort(byDensity);
+
+/* A cap, said out loud.
+ *
+ * The largest slice here runs to several hundred models, and a table that long
+ * is thousands of DOM nodes for a phone to lay out before it can respond to
+ * anything. The tail is not lost: every model is linked from its brand page
+ * and reachable from the browse grid, which is where a list this long belongs
+ * anyway. */
+const SHOWN = 250;
+const rows = ranked.slice(0, SHOWN);
+const withheld = ranked.length - rows.length;
+
+/* The browse grid, already filtered to this slice — the way to the rest, and
+ * the way to narrow it further. Keys match stateParams() in scripts/browse.js. */
+const band = facet.kind === 'volume' ? facet.band : null;
+const browseHref = (() => {
+  const p = new URLSearchParams({ cat: hub.key });
+  if (band) {
+    p.set('volMin', String(band.min));
+    if (Number.isFinite(band.max)) p.set('volMax', String(band.max));
+  }
+  p.set('sort', 'gpl');
+  return `/?${p}`;
+})();
+
+const siblings = hub.facets.filter((f) => f.slug !== facet.slug);
+
+const title = `${facet.title} — compared on weight, volume and price | ${SITE_NAME}`;
+const description =
+  `${s.count} ${facet.title.toLowerCase()} in the index` +
+  (s.medianWeight != null ? `, median ${fmtWeight(s.medianWeight)}` : '') +
+  (s.medianGpl != null ? ` and ${s.medianGpl.toFixed(0)} g per litre` : '') +
+  (s.priceLow != null ? `, from ${fmtPrice(s.priceLow)}` : '') +
+  '. Specs normalised from the brands’ own product data.';
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: facet.title,
+  description,
+  url: new URL(facet.href, Astro.site).href,
+  isPartOf: { '@type': 'WebSite', name: SITE_NAME, url: new URL('/', Astro.site).href },
+  mainEntity: {
+    '@type': 'ItemList',
+    numberOfItems: rows.length,
+    itemListElement: rows.map((bag, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: `${bag.brand} ${bag.name}`,
+      url: new URL(bagHref(bag), Astro.site).href,
+    })),
+  },
+};
+
+const breadcrumbs = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Bags', item: new URL('/', Astro.site).href },
+    { '@type': 'ListItem', position: 2, name: hub.title, item: new URL(hub.href, Astro.site).href },
+    { '@type': 'ListItem', position: 3, name: facet.label },
+  ],
+};
+---
+<Base title={title} description={description} nofollow={false}>
+  <Fragment slot="head">
+    {/* is:inline because this is data for a crawler, not code: it must ship in
+        the document as written rather than be bundled and fetched. */}
+    <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
+    <script type="application/ld+json" is:inline set:html={JSON.stringify(breadcrumbs)} />
+  </Fragment>
+
+  <div class="page">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/">Bags</a> <span>/</span>
+      <a href={hub.href}>{hub.title}</a> <span>/</span>
+      <b>{facet.label}</b>
+    </nav>
+
+    <h1>{facet.title}</h1>
+
+    <p class="lead">
+      {s.count}{' '}{s.count === 1 ? 'model' : 'models'} from {s.brands}
+      {' '}{s.brands === 1 ? 'brand' : 'brands'}
+      {facet.kind === 'laptop'
+        ? ` stating a laptop compartment that takes a ${facet.inches}-inch machine or larger`
+        : ' in this size band'}.
+      {s.medianWeight != null && (
+        <Fragment>
+          {' '}The median weighs {fmtWeight(s.medianWeight)}
+          {s.medianVolume != null && <Fragment> at {fmtVolume(s.medianVolume)}</Fragment>}
+          {s.medianGpl != null && <Fragment>, or {s.medianGpl.toFixed(0)} g per litre</Fragment>}.
+        </Fragment>
+      )}
+      {s.priceLow != null && (
+        <Fragment>
+          {' '}Prices run {fmtPrice(s.priceLow)} to {fmtPrice(s.priceHigh)}
+          {s.otherCurrency > 0 && (
+            <Fragment>
+              {' '}({s.otherCurrency} more are priced in another currency and left
+              out of that range — nothing here is converted)</Fragment>
+          )}.
+        </Fragment>
+      )}
+      {s.measured > 0 && (
+        <Fragment>
+          {' '}<b>{s.carryOn}</b> of the {s.measured} with all three dimensions
+          known come in under {COMMON_CARRYON_CM} cm linear — see
+          {' '}<a href="/carry-on/">the airline limits</a> for which carriers that
+          actually satisfies.
+        </Fragment>
+      )}
+    </p>
+
+    <section>
+      <h2>Lightest per litre first</h2>
+      <p class="note">
+        {withheld > 0
+          ? `The ${rows.length} lightest per litre of ${ranked.length}. `
+          : `All ${rows.length}, ranked by grams per litre. `}
+        A bag with no stated weight, or one whose weight and volume disagree
+        badly enough that one of them must be wrong, cannot be ranked; those
+        sit at the end rather than being dropped.
+        {withheld > 0 && (
+          <Fragment>
+            {' '}The remaining {withheld} are on
+            {' '}<a href={browseHref}>the browse grid, filtered to this slice</a>,
+            and every one of them is linked from its brand page.
+          </Fragment>
+        )}
+      </p>
+      <BagTable bags={rows} />
+    </section>
+
+    {siblings.length > 0 && (
+      <section>
+        <h2>Other {hub.plural}</h2>
+        <div class="chiprow">
+          <div class="chips">
+            <a class="chip" href={hub.href}>All {hub.plural}<span>{hub.bags.length}</span></a>
+            {siblings.map((sib) => (
+              <a class="chip" href={sib.href}>{sib.label}<span>{sib.stats.count}</span></a>
+            ))}
+          </div>
+        </div>
+      </section>
+    )}
+
+    <p class="note foot">
+      {facet.kind === 'volume'
+        ? 'Volume is the figure the brand publishes, not one we measured or ' +
+          'inferred; bags that state no volume are not in this band or any ' +
+          'other. Bands are exclusive at the top, so a 30 L pack is in 30–40 L ' +
+          'and not in 20–30 L.'
+        : 'Laptop size is the largest machine the brand says the compartment ' +
+          'takes, so this list is everything that size and up. It is a stated ' +
+          'capacity, not a fit we tested.'}
+      {' '}Every value shows its source on the model page, and a “—” means we
+      could not establish it rather than that it is zero.
+    </p>
+  </div>
+</Base>

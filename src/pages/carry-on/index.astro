@@ -1,0 +1,174 @@
+---
+/* Every airline limit we track, in one table, with the index joined to it.
+ *
+ * The airline pages are the highest-differentiation surface on the site and
+ * this is their front door. Curated airline tables exist elsewhere; what
+ * nobody else has is the other side of the join — "and here are the bags that
+ * fit" — because that needs a normalised index of external dimensions, which
+ * is the work. The columns that say how many bags clear each limit are the
+ * part that cannot be copied without rebuilding the pipeline.
+ */
+import Base from '../../layouts/Base.astro';
+import Measure from '../../components/Measure.astro';
+import {
+  airlines, airlinesUpdated, airlinesByRegion, airlineHref, fmtLimit,
+} from '../../lib/carryon.js';
+import {
+  measured, fittingCarryOn, fittingPersonal, carryOnAirlineCount,
+} from '../../lib/carryon-index.js';
+import { hubs, COMMON_CARRYON_CM } from '../../lib/hubs.js';
+import { SITE_NAME } from '../../lib/brand.js';
+import { fmtLinear } from '../../lib/format.js';
+
+/* Computed here rather than asserted: the spread between the strictest and
+ * most generous carrier, measured against one fixed set of bags. It is the
+ * number that makes the case for the whole section — "carry-on size" is not
+ * one size, and the gap is several hundred bags wide. */
+const measuredCount = measured.length;
+
+const ranked = airlines
+  .map((airline) => ({ airline, fits: fittingCarryOn(airline).length }))
+  .sort((a, b) => a.fits - b.fits);
+const strictest = ranked[0];
+const loosest = ranked[ranked.length - 1];
+
+const rows = airlinesByRegion.map(({ key, label }) => ({
+  key,
+  label,
+  rows: airlines
+    .filter((a) => a.region === key)
+    .map((airline) => ({
+      airline,
+      fits: fittingCarryOn(airline).length,
+      personal: airline.personal_cm ? fittingPersonal(airline).length : null,
+    })),
+}));
+
+const title = `Airline carry-on size limits — and the bags that fit | ${SITE_NAME}`;
+const description =
+  `Published carry-on and personal-item limits for ${airlines.length} airlines, ` +
+  `each checked against ${measuredCount} bags with known dimensions. ` +
+  `${strictest.fits} fit ${strictest.airline.name}; ${loosest.fits} fit ` +
+  `${loosest.airline.name}.`;
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: 'Airline carry-on size limits',
+  description,
+  url: new URL('/carry-on/', Astro.site).href,
+  isPartOf: { '@type': 'WebSite', name: SITE_NAME, url: new URL('/', Astro.site).href },
+  mainEntity: {
+    '@type': 'ItemList',
+    numberOfItems: airlines.length,
+    itemListElement: airlines.map((airline, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: `${airline.name} carry-on size`,
+      url: new URL(airlineHref(airline), Astro.site).href,
+    })),
+  },
+};
+
+const breadcrumbs = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Bags', item: new URL('/', Astro.site).href },
+    { '@type': 'ListItem', position: 2, name: 'Carry-on' },
+  ],
+};
+---
+<Base title={title} description={description} nofollow={false}>
+  <Fragment slot="head">
+    {/* is:inline because this is data for a crawler, not code: it must ship in
+        the document as written rather than be bundled and fetched. */}
+    <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
+    <script type="application/ld+json" is:inline set:html={JSON.stringify(breadcrumbs)} />
+  </Fragment>
+
+  <div class="page">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/">Bags</a> <span>/</span>
+      <b>Carry-on</b>
+    </nav>
+
+    <h1>Airline carry-on sizes</h1>
+    <p class="lead">
+      The published carry-on and personal-item limits for {airlines.length} airlines,
+      each one checked against the {measuredCount} bags in this index that state
+      all three of their dimensions. Limits last reviewed {airlinesUpdated}.
+    </p>
+    <p class="lead">
+      “Carry-on size” is not one size. {strictest.airline.name} is the
+      strictest of the {carryOnAirlineCount} we track — {strictest.fits} of
+      the {measuredCount} bags clear it — and {loosest.airline.name} the most
+      generous, at {loosest.fits}. That gap is
+      {' '}{loosest.fits - strictest.fits} bags wide, which is the whole reason
+      a single “fits carry-on” label on a product page is worth so little.
+    </p>
+
+    {rows.map(({ label, rows: group }) => group.length > 0 && (
+      <section>
+        <h2>{label}</h2>
+        {/* Six columns, two of them dimension triples: scrolls inside its own
+            box rather than taking the page sideways with it. */}
+        <div class="xscroll">
+        <table class="spectable brandtable">
+          <thead>
+            <tr>
+              <th>Airline</th><th>Carry-on limit</th><th>Bags that fit</th>
+              <th>Personal item</th><th>Fit</th><th>Weight cap</th>
+            </tr>
+          </thead>
+          <tbody>
+            {group.map(({ airline, fits, personal }) => (
+              <tr>
+                <td>
+                  <a href={airlineHref(airline)}>{airline.name}</a>
+                  {airline.carry_on_note && <i class="prov">{airline.carry_on_note}</i>}
+                </td>
+                <td>{fmtLimit(airline) ?? '—'}</td>
+                <td>{fits}</td>
+                <td>{airline.personal_cm ? airline.personal_cm.join(' × ') + ' cm' : '—'}</td>
+                <td class={personal == null ? 'nil' : ''}>{personal ?? '—'}</td>
+                <td class={airline.weight_kg == null ? 'nil' : ''}>
+                  {airline.weight_kg != null ? `${airline.weight_kg} kg` : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        </div>
+      </section>
+    ))}
+
+    <section>
+      <h2>Or start from the bag</h2>
+      <div class="chiprow">
+        <div class="chips">
+          {hubs.map((hub) => (
+            <a class="chip" href={hub.href}>{hub.title}<span>{hub.stats.carryOn}</span></a>
+          ))}
+        </div>
+      </div>
+      <p class="note">
+        Counts are the models in each category that clear
+        {' '}<Measure value={fmtLinear(COMMON_CARRYON_CM)} /> linear — the total
+        most carriers converge on, and a reasonable first cut before you check
+        the airline you are actually flying.
+      </p>
+    </section>
+
+    <p class="note foot">
+      Fit is computed from the bag's stated dimensions against the limits each
+      airline publishes, sorting both largest-axis-first so orientation does not
+      matter — a bag fits a frame whichever way round it goes in. Soft bags
+      compress and a near-miss may fit in practice; we do not estimate that.
+      Weight caps apply to the packed bag and the index only knows the empty
+      weight, so they are shown as context and never fail a bag here. Limits
+      change: check the airline before you fly, and treat these pages as a
+      shortlist rather than a guarantee.
+    </p>
+  </div>
+</Base>

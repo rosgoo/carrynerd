@@ -24,6 +24,40 @@ export const REGION_LABELS = {
   'asia-pacific-me': 'Asia-Pacific & Middle East',
 };
 
+/* The airline's own page. Derived from the name rather than stored in
+ * airlines.json, because that file is maintained by hand against each
+ * carrier's published policy and a slug would be a second thing to keep
+ * correct there for no gain.
+ *
+ * Two carriers whose names differ only in punctuation would collide into one
+ * route and silently publish one page where two were meant, so the collision
+ * is a failed build rather than something to notice later — the same stance
+ * catalog.js takes on an empty catalog. */
+export const airlineSlug = (airline) =>
+  airline.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+export const airlineHref = (airline) => `/carry-on/${airlineSlug(airline)}/`;
+
+{
+  const seen = new Map();
+  for (const airline of airlines) {
+    const slug = airlineSlug(airline);
+    const clash = seen.get(slug);
+    if (clash) {
+      throw new Error(
+        `data/airlines.json: "${airline.name}" and "${clash}" both slug to ` +
+          `"${slug}" — /carry-on/${slug}/ can only be one of them.`,
+      );
+    }
+    seen.set(slug, airline.name);
+  }
+}
+
+/** Airlines grouped for display, in the region order REGION_LABELS declares. */
+export const airlinesByRegion = Object.entries(REGION_LABELS).map(
+  ([key, label]) => ({ key, label, airlines: airlines.filter((a) => a.region === key) }),
+);
+
 function fitsTriple(dims, limit) {
   if (!dims || dims.length < 3 || !limit) return null;
   const bag = [...dims].sort((a, b) => b - a);
