@@ -394,7 +394,22 @@ def parse_product_page(html_text):
                 found["volume_l"] = vol
                 found["volume_source"] = "product-page"
         if "weight_g" not in found:
-            wt = find_weight_g(source)
+            # Under the label first, then the sweep.
+            #
+            # The note above says weights keep the bare sweep because chrome
+            # rarely prints a gram figure. True — but accessories do, and they
+            # print it *above* the pack's. LiteAF lists four hip-belt options
+            # ("Small Hip Belt (28″ – 32″ 4.7 Oz)") and then, further down,
+            # "Weights & Measurements / 31.8 Oz without hip belt". First match
+            # wins took the smallest belt and published a 902 g pack as 133 g,
+            # which then led the lightest-per-litre table for daypacks.
+            #
+            # Scoping to the label alone would lose the pages that state a
+            # weight and never label it, so this is a preference rather than a
+            # replacement: a labelled figure if the page has one, the old
+            # behaviour if it does not.
+            wt = (page_near_label(source, "weight", find_weight_g)
+                  or find_weight_g(source))
             if wt:
                 found["weight_g"] = wt
                 found["weight_source"] = "product-page"

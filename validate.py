@@ -597,6 +597,61 @@ def swept_volume(payload, rep, share=0.6):
                  f"figure ({sum(len(v) for v in swept.values())} checked)")
 
 
+# Grams per litre below which a bag is not a bag.
+#
+# The genuinely lightest things in the index — silnylon dry sacks, Dyneema pack
+# bodies sold without a suspension — sit between five and eight. Below five,
+# every record inspected has been a parse rather than a product. The site holds
+# the same number as MIN_PLAUSIBLE_GPL in src/lib/hubs.js, where it decides
+# what is allowed into a ranking; here it decides what gets reported. Two
+# languages, one judgement — change both together.
+DENSITY_FLOOR_GPL = 5.0
+
+
+def density(payload, rep):
+    """Do a bag's stated volume and weight agree that it is a bag?
+
+    Neither figure can be checked on its own. 133 g is a real weight, 46 L is a
+    real capacity, and only together do they say that something has gone wrong
+    — a hip belt read instead of the pack, a fabric's grams per square metre
+    read as the fabric's product, a recommended load read as a mass. Every one
+    of those passed the 50 g - 8 kg bounds gate, because each number was
+    individually ordinary.
+
+    So this is the check that only exists in the join. It is one-sided on
+    purpose: there is no ceiling here, because dense is a real property of
+    small leather goods and a 0.3 L wallet at 100 g is 333 g/L and correct,
+    while nothing is genuinely lighter than air-filled fabric.
+
+    Grouped by weight source, since that names the parser to go and read.
+    Warns rather than fails — these are records to fix, not a reason to refuse
+    to publish a catalogue that is otherwise sound.
+    """
+    thin = {}
+    for bag in payload.get("bags") or []:
+        weight, volume = bag.get("weight_g"), bag.get("volume_l")
+        if not weight or not volume:
+            continue
+        gpl = weight / volume
+        if gpl < DENSITY_FLOOR_GPL:
+            thin.setdefault(bag.get("weight_source") or "?", []).append(
+                f"{bag['id']} {gpl:.1f} g/L ({weight} g / {volume} L, "
+                f"volume via {bag.get('volume_source') or '?'})")
+
+    total = sum(len(v) for v in thin.values())
+    if not total:
+        rep.note(f"density: no bag states a weight under "
+                 f"{DENSITY_FLOOR_GPL:.0f} g per litre of its own capacity")
+        return
+
+    worst = sorted(thin.items(), key=lambda kv: -len(kv[1]))
+    rep.warn("density:implausible",
+             f"{total} bag(s) weigh under {DENSITY_FLOOR_GPL:.0f} g per litre, "
+             f"which means one of the two figures is wrong. By weight source: "
+             + ", ".join(f"{src} ({len(rows)})" for src, rows in worst)
+             + ". " + sample([r for _, rows in worst for r in rows], 4))
+
+
 def regression(payload, prev, rep, max_drop, max_coverage_drop):
     meta, pmeta = payload.get("meta") or {}, prev.get("meta") or {}
 
@@ -684,6 +739,7 @@ def main():
     freshness(rep, args.stale_days, args.fail_days)
     currency(payload, rep, args.max_usd_median)
     swept_volume(payload, rep)
+    density(payload, rep)
 
     prev = baseline(args.baseline or None)
     if prev is None and args.require_baseline:

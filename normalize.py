@@ -645,10 +645,35 @@ def find_dims_cm(text, slash=False):
 # silently wrong. The 50 g - 8 kg gate below is what makes taking the comma as
 # a decimal point safe: read as a thousands separator instead, every one of
 # these lands far outside it and is thrown away rather than believed.
-WEIGHT_KG = (re.compile(r"(\d{1,4}(?:[.,]\d+)?)\s*(?:kg|kilogram)", re.I), 1000.0)
-WEIGHT_LB = (re.compile(r"(\d{1,2}(?:[.,]\d+)?)\s*(?:lbs?\b|pounds?\b)", re.I), G_PER_LB)
-WEIGHT_OZ = (re.compile(r"(\d{1,3}(?:[.,]\d+)?)\s*(?:oz\b|ounces?\b)", re.I), G_PER_OZ)
-WEIGHT_G = (re.compile(r"(\d{2,4})\s*(?:g\b|grams?\b)", re.I), 1.0)
+#
+# Three guards wrap every one of these, because a weight regex loose over
+# free prose finds a number next to a unit long before it finds the product's.
+#
+# NUM_START — a match may not begin inside a run of digits. On its own this is
+# hygiene; with the range guard below it is what stops "10-11kg" from being
+# refused at the 11 and then quietly accepted as "1kg".
+#
+# NOT_RANGE_TOP — the top of a range is not a weight. Bonfus prints a
+# recommended load beside every pack ("6-7kg"), and first-match-wins read the 7
+# and published the 380 g Iterus 38L as a 7 kg one — which is a pack heavier
+# than the load it is rated to carry, and nothing said so.
+#
+# NOT_AREAL — grams per square metre and ounces per square yard describe the
+# fabric, not the bag. Cottage makers name the shell by its areal weight, and
+# "3.85oz/sqy" taken as a pack weight is 109 g: that is how the 480 g Bonfus
+# Saccus 48L came to lead the lightest-per-litre table. A bare slash cannot be
+# the tell — Rab writes "865g / 1lb 14.5oz", one weight restated twice, and
+# that 865 is exactly the number we want — so only an area unit after the
+# slash disqualifies the match.
+NUM_START = r"(?<!\d)"
+NOT_RANGE_TOP = r"(?<!\d-)(?<!\d–)(?<!\d—)"
+NOT_AREAL = r"(?!\s*(?:/|per)\s*(?:sq|m2|m²|yd|yard|metre|meter|m\b))"
+_LEAD = NUM_START + NOT_RANGE_TOP
+
+WEIGHT_KG = (re.compile(_LEAD + r"(\d{1,4}(?:[.,]\d+)?)\s*(?:kg|kilogram)" + NOT_AREAL, re.I), 1000.0)
+WEIGHT_LB = (re.compile(_LEAD + r"(\d{1,2}(?:[.,]\d+)?)\s*(?:lbs?\b|pounds?\b)" + NOT_AREAL, re.I), G_PER_LB)
+WEIGHT_OZ = (re.compile(_LEAD + r"(\d{1,3}(?:[.,]\d+)?)\s*(?:oz\b|ounces?\b)" + NOT_AREAL, re.I), G_PER_OZ)
+WEIGHT_G = (re.compile(_LEAD + r"(\d{2,4})\s*(?:g\b|grams?\b)" + NOT_AREAL, re.I), 1.0)
 
 # Order matters, and the right order depends on what is being read.
 #
@@ -680,9 +705,12 @@ def find_weight_g(text, prefer_metric=False):
 # might be the fabric. Cottage makers quote "5.8 oz VX21" beside the pack
 # weight and Rab explains that "600D means 9,000 meters of yarn weigh 600
 # grams" — first-match-wins takes the wrong number in both cases.
+#
+# NOT_AREAL applies here too: "Fabric weight: 130 g/m²" is labelled with the
+# word this pattern keys off, and is still a property of the cloth.
 WEIGHT_LABELLED = re.compile(
     r"\b(?:weights?|gewicht)\s*[:\-]?\s*(\d+(?:[.,]\d+)?)\s*"
-    r"(oz\b|ounces?\b|g\b|grams?\b|gramm\b|lbs?\b|pounds?\b|kg\b)", re.I)
+    r"(oz\b|ounces?\b|g\b|grams?\b|gramm\b|lbs?\b|pounds?\b|kg\b)" + NOT_AREAL, re.I)
 WEIGHT_UNIT = {"oz": G_PER_OZ, "ounce": G_PER_OZ, "ounces": G_PER_OZ,
                "g": 1.0, "gram": 1.0, "grams": 1.0, "gramm": 1.0,
                "lb": G_PER_LB, "lbs": G_PER_LB,
