@@ -781,6 +781,67 @@ BAGGISH_TYPE = re.compile(
     re.I,
 )
 
+# "N Pack" is `multi[- ]?pack` said the way brands actually say it ("Leather
+# Coasters 4-Pack"), and it needs anchoring rather than adding to NOT_A_BAG:
+# only at the end of a title or inside brackets is the number a quantity. Bare
+# and mid-title it is a capacity and the pack is real — CamelBak's Arete 18
+# Pack 1.5L, Dakine's 365 Pack 21L Backpack, Red Oxx's Bison 24 Pack Softpak
+# Cooler. The anchor is doing the whole job; an unanchored `\d+[- ]?pack` takes
+# all three of those bags out of the index with the coasters.
+#
+# Separate from NOT_A_BAG because that pattern wraps its alternation in
+# `\b(...)\b`, and neither `$` nor a leading bracket survives a trailing word
+# boundary — folded in there it would match nothing at all and look fine.
+MULTIPACK = re.compile(r"\(\s*\d{1,2}[- ]?packs?\s*\)|\b\d{1,2}[- ]?packs?\s*$", re.I)
+
+# Google's product taxonomy, which Shopify offers as a picker and which some
+# brands publish verbatim into product_type. It arrives as the whole breadcrumb
+# — "Sporting Goods > Outdoor Recreation > Camping & Hiking > Camping Tools >
+# Hunting & Survival Knives" — and every level above the leaf names a
+# department rather than the product. Pooled into the classification blob, that
+# one path put 223 Triple Aught Design knives and camping tools into
+# `hiking-pack`, because "Camping & Hiking" is an ancestor of very nearly
+# everything sold outdoors. The ancestors have to be dropped before the blob is
+# matched, and then the path is worth more than any keyword: a standardised
+# vocabulary is the store telling us what the thing is, in a controlled term.
+#
+# Recognised by its *root*, never by containing " > ". Sherpani also delimits
+# with ">", but as a keyword stack running the other way — "Backpack >
+# Convertible > Recycled Material > RFID Protection" — where the head is the
+# answer and the leaf is a marketing adjective. Keying off the delimiter would
+# have taken the leaf of all 257 of those and indexed a quarter of the brand as
+# "RFID Protection".
+GOOGLE_TAXONOMY_ROOTS = {
+    "Animals & Pet Supplies", "Apparel & Accessories", "Arts & Entertainment",
+    "Baby & Toddler", "Business & Industrial", "Cameras & Optics",
+    "Electronics", "Food, Beverages & Tobacco", "Furniture", "Hardware",
+    "Health & Beauty", "Home & Garden", "Luggage & Bags", "Mature", "Media",
+    "Office Supplies", "Religious & Ceremonial", "Software", "Sporting Goods",
+    "Toys & Games", "Vehicles & Parts",
+}
+
+# The only two subtrees Google files carry under. Everything else it roots is a
+# department this index does not cover, so a non-carry root is a negative
+# signal as strong as a collection ruling — stronger, being a fixed vocabulary
+# rather than one store's shelf names. A bag titled as one still overrides it,
+# on the same principle as NOT_A_BAG_TYPE: TAD files its Passport Wallet under
+# "Camping Tools" and it is still a wallet.
+GOOGLE_CARRY_ROOTS = (
+    "Luggage & Bags",
+    "Apparel & Accessories > Handbags, Wallets & Cases",
+)
+
+
+def google_taxonomy(product_type):
+    """The Google taxonomy path if product_type is one, else None."""
+    path = (product_type or "").strip()
+    return path if path.split(" > ")[0].strip() in GOOGLE_TAXONOMY_ROOTS else None
+
+
+def taxonomy_leaf(path):
+    """The product's own node. Its ancestors name departments, not products."""
+    return path.rsplit(" > ", 1)[-1].strip()
+
 
 def classify(title, product_type, tags):
     """
@@ -844,9 +905,22 @@ def build_shopify(product, brand, hint=None, force=None):
             return None, "not-a-bag:collection"
         if NOT_A_BAG.search(title) or NOT_A_BAG.search(ptype):
             return None, "not-a-bag"
+        if MULTIPACK.search(title):
+            return None, "not-a-bag"
+        # A Google taxonomy path answers this outright, so it is asked first
+        # and the keyword pair below never sees it: run against the full
+        # breadcrumb they get the ancestors' vote too, and "Food & Beverage
+        # Carriers > Water Bottles" reads as BAGGISH on the strength of a
+        # department name.
+        gtax = google_taxonomy(ptype)
+        shelf = taxonomy_leaf(gtax) if gtax else ptype
         # Only after the title has had its say: a "Camera Bag" filed under a
         # store's "Photo Accessories" shelf is still a camera bag.
-        if (NOT_A_BAG_TYPE.search(ptype) and not BAGGISH_TYPE.search(ptype)
+        if gtax:
+            if (not gtax.startswith(GOOGLE_CARRY_ROOTS)
+                    and not classify(title, "", [])[0]):
+                return None, "not-a-bag:product-type"
+        elif (NOT_A_BAG_TYPE.search(ptype) and not BAGGISH_TYPE.search(ptype)
                 and not classify(title, "", [])[0]):
             return None, "not-a-bag:product-type"
 
@@ -854,7 +928,7 @@ def build_shopify(product, brand, hint=None, force=None):
         # tags. A title is specific and deliberate; a shelf is deliberate but
         # broad; a tag is neither, and letting tags win put WANDRD's whole
         # camera line under hiking-pack.
-        keyword, keyword_src = classify(title, ptype, tags)
+        keyword, keyword_src = classify(title, shelf, tags)
         if keyword_src == "title":
             category, cat_src = keyword, "title"
         elif hint and hint.get("category"):
