@@ -1,0 +1,337 @@
+---
+/* Email deliverability — the health of the one plane that can get us blocked.
+ *
+ * Everything here is a rate over `email_sends` joined to `email_events` by
+ * Resend's message id. Send counts on their own are the number this page
+ * exists to stop anyone reading: a nightly that mails five hundred addresses
+ * and bounces four hundred of them looks identical to a healthy one until the
+ * denominator is shown next to it.
+ *
+ * The two numbers to actually watch are at the top, with the thresholds the
+ * mailbox providers use rather than ones invented here — see BAD below.
+ *
+ * The confirm funnel is the other half. A subscription sits pending either
+ * because the reader ignored the mail or because the mail never arrived, and
+ * those need opposite responses; the bounce column on the confirm row is what
+ * tells them apart, and before delivery tracking existed nothing could.
+ */
+import Base from '../../layouts/Base.astro';
+import { sql } from '../../lib/db.ts';
+import { guard } from '../../lib/dash.ts';
+
+export const prerender = false;
+
+const denied = await guard(Astro);
+if (denied) return denied;
+
+const DAYS = [7, 30, 90];
+const requested = Number(new URL(Astro.request.url).searchParams.get('days'));
+const days = DAYS.includes(requested) ? requested : 30;
+
+const n = (v: unknown) => Number(v ?? 0);
+
+/* Gmail publishes 0.3% as the complaint rate at which it starts filtering, and
+ * treats sustained hard bounces above roughly 2% the same way. Both are the
+ * provider's numbers, not ours, which is the point — a threshold we chose
+ * ourselves would be a threshold we could talk ourselves out of. */
+const BAD = { complaint: 0.3, bounce: 2.0 };
+
+type Row = Record<string, unknown>;
+let error: string | null = null;
+let subs: Row = {};
+let sends: Row[] = [];
+let outcomes: Row[] = [];
+let byKind: Row[] = [];
+let suppressed: Row[] = [];
+let recent: Row[] = [];
+
+try {
+  const db = sql();
+  const since = db`now() - (${String(days)} || ' days')::interval`;
+
+  const [s, sendRows, outcomeRows, kindRows, supRows, recentRows] = await Promise.all([
+    db`select count(*) as total,
+              count(*) filter (where confirmed_at is not null) as confirmed,
+              count(*) filter (where confirmed_at is null)     as pending
+       from subscriptions`,
+
+    db`select count(*) as total,
+              count(*) filter (where kind = 'confirm') as confirms,
+              count(*) filter (where kind = 'alert')   as alerts
+       from email_sends where sent_at >= ${since}`,
+
+    // Distinct on the message id: a delivered message can emit more than one
+    // event of a type (a reader opening twice), and counting rows would report
+    // an open rate above 100% and make the whole column untrustworthy.
+    db`select type, count(distinct provider_id) as n
+       from email_events
+       where received_at >= ${since} and provider_id is not null
+       group by type`,
+
+    // The confirm funnel, and the bounce column that makes a stuck signup
+    // diagnosable. Left join: a send with no events yet is in flight, not lost.
+    db`select s.kind,
+              count(*) as sent,
+              count(*) filter (
+                where exists (select 1 from email_events e
+                               where e.provider_id = s.provider_id
+                                 and e.type = 'email.delivered')) as delivered,
+              count(*) filter (
+                where exists (select 1 from email_events e
+                               where e.provider_id = s.provider_id
+                                 and e.type = 'email.bounced'))   as bounced
+       from email_sends s
+       where s.sent_at >= ${since}
+       group by s.kind`,
+
+    db`select reason, count(*) as n from suppressions group by reason`,
+
+    // No provider id joined back to a subscription and no address anywhere —
+    // this is a feed of what the provider said, for reading when a rate moves.
+    db`select type, occurred_at, received_at,
+              payload->>'subject' as subject,
+              payload->'bounce'->>'type'    as bounce_type,
+              payload->'bounce'->>'subType' as bounce_subtype
+       from email_events
+       where type in ('email.bounced', 'email.complained', 'email.delivery_delayed')
+       order by received_at desc
+       limit 25`,
+  ]);
+
+  subs = s[0] ?? {};
+  sends = sendRows;
+  outcomes = outcomeRows;
+  byKind = kindRows;
+  suppressed = supRows;
+  recent = recentRows;
+} catch (err) {
+  error = (err as Error).message;
+}
+
+const sent = n(sends[0]?.total);
+const count = (type: string) => n(outcomes.find((r) => r.type === type)?.n);
+
+const delivered = count('email.delivered');
+const bounced = count('email.bounced');
+const complained = count('email.complained');
+const opened = count('email.opened');
+const clicked = count('email.clicked');
+
+/* Every rate is over messages *sent*, not over messages delivered.
+ *
+ * Delivered is the tempting denominator and it is the wrong one: it hides the
+ * failures in the numerator's own denominator, so a run where nothing arrived
+ * would report a flattering bounce rate over the handful that did. Sent is the
+ * only number that cannot be improved by things going badly. */
+const rate = (x: number) => (sent > 0 ? (x / sent) * 100 : null);
+const fmt = (v: number | null) => (v === null ? '—' : `${v.toFixed(1)}%`);
+
+const bounceRate = rate(bounced);
+const complaintRate = rate(complained);
+
+/* Unaccounted-for sends. Mostly in flight; persistently high means the webhook
+ * is not configured, which is otherwise invisible — every count on this page
+ * would read zero and look like a quiet week rather than a broken endpoint. */
+const silent = Math.max(0, sent - delivered - bounced);
+const noWebhook = sent > 0 && delivered === 0 && bounced === 0 && complained === 0;
+
+const total = n(subs.total);
+const confirmed = n(subs.confirmed);
+const confirmRate = total > 0 ? (confirmed / total) * 100 : null;
+
+const supTotal = suppressed.reduce((t, r) => t + n(r.n), 0);
+
+const when = (v: unknown) =>
+  v ? new Date(String(v)).toISOString().slice(0, 16).replace('T', ' ') : '—';
+---
+<Base title="Email" noindex={true}>
+  <div class="page">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/internal/">Internal</a> <span>/</span> <b>Email</b>
+      <span>·</span> <a href="/internal/referrals/">Referrals</a>
+    </nav>
+
+    <h1>Email deliverability</h1>
+
+    <div class="tagrow">
+      {DAYS.map((d) => (
+        <a class="tag" href={`?days=${d}`} aria-current={d === days ? 'page' : undefined}>
+          {d === days ? `▸ ${d} days` : `${d} days`}
+        </a>
+      ))}
+    </div>
+
+    {error && (
+      <section>
+        <p class="note">
+          <b>No data source.</b> The query failed with: <code>{error}</code>
+          <br /><br />
+          If this is a fresh deployment, <code>DATABASE_URL</code> is probably
+          unset, or <code>alerts/schema.sql</code> has not been applied since the
+          delivery-tracking tables were added. Re-running it is safe — it is
+          idempotent.
+        </p>
+      </section>
+    )}
+
+    {!error && (
+      <Fragment>
+        <section>
+          <h2>Reputation</h2>
+          <dl class="keyspecs">
+            <div><dt>Sent</dt><dd>{sent.toLocaleString()}</dd></div>
+            <div>
+              <dt>Bounce rate</dt>
+              <dd class={bounceRate !== null && bounceRate > BAD.bounce ? 'bad' : ''}>
+                {fmt(bounceRate)}
+              </dd>
+            </div>
+            <div>
+              <dt>Complaint rate</dt>
+              <dd class={complaintRate !== null && complaintRate > BAD.complaint ? 'bad' : ''}>
+                {fmt(complaintRate)}
+              </dd>
+            </div>
+            <div><dt>Suppressed</dt><dd>{supTotal.toLocaleString()}</dd></div>
+          </dl>
+          <p class="note">
+            Both rates are over messages sent, not messages delivered — a
+            denominator that shrinks when things go wrong flatters exactly the
+            run you most need to see. Mailbox providers start filtering around
+            {' '}<b>{BAD.complaint}%</b> complaints and <b>{BAD.bounce}%</b> hard
+            bounces; those are their thresholds, not ours.
+            {supTotal > 0 && (
+              <Fragment>
+                {' '}Suppressed addresses are never written to again by either
+                sender, whatever <code>subscriptions</code> still says.
+              </Fragment>
+            )}
+          </p>
+        </section>
+
+        {noWebhook && (
+          <section>
+            <p class="note">
+              <b>{sent.toLocaleString()} messages sent and not one delivery event.</b>
+              {' '}That is the signature of a webhook that was never configured
+              rather than of a quiet period — every rate above would read zero
+              in exactly this way. Point a Resend webhook at
+              {' '}<code>/api/webhooks/resend</code> and set
+              {' '}<code>RESEND_WEBHOOK_SECRET</code> to its signing secret.
+            </p>
+          </section>
+        )}
+
+        <section>
+          <h2>Subscribers</h2>
+          <dl class="keyspecs">
+            <div><dt>Total</dt><dd>{total.toLocaleString()}</dd></div>
+            <div><dt>Confirmed</dt><dd>{confirmed.toLocaleString()}</dd></div>
+            <div><dt>Pending</dt><dd>{n(subs.pending).toLocaleString()}</dd></div>
+            <div>
+              <dt>Confirm rate</dt>
+              <dd class={confirmRate === null ? 'nil' : ''}>{fmt(confirmRate)}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section>
+          <h2>By kind</h2>
+          <table class="spectable">
+            <thead>
+              <tr><th>Kind</th><th>Sent</th><th>Delivered</th><th>Bounced</th><th>Delivered rate</th></tr>
+            </thead>
+            <tbody>
+              {byKind.length === 0 && (
+                <tr><td colspan="5" class="nil">Nothing sent in this window.</td></tr>
+              )}
+              {byKind.map((r) => (
+                <tr>
+                  <td>{String(r.kind)}</td>
+                  <td>{n(r.sent).toLocaleString()}</td>
+                  <td>{n(r.delivered).toLocaleString()}</td>
+                  <td class={n(r.bounced) > 0 ? 'bad' : ''}>{n(r.bounced).toLocaleString()}</td>
+                  <td>{n(r.sent) > 0 ? `${((n(r.delivered) / n(r.sent)) * 100).toFixed(1)}%` : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p class="note">
+            A <code>confirm</code> row with bounces is the useful one: those are
+            signups that will sit pending forever, and the bounce is the only
+            thing that distinguishes them from a reader who simply never clicked.
+          </p>
+        </section>
+
+        <section>
+          <h2>Engagement</h2>
+          <dl class="keyspecs">
+            <div><dt>Delivered</dt><dd>{delivered.toLocaleString()}</dd></div>
+            <div><dt>Opened</dt><dd>{opened.toLocaleString()}</dd></div>
+            <div><dt>Clicked</dt><dd>{clicked.toLocaleString()}</dd></div>
+            <div><dt>Awaiting an outcome</dt><dd>{silent.toLocaleString()}</dd></div>
+          </dl>
+          <p class="note">
+            Opens and clicks are counted per message, not per event, so a reader
+            opening the same mail twice counts once. Both stay at zero unless
+            open and click tracking are enabled on the Resend side; the delivery
+            columns above do not depend on them.
+          </p>
+        </section>
+
+        {suppressed.length > 0 && (
+          <section>
+            <h2>Suppressions</h2>
+            <table class="spectable">
+              <thead><tr><th>Reason</th><th>Addresses</th></tr></thead>
+              <tbody>
+                {suppressed.map((r) => (
+                  <tr><td>{String(r.reason)}</td><td>{n(r.n).toLocaleString()}</td></tr>
+                ))}
+              </tbody>
+            </table>
+            <p class="note">
+              Stored as digests, never as addresses — the list can answer
+              whether a given address is suppressed without being able to
+              enumerate which are. See the note on the table in
+              {' '}<code>alerts/schema.sql</code>.
+            </p>
+          </section>
+        )}
+
+        <section>
+          <h2>Recent failures</h2>
+          <table class="spectable">
+            <thead>
+              <tr><th>When</th><th>Type</th><th>Detail</th><th>Subject</th></tr>
+            </thead>
+            <tbody>
+              {recent.length === 0 && (
+                <tr><td colspan="4" class="nil">No bounces, complaints or delays recorded.</td></tr>
+              )}
+              {recent.map((r) => (
+                <tr>
+                  <td>{when(r.occurred_at ?? r.received_at)}</td>
+                  <td>{String(r.type).replace('email.', '')}</td>
+                  <td>
+                    {[r.bounce_type, r.bounce_subtype].filter(Boolean).join(' / ') || '—'}
+                  </td>
+                  <td>{r.subject ? String(r.subject) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p class="note">
+            Recipients are not shown because they are not stored: the webhook
+            uses the address to compute a suppression digest and drops it before
+            writing the event.
+          </p>
+        </section>
+      </Fragment>
+    )}
+  </div>
+</Base>
+
+<style>
+  .bad { color: var(--warn, #e8430a); }
+</style>

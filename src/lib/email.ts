@@ -3,7 +3,25 @@
 
    Note for the privacy posture: Resend retains recipient addresses in its own
    delivery logs. That is normal and unavoidable with any ESP, but it means the
-   vendor list is also the disclosure list. */
+   vendor list is also the disclosure list.
+
+   Two things happen around every send, and neither is optional:
+
+   - Suppression is checked first. A mailbox that hard-bounced or reported us
+     as spam is never written to again, whatever the subscriptions table says.
+     Repeatedly mailing dead addresses is the single fastest way to lose a
+     sending domain, and before this the system had no mechanism that could
+     ever have stopped doing it.
+   - The returned message id is kept. It is the only join between a send of
+     ours and the webhook that later says what became of it; discarding it, as
+     this file used to, made delivery unobservable by construction.
+
+   alerts/match.py does the same two things in Python for drop alerts. The
+   duplication is deliberate — it is two runtimes, not two designs — but the
+   hash and the suppression rule have to stay in step, so they are stated in
+   one place each and cross-referenced. */
+
+import { sql } from './db.ts';
 
 const ENDPOINT = 'https://api.resend.com/emails';
 
@@ -16,9 +34,59 @@ export interface Mail {
   unsubscribeUrl?: string;
 }
 
-export async function send(mail: Mail): Promise<void> {
+export interface SendRecord {
+  kind: 'confirm' | 'alert';
+  subscriptionId: number;
+}
+
+export interface SendResult {
+  /** Resend's message id, or null when the send was suppressed. */
+  id: string | null;
+  /** True when a prior bounce or complaint stopped this before the API call. */
+  suppressed: boolean;
+}
+
+/* The suppression key, and the one in alerts/match.py's `email_sha256` must
+   produce the same digest for the same address or a bounce recorded by one
+   sender is invisible to the other. Lowercased and trimmed, nothing else — no
+   gmail dot-folding or plus-stripping, because normalising beyond case would
+   suppress addresses the reader considers distinct and we have no standing to
+   decide otherwise. */
+export async function emailHash(address: string): Promise<string> {
+  const bytes = new TextEncoder().encode(address.trim().toLowerCase());
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/** Has this address hard-bounced or reported us? Fails *open* — see below. */
+export async function isSuppressed(address: string): Promise<boolean> {
+  try {
+    const rows = await sql()`
+      select 1 from suppressions where email_sha256 = ${await emailHash(address)}
+    `;
+    return rows.length > 0;
+  } catch (err) {
+    // Open rather than closed, which is the unusual direction and deserves the
+    // reason: a database blip must not silently stop every confirmation email
+    // in the system. The cost of failing open is that we mail one known-bad
+    // address during an outage; the cost of failing closed is a signup flow
+    // that appears to work and never delivers, with nothing anywhere saying so.
+    console.error('[email] suppression check failed:', (err as Error).message);
+    return false;
+  }
+}
+
+export async function send(mail: Mail, record?: SendRecord): Promise<SendResult> {
   const key = process.env.RESEND_API_KEY;
   if (!key) throw new Error('RESEND_API_KEY is not set');
+
+  if (await isSuppressed(mail.to)) {
+    // Subscription id, never the address — same rule as everywhere else.
+    console.log(`[email] suppressed ${record?.kind ?? 'send'} sub=${record?.subscriptionId ?? '?'}`);
+    return { id: null, suppressed: true };
+  }
 
   const headers: Record<string, string> = {};
   if (mail.unsubscribeUrl) {
@@ -46,6 +114,25 @@ export async function send(mail: Mail): Promise<void> {
     // The body can echo the recipient address, so it does not go in the error.
     throw new Error(`Resend rejected the send: ${res.status}`);
   }
+
+  const body = (await res.json().catch(() => ({}))) as { id?: string };
+  const id = typeof body.id === 'string' ? body.id : null;
+
+  if (record) {
+    try {
+      await sql()`
+        insert into email_sends (provider_id, kind, subscription_id)
+        values (${id}, ${record.kind}, ${record.subscriptionId})
+        on conflict (provider_id) do nothing
+      `;
+    } catch (err) {
+      // The mail is already gone; losing its log line is not worth failing the
+      // request over. It costs one message's worth of delivery reporting.
+      console.error('[email] could not log send:', (err as Error).message);
+    }
+  }
+
+  return { id, suppressed: false };
 }
 
 const esc = (s: string) =>

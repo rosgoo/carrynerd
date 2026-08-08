@@ -59,6 +59,89 @@ create index if not exists sent_alerts_lookup
 create index if not exists sent_alerts_dedupe
   on sent_alerts (subscription_id, (event->>'bag_id'), sent_at desc);
 
+-- ── Delivery tracking ───────────────────────────────────────────────────────
+--
+-- Everything above records what we *decided* to send. These three record what
+-- became of it, which is a different question and the one that costs money to
+-- get wrong: a young sending domain that keeps mailing dead addresses and
+-- collecting spam complaints gets throttled, and until these tables existed
+-- nothing in the system could have noticed it happening.
+
+create table if not exists email_sends (
+  id              bigint generated always as identity primary key,
+  -- Resend's message id. The only join key between a send of ours and the
+  -- webhook that reports on it, which is why it is captured at the call site
+  -- in both senders rather than discarded as it used to be.
+  provider_id     text unique,
+  -- 'confirm' is the double opt-in mail from /api/watch, 'alert' a price drop
+  -- from alerts/match.py. Kept in one table because every question worth
+  -- asking of it — bounce rate, complaint rate, volume — is asked of both, and
+  -- a confirm that hard-bounces is the more interesting of the two: it is the
+  -- reason a subscription sits pending forever with nothing to say why.
+  kind            text        not null check (kind in ('confirm', 'alert')),
+  -- Cascades, like sent_alerts, because the privacy page promises unsubscribe
+  -- takes the record of what we sent with it. Late events for a deleted
+  -- subscriber are not lost by this: email_events keys off the provider id and
+  -- holds no foreign key, and suppression keys off a digest of the address, so
+  -- a bounce arriving after an unsubscribe is still recorded and still honoured.
+  subscription_id bigint      not null
+                  references subscriptions(id) on delete cascade,
+  sent_at         timestamptz not null default now()
+);
+
+create index if not exists email_sends_kind on email_sends (kind, sent_at desc);
+
+create table if not exists email_events (
+  id           bigint generated always as identity primary key,
+  -- Svix's delivery id, which is stable across retries of the same event. The
+  -- unique constraint plus `on conflict do nothing` is the whole idempotency
+  -- story: Resend retries a webhook that timed out, and without this a slow
+  -- response would inflate every count on the dashboard.
+  svix_id      text unique,
+  -- Deliberately not a foreign key to email_sends. Events arrive for messages
+  -- whose send row has been cascaded away by an unsubscribe, and dropping
+  -- those would silently understate exactly the rates this table exists to
+  -- measure.
+  provider_id  text,
+  -- Resend's own name, stored verbatim: email.sent, email.delivered,
+  -- email.delivery_delayed, email.bounced, email.complained, email.opened,
+  -- email.clicked. Not an enum — a provider that adds a type should show up as
+  -- an unfamiliar row on the dashboard, not as a rejected webhook.
+  type         text        not null,
+  -- When it happened, as against when we heard: a delayed bounce separates
+  -- these by minutes and sometimes hours.
+  occurred_at  timestamptz,
+  received_at  timestamptz not null default now(),
+  -- The payload with the recipient removed — see redact() in the webhook
+  -- route. Resend echoes `to` in every event, and an address stored here would
+  -- be an address living outside `subscriptions`, where no unsubscribe would
+  -- ever reach it.
+  payload      jsonb
+);
+
+create index if not exists email_events_provider on email_events (provider_id);
+create index if not exists email_events_type on email_events (type, received_at desc);
+
+create table if not exists suppressions (
+  -- sha256(lower(trim(address))), and never the address itself.
+  --
+  -- This table has to outlive the subscription row, because a hard bounce is a
+  -- fact about a mailbox rather than about a watch: someone who bounces, is
+  -- deleted, and signs up again must not start the cycle over. But unsubscribe
+  -- promises the address is *gone*, not moved to another table. A digest keeps
+  -- both promises at once — it answers "is this address suppressed" without
+  -- being able to answer "which addresses are".
+  --
+  -- Unpeppered on purpose. The digest defends the deletion promise, not the
+  -- database: anyone who can read this table can already read the plaintext
+  -- addresses in `subscriptions` next to it, so a pepper would buy nothing and
+  -- add a shared secret that both senders must hold and neither may ever lose.
+  email_sha256 text        primary key,
+  reason       text        not null check (reason in ('bounce', 'complaint', 'manual')),
+  detail       text,
+  created_at   timestamptz not null default now()
+);
+
 -- Referral tracking.
 --
 -- Three event names, written by /api/click from the browser. The whole point is
@@ -122,3 +205,6 @@ create index if not exists events_bag
 alter table subscriptions enable row level security;
 alter table sent_alerts   enable row level security;
 alter table events        enable row level security;
+alter table email_sends   enable row level security;
+alter table email_events  enable row level security;
+alter table suppressions  enable row level security;

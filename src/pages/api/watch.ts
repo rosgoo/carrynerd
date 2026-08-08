@@ -96,7 +96,10 @@ export const POST: APIRoute = async ({ request, url }) => {
         url.origin,
       ).href;
       const mail = confirmEmail(confirmUrl, what);
-      await send({ ...mail, to: email });
+      // A suppressed address gets the same answer as everybody else. Saying
+      // "that address bounced" to an unauthenticated poster would turn this
+      // endpoint into a way to test whether a given mailbox is dead.
+      await send({ ...mail, to: email }, { kind: 'confirm', subscriptionId: row.id });
     }
 
     // Subscription id, never the address.

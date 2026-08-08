@@ -24,6 +24,7 @@ plane is provisioned.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -112,7 +113,20 @@ def render(event, unsub_url):
     return subject, text, html
 
 
+def email_hash(address):
+    """The suppression key.
+
+    Must agree exactly with `emailHash` in src/lib/email.ts — a bounce recorded
+    by the webhook is only visible to this script if both produce the same
+    digest for the same address. Lowercased and trimmed, nothing else.
+    """
+    return hashlib.sha256(address.strip().lower().encode()).hexdigest()
+
+
 def send(to, subject, text, html, unsub_url, api_key):
+    """POST one message. Returns Resend's message id, or None if it sent
+    without one — the id is the only join between this send and the webhook
+    that later reports what became of it."""
     payload = json.dumps({
         "from": ALERT_FROM,
         "to": [to],
@@ -131,7 +145,14 @@ def send(to, subject, text, html, unsub_url, api_key):
         "Content-Type": "application/json",
     })
     with urllib.request.urlopen(req, timeout=30) as r:
-        return r.status
+        body = r.read()
+    try:
+        return json.loads(body).get("id")
+    except (json.JSONDecodeError, AttributeError):
+        # The mail went out; we simply cannot report on it. Worth continuing
+        # over rather than raising — a missing id costs one row of delivery
+        # tracking, not a subscriber's alert.
+        return None
 
 
 def wants(criteria, event):
@@ -220,9 +241,35 @@ def main():
             ).fetchall()
         }
 
+        # Mailboxes that hard-bounced or reported us as spam, whatever the
+        # subscriptions table still says. `confirmed_at` records that somebody
+        # once asked for these; suppression records that the mailbox no longer
+        # accepts them, and that fact outranks the consent.
+        #
+        # Queried by digest rather than by address so the comparison happens
+        # over the hashes on both sides — see email_hash(), and the note on
+        # `suppressions` in schema.sql for why the table holds no addresses.
+        # One query for the whole run: the nightly sends tens of mails, and a
+        # round trip each would be tens of round trips to learn nothing.
+        wanted = {email_hash(s["email"]): s["id"] for s in subs}
+        suppressed = set()
+        if wanted:
+            suppressed = {
+                r["email_sha256"] for r in conn.execute(
+                    "select email_sha256 from suppressions "
+                    "where email_sha256 = any(%s)",
+                    (sorted(wanted),),
+                ).fetchall()
+            }
+        if suppressed:
+            print(f"  {len(suppressed)} subscriptions suppressed "
+                  f"(bounced or complained) — skipping")
+
         print(f"{len(subs)} confirmed subscriptions touch tonight's drops")
 
         for sub in subs:
+            if email_hash(sub["email"]) in suppressed:
+                continue
             criteria = sub["criteria"] or {}
             candidates = [e for e in drops if wants(criteria, e)]
             if not candidates:
@@ -245,13 +292,18 @@ def main():
                 if args.dry_run:
                     # Subscription id, never the address.
                     print(f"  would send to sub={sub['id']}: {subject}")
+                    # Counted here as well as on the real path, or the summary
+                    # line contradicts the lines above it: a dry run that
+                    # listed two matches used to sign off "would send 0".
+                    sent_count += 1
                     continue
                 if not api_key:
                     print(f"  RESEND_API_KEY not set — skipping sub={sub['id']}")
                     continue
 
                 try:
-                    send(sub["email"], subject, text, html, unsub_url, api_key)
+                    provider_id = send(sub["email"], subject, text, html,
+                                       unsub_url, api_key)
                 except (urllib.error.HTTPError, urllib.error.URLError, OSError) as e:
                     # Never let the error carry the address into the log.
                     reason = getattr(e, "code", None) or type(e).__name__
@@ -262,6 +314,16 @@ def main():
                     "insert into sent_alerts (subscription_id, event) "
                     "values (%s, %s)",
                     (sub["id"], json.dumps(event)),
+                )
+                # Two rows, two questions, and they are not the same question.
+                # sent_alerts answers "have we already told this person about
+                # this bag today", which is why it carries the event and why
+                # the dedupe reads it. email_sends answers "what became of the
+                # message", which needs the provider's id and nothing else.
+                conn.execute(
+                    "insert into email_sends (provider_id, kind, subscription_id) "
+                    "values (%s, 'alert', %s) on conflict (provider_id) do nothing",
+                    (provider_id, sub["id"]),
                 )
                 already.add((sub["id"], bag_id))
                 sent_count += 1

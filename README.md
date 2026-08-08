@@ -245,15 +245,16 @@ measured volume cannot be asserted to sit inside a volume window.
 
 ## Alerts
 
-The only real infrastructure, and it is small: one endpoint, two tables, and a
-matcher that runs inside the nightly workflow right after `track_prices.py` —
+The only real infrastructure, and it is still small: a handful of endpoints and
+a matcher that runs inside the nightly workflow right after `track_prices.py` —
 which has just worked out exactly which prices moved, so no separate scheduler
 needs to exist.
 
 ```
-POST /api/watch      → pending row + double opt-in email
-GET  /api/confirm    → sets confirmed_at; nothing is sent before this
-GET  /api/unsubscribe → deletes the row outright
+POST /api/watch            → pending row + double opt-in email
+GET  /api/confirm          → sets confirmed_at; nothing is sent before this
+GET  /api/unsubscribe      → deletes the row outright
+POST /api/webhooks/resend  → what became of the mail we sent
 ```
 
 Schema in `alerts/schema.sql`, matcher in `alerts/match.py`. Needs
@@ -267,6 +268,49 @@ history forever. Never in logs either; subscription IDs are the identifier
 everywhere. Unsubscribe deletes rather than flags, and `sent_alerts` cascades
 with it. Resend keeps its own delivery log, as every provider does, which means
 the vendor list is also the disclosure list.
+
+### Delivery tracking
+
+Sending is only half of it. Until a message's fate comes back, `sent_alerts`
+records intent and nothing records outcome — so a nightly that mails five
+hundred addresses and bounces four hundred of them looks exactly like a healthy
+one. Three tables and one webhook close that:
+
+| Table | Answers |
+|---|---|
+| `email_sends` | which message id was which kind of mail, to whom |
+| `email_events` | what Resend later said about that message id |
+| `suppressions` | which mailboxes must never be written to again |
+
+Both senders — `src/lib/email.ts` for confirmations, `alerts/match.py` for drop
+alerts — now keep the message id Resend returns, and check the suppression list
+before spending a send. `/api/webhooks/resend` verifies Svix signatures, records
+every event idempotently by delivery id, and writes a suppression on a hard
+bounce or a spam complaint. A *transient* bounce (full mailbox, greylisting)
+deliberately does not suppress; the address is fine.
+
+**The suppression list holds digests, not addresses.** It has to outlive the
+subscription row, because a hard bounce is a fact about a mailbox rather than
+about a watch — but unsubscribe promises the address is gone, not moved. A
+`sha256(lower(trim(address)))` keeps both promises: it can answer whether a
+given address is suppressed without being able to enumerate which are. The two
+senders must agree on that hash or a bounce recorded by one is invisible to the
+other, so it is stated once in each and cross-referenced.
+
+`/internal/email/` reports the rates, over messages *sent* rather than
+delivered — a denominator that shrinks when things go wrong flatters exactly
+the run you most need to see. It flags the thresholds mailbox providers
+actually filter on (0.3% complaints, 2% hard bounces) rather than ones invented
+here, and calls out the case where sends are climbing and no events are
+arriving at all, which is what an unconfigured webhook looks like from the
+inside.
+
+Set `RESEND_WEBHOOK_SECRET` and point a Resend webhook at
+`/api/webhooks/resend`, subscribed to at least `email.delivered`,
+`email.bounced` and `email.complained`. With the secret unset the route rejects
+every request rather than accepting unsigned ones. `email.opened` and
+`email.clicked` are recorded too if open/click tracking is enabled on the Resend
+side; nothing depends on them.
 
 ## Adding brands
 
@@ -318,10 +362,15 @@ brands that have no affiliate programme.
 - Prices are whatever the feed said when fetched, USD. History is recorded from
   the first `track_prices.py` run forward and cannot be backfilled, so the
   charts stay thin for a while.
-- **The alerts plane has never been run against a real database.** The schema
-  is unexercised and the endpoints are untested — `alerts/schema.sql` needs
-  applying and `alerts/match.py --dry-run` needs a pass against real rows
-  before any of it is trusted.
+- **The alerts plane has never run in production.** The schema, the matcher and
+  the delivery webhook have been exercised end to end against a local Postgres
+  16 — schema applied twice for idempotency, `match.py` run against seeded
+  subscriptions with a stubbed Resend, the webhook driven with real Svix
+  signatures — but nothing has yet run against the hosted database with live
+  mail. `DATABASE_URL`, `RESEND_API_KEY` and `RESEND_WEBHOOK_SECRET` all need
+  setting, the sending domain needs verifying in Resend, and
+  `alerts/match.py --dry-run` wants a pass against real rows before the first
+  night that can actually send.
 - `/api/watch` has no rate limiting beyond a unique constraint on
   (address, criteria) and a 15-minute floor on resending a confirmation. That
   bounds the damage but does not stop a determined sender from burning the
