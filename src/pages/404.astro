@@ -1,0 +1,70 @@
+---
+import Base from '../layouts/Base.astro';
+import { hubs } from '../lib/hubs.js';
+import { SITE_NAME_DISPLAY } from '../lib/brand.js';
+import { meta, bags } from '../lib/catalog.js';
+
+/* The page for a URL that does not exist.
+ *
+ * The build is static, so this is the whole handler: Astro writes
+ * dist/client/404.html and Vercel serves it for any path that generated no
+ * page. Nothing routes to it and nothing links to it, which is exactly why it
+ * had to be written on purpose rather than noticed later.
+ *
+ * A catalogue earns more of these than an ordinary site. The URLs are legible
+ * — /bags/<brand>/<model>/ is an invitation to type one — and they move: a
+ * model that merges into another overnight, or loses the specs that made it
+ * indexable, leaves a real link that used to work. The reader in that case has
+ * not made a mistake, so the page says what happened and hands them the
+ * categories rather than apologising.
+ *
+ * noindex, because a search result should never land here. `follow`, though,
+ * and that is the one deliberate deviation: the layout pairs noindex with
+ * nofollow by default, which is right for /internal/ and wrong here, where
+ * every link on the page goes somewhere worth crawling.
+ */
+const title = `Not found — ${SITE_NAME_DISPLAY}`;
+const description =
+  'That page is not here. The categories, the brand index and the carry-on '
+  + 'tables are.';
+
+const bagCount = meta.bag_count ?? bags.length;
+const brandCount = meta.brand_count ?? 0;
+---
+<Base title={title} description={description} noindex nofollow={false}>
+  <div class="page">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/">Bags</a> <span>/</span> <b>Not found</b>
+    </nav>
+    <h1>Not found</h1>
+    <p class="note">
+      There is no page at this address. If you followed a link from somewhere
+      else it may have been a model page: the index holds
+      {bagCount.toLocaleString('en-US')} bags from {brandCount} brands and it
+      is rebuilt every night, so a bag that is
+      discontinued, or that merged into another listing, stops having a page of
+      its own. Nothing was hidden — the address simply no longer names anything.
+    </p>
+
+    <section>
+      <h2>Browse by category</h2>
+      <nav class="footrow" aria-label="Categories">
+        {hubs.map((hub) => <a href={hub.href}>{hub.title}</a>)}
+      </nav>
+    </section>
+
+    <section>
+      <h2>Or start from</h2>
+      <nav class="footrow" aria-label="Site">
+        <a href="/">Every bag, filterable</a>
+        <a href="/brands/">Brands</a>
+        <a href="/carry-on/">Carry-on sizes</a>
+      </nav>
+      <p class="note">
+        Looking for a brand that is not in the index? There is a
+        <b>Request a brand</b> button in the footer of every page, and the
+        requests are what order the crawl.
+      </p>
+    </section>
+  </div>
+</Base>
