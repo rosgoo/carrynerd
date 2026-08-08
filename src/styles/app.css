@@ -686,10 +686,10 @@ td.favcell { width: 26px; padding-right: 0; }
 .favs { border-bottom: 1px solid var(--line); background: var(--panel); }
 .favs .grid { padding-bottom: 14px; }
 .favs .tablewrap { padding-bottom: 0; }
-/* The strip is a second table, so it keeps its own column heads — but not the
-   sticky behaviour: two heads pinned to the same offset would sit on top of
-   each other the moment the page scrolled. */
-.favs .tablewrap thead th { position: static; }
+/* The strip is a second table and keeps its own column heads. It used to need
+   `position: static` here to undo the sticky above — two heads pinned to the
+   same offset would have sat on top of each other — but the head above is
+   static now for its own reasons, so there is nothing left to undo. */
 
 .favhead {
   display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
@@ -740,11 +740,31 @@ table { border-collapse: collapse; width: 100%; font-size: 11.5px; }
    tables on every model page open past the viewport, and since nothing wraps
    those they took the whole page wider than the screen with them. */
 .tablewrap table { white-space: nowrap; }
-/* Scoped to the browse table view. Unscoped, this stuck the header of every
-   table on the site — including the offers and colourway tables on a model
-   page, which then floated over their own rows as you scrolled past. */
+/* Not sticky, and it cannot be — the offset it used to carry was
+   `top: calc(var(--head) + 41px)`, aimed at the gap under the toolbar, and it
+   put the header 93px DOWN the table instead: two rows sat above their own
+   column heads and a third was painted over.
+
+   The cause is the wrapper above. `overflow-x: auto` makes .tablewrap a scroll
+   container — in both axes, because a non-visible overflow-x forces overflow-y
+   to compute to auto — so a sticky th resolves against .tablewrap's scrollport
+   rather than the viewport, and since the wrapper is exactly as tall as its
+   content and never scrolls down, the header simply parked at the offset and
+   stayed there.
+
+   The wrapper has to keep overflow-x: the table is nowrap and wants 1018px,
+   which is wider than main below about a 1280px viewport. Nor can the wrapper
+   become the vertical scroller instead (max-height + thead top:0, the usual
+   shape of this fix): #sentinel is a sibling of .tablewrap, not a child — see
+   render() in scripts/browse.js — so page after page of infinite scroll would
+   stop arriving the moment the table scrolled inside its own pane rather than
+   inside the window.
+
+   So: the head scrolls away with the page, which is what it has always
+   actually done, minus the 93px lie. A header that genuinely stays put needs
+   the sentinel moved inside the wrapper first. */
 .tablewrap thead th {
-  position: sticky; top: calc(var(--head) + 41px); z-index: 30;
+  position: static; z-index: 30;
   background: var(--panel); border-bottom: 1px solid var(--line-2);
   padding: 7px 10px; text-align: left; font-size: 9.5px; letter-spacing: .09em;
   text-transform: uppercase; color: var(--ink-dim); font-weight: 600;
