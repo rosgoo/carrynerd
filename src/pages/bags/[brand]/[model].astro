@@ -12,12 +12,17 @@ import {
   fmtPrice, fmtPriceRange, fmtWeight, fmtDims, fmtVolume, fmtLaptop,
   fmtLinear, gramsPerLitre, pricePerLitre, currencySymbol,
 } from '../../../lib/format.js';
+import type { Bag } from '../../../lib/types.d.ts';
 
 export function getStaticPaths() {
   return bags.map((bag) => ({
     params: { brand: bag.brand_slug, model: bagSlug(bag) },
     props: { bag },
   }));
+}
+
+interface Props {
+  bag: Bag;
 }
 
 const { bag } = Astro.props;
@@ -32,6 +37,9 @@ const related = [
   ...bags.filter((b) => b.id !== bag.id && b.brand_slug !== bag.brand_slug && b.category === bag.category),
 ].slice(0, 8);
 
+const density = gramsPerLitre(bag);
+const perLitre = pricePerLitre(bag);
+
 const specs = [
   ['Category', catLabel(bag.category), bag.category_source],
   ['Price', fmtPriceRange(bag.price_min, bag.price_max, bag.currency), null],
@@ -39,8 +47,8 @@ const specs = [
   ['Dimensions', fmtDims(bag.dims_cm), bag.dims_source],
   ['Linear (h+w+d)', fmtLinear(bag.linear_cm), bag.dims_source],
   ['Weight', fmtWeight(bag.weight_g), bag.weight_source],
-  ['Grams per litre', gramsPerLitre(bag) ? gramsPerLitre(bag).toFixed(0) : null, null],
-  ['Price per litre', pricePerLitre(bag) ? `${currencySymbol(bag.currency)}${pricePerLitre(bag).toFixed(2)}` : null, null],
+  ['Grams per litre', density ? density.toFixed(0) : null, null],
+  ['Price per litre', perLitre ? `${currencySymbol(bag.currency)}${perLitre.toFixed(2)}` : null, null],
   ['Laptop', fmtLaptop(bag.laptop_in), null],
   ['Colourways', bag.colors?.length || null, null],
   ['SKUs', bag.variant_count || null, null],
@@ -48,7 +56,7 @@ const specs = [
 ];
 
 const dims = bag.dims_cm ?? [];
-const quantity = (value, unitCode) =>
+const quantity = (value: number | null | undefined, unitCode: string) =>
   value == null ? undefined : { '@type': 'QuantitativeValue', value, unitCode };
 
 // dims_cm is sorted largest-axis-first because brands disagree about ordering,
@@ -121,8 +129,10 @@ const description =
 <Base title={title} description={description} image={bag.image}
       ogType="product" noindex={!isIndexable(bag)} nofollow={false}>
   <Fragment slot="head">
-    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
-    <script type="application/ld+json" set:html={JSON.stringify(breadcrumbs)} />
+    {/* is:inline because this is data for a crawler, not code: it must ship in
+        the document as written rather than be bundled and fetched. */}
+    <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
+    <script type="application/ld+json" is:inline set:html={JSON.stringify(breadcrumbs)} />
   </Fragment>
 
   {/* The bag this page is about, in the one form a static page can hand to a

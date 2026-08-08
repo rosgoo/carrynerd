@@ -4,6 +4,15 @@ import Logo from '../components/Logo.astro';
 import Analytics from '../components/Analytics.astro';
 import { SITE_NAME_DISPLAY } from '../lib/brand.js';
 
+interface Props {
+  title: string;
+  description?: string;
+  image?: string | null;
+  ogType?: string;
+  noindex?: boolean;
+  nofollow?: boolean;
+}
+
 const {
   title,
   description = 'A searchable, comparable index of bags normalised across brands from public product feeds.',
@@ -99,7 +108,14 @@ const robots = noindex ? `noindex,${nofollow ? 'nofollow' : 'follow'}` : null;
   // attribute on <html> that CSS reads, so neither needs the page re-rendered
   // — which is what lets them work on the static model pages, where no island
   // is mounted at all.
-  const swap = (id, attr, key, values, event) =>
+  // `event` is optional: the theme toggle is pure CSS and has nobody to tell.
+  const swap = (
+    id: string,
+    attr: string,
+    key: string,
+    values: [string, string],
+    event?: string,
+  ) =>
     document.getElementById(id)?.addEventListener('click', () => {
       const root = document.documentElement;
       const next = root.getAttribute(attr) === values[0] ? values[1] : values[0];

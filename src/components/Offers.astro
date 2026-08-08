@@ -1,5 +1,6 @@
 ---
 import { fmtPriceRange } from '../lib/format.js';
+import type { Bag } from '../lib/types.d.ts';
 
 /* Where to buy.
  *
@@ -14,6 +15,10 @@ import { fmtPriceRange } from '../lib/format.js';
  * prices would be worse than no table at all, and it is the exact failure the
  * rest of the index refuses.
  */
+interface Props {
+  bag: Bag;
+}
+
 const { bag } = Astro.props;
 
 // Distinct purchase URLs we actually hold. `merged_urls` is real and often
@@ -21,7 +26,7 @@ const { bag } = Astro.props;
 // fabric leaves several genuine buy pages for one model.
 const urls = [...new Set([bag.url, ...(bag.merged_urls ?? [])].filter(Boolean))];
 
-const host = (u) => {
+const host = (u: string) => {
   try {
     return new URL(u).hostname.replace(/^www\./, '');
   } catch {

@@ -18,6 +18,7 @@
 
 import type { APIRoute } from 'astro';
 import { bags } from '../../lib/catalog.js';
+import type { Bag, Variant } from '../../lib/types.d.ts';
 
 export const prerender = false;
 
@@ -43,11 +44,9 @@ const MAX_IDS = 100;
 const VARIANT_FIELDS = [
   'sku', 'title', 'color', 'color_family', 'price', 'compare_at',
   'available', 'image', 'image_bg',
-] as const;
+] as const satisfies readonly (keyof Variant)[];
 
-type Bag = Record<string, unknown> & { id: string; variants?: Record<string, unknown>[] };
-
-const pick = (obj: Record<string, unknown>, keys: readonly string[]) => {
+const pick = (obj: Variant, keys: readonly (keyof Variant)[]) => {
   const out: Record<string, unknown> = {};
   for (const k of keys) if (obj[k] !== undefined) out[k] = obj[k];
   return out;
@@ -56,9 +55,7 @@ const pick = (obj: Record<string, unknown>, keys: readonly string[]) => {
 /* Built at module scope, not per request. The catalog import is already in this
  * function's bundle, so the map costs one pass on a cold start and nothing at
  * all on the warm invocations that serve almost every request. */
-const BY_ID = new Map<string, Bag>(
-  (bags as Bag[]).map((b) => [b.id, b]),
-);
+const BY_ID = new Map<string, Bag>(bags.map((b) => [b.id, b]));
 
 const project = (b: Bag) => ({
   id: b.id,

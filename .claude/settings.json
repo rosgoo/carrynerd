@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" || exit 0; [ -n \"$(git status --porcelain -- src tsconfig.json astro.config.mjs 2>/dev/null)\" ] || exit 0; out=$(npm run check 2>&1) || { printf \"astro check found type errors:\\n%s\\n\" \"$(printf \"%s\" \"$out\" | tail -40)\"; exit 2; }",
+            "statusMessage": "Type-checking with astro check",
+            "asyncRewake": true,
+            "timeout": 180
+          }
+        ]
+      }
+    ]
+  }
+}

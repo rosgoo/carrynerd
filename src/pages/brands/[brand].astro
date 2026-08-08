@@ -59,7 +59,9 @@ const jsonLd = {
 ---
 <Base title={title} description={description}>
   <Fragment slot="head">
-    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    {/* is:inline because this is data for a crawler, not code: it must ship in
+        the document as written rather than be bundled and fetched. */}
+    <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
   </Fragment>
 
   <div class="page">

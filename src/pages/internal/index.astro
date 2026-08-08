@@ -3,9 +3,14 @@ import Base from '../../layouts/Base.astro';
 import { bags, bagHref, meta } from '../../lib/catalog.js';
 import { SITE_NAME } from '../../lib/brand.js';
 import { guard } from '../../lib/dash.ts';
-import rejectedPayload from '../../../data/rejected.json';
+import type { Bag, RejectedPayload, Variant } from '../../lib/types.d.ts';
+import rawRejected from '../../../data/rejected.json';
 import colourOverrides from '../../../data/colour-overrides.json';
 import categoryOverrides from '../../../data/category-overrides.json';
+
+/* Like bags.json, too large for TypeScript to infer a shape from — it arrives
+   as `any`. The shape it actually has is in types.d.ts. */
+const rejectedPayload = rawRejected as RejectedPayload;
 
 /* Behind the password now, and therefore rendered per request rather than
  * built. It was unlinked and noindex before, which is not the same thing: this
@@ -34,34 +39,54 @@ if (denied) return denied;
  * segment of their URL.
  */
 
-const normKey = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+const normKey = (s: unknown) =>
+  String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
 
-const productKey = (url) =>
+const productKey = (url: unknown) =>
   normKey(
     String(url ?? '').replace(/[?#].*$/, '').replace(/\/+$/, '').split('/').pop(),
   );
 
-/** brand + key -> ruling, skipping the `_`-prefixed notes in the file. */
-function rulings(payload) {
-  const out = new Map();
-  for (const [brand, entries] of Object.entries(payload ?? {})) {
+/** What one ruling says: a family or category, or null for "reviewed, and the
+ *  answer is genuinely nothing". */
+type Ruling = string | null;
+
+/* Every ruling in one of the override files, as [brand slug, key, ruling].
+ *
+ * The files are hand-edited, so they are read as `unknown` and narrowed here
+ * rather than trusted: the `_`-prefixed keys are notes to whoever opens the
+ * file rather than brands, and skipping them is a rule the three readers below
+ * would otherwise each restate. Written as one pass because a file holding
+ * only its notes — which is the state both files ship in — otherwise infers a
+ * ruling type from the `_example` block. */
+function* eachRuling(payload: unknown): Generator<[string, string, Ruling]> {
+  const file = (payload ?? {}) as Record<string, unknown>;
+  for (const [brand, entries] of Object.entries(file)) {
     if (brand.startsWith('_') || typeof entries !== 'object' || entries === null) {
       continue;
     }
     for (const [key, value] of Object.entries(entries)) {
-      out.set(`${brand}|${normKey(key)}`, value);
+      yield [brand, key, typeof value === 'string' ? value : null];
     }
+  }
+}
+
+/** brand + key -> ruling, skipping the `_`-prefixed notes in the file. */
+function rulings(payload: unknown) {
+  const out = new Map<string, Ruling>();
+  for (const [brand, key, value] of eachRuling(payload)) {
+    out.set(`${brand}|${normKey(key)}`, value);
   }
   return out;
 }
 
 const BRAND_NAMES = new Map(bags.map((b) => [b.brand_slug, b.brand]));
-const brandName = (slug) => BRAND_NAMES.get(slug) ?? slug;
+const brandName = (slug: string) => BRAND_NAMES.get(slug) ?? slug;
 
 const COLOUR_RULINGS = rulings(colourOverrides);
 const CATEGORY_RULINGS = rulings(categoryOverrides);
-const ruled = (map, brand, key) => map.has(`${brand}|${normKey(key)}`);
-const ruling = (map, brand, key) => map.get(`${brand}|${normKey(key)}`);
+const ruled = (map: Map<string, Ruling>, brand: string, key: unknown) =>
+  map.has(`${brand}|${normKey(key)}`);
 
 /* Written by normalize.py, so it is absent until the pipeline has run since
    the override files appeared. Absent is reported as absent — the one thing
@@ -129,29 +154,24 @@ const unreviewedNames = names.filter((n) => !n.decided);
    ruling recorded but not yet run is the normal state right after editing the
    file, and saying so beats showing a number that means neither thing. */
 const decidedColours = [];
-for (const [brand, entries] of Object.entries(colourOverrides ?? {})) {
-  if (brand.startsWith('_') || typeof entries !== 'object' || entries === null) {
-    continue;
-  }
-  for (const [name, family] of Object.entries(entries)) {
-    const matched = [];
-    for (const bag of bags) {
-      if (bag.brand_slug !== brand) continue;
-      for (const v of bag.variants ?? []) {
-        if (normKey(v.color) === normKey(name)) matched.push(v);
-      }
+for (const [brand, name, family] of eachRuling(colourOverrides)) {
+  const matched: Variant[] = [];
+  for (const bag of bags) {
+    if (bag.brand_slug !== brand) continue;
+    for (const v of bag.variants ?? []) {
+      if (normKey(v.color) === normKey(name)) matched.push(v);
     }
-    decidedColours.push({
-      brand: brandName(brand),
-      name,
-      family,
-      skus: matched.length,
-      // `family` is a string or null, and `color_family` is the same shape, so
-      // this compares like with like in both directions.
-      applied: matched.length > 0
-        && matched.every((v) => (v.color_family ?? null) === (family ?? null)),
-    });
   }
+  decidedColours.push({
+    brand: brandName(brand),
+    name,
+    family,
+    skus: matched.length,
+    // `family` is a string or null, and `color_family` is the same shape, so
+    // this compares like with like in both directions.
+    applied: matched.length > 0
+      && matched.every((v) => (v.color_family ?? null) === family),
+  });
 }
 decidedColours.sort(
   (a, b) => a.brand.localeCompare(b.brand) || a.name.localeCompare(b.name),
@@ -161,12 +181,14 @@ decidedColours.sort(
    deliberately not a valid family: paste it unedited and normalize.py stops
    with the list of families it accepts, rather than silently recording a
    ruling nobody made. */
-const skeleton = (entries) => {
-  const out = {};
+const skeleton = (entries: [string, string][]) => {
+  const out: Record<string, Record<string, string>> = {};
   for (const [brand, key] of entries) (out[brand] ??= {})[key] = '?';
   return JSON.stringify(out, null, 1);
 };
-const colourSkeleton = skeleton(unreviewedNames.map((n) => [n.brandSlug, n.name]));
+const colourSkeleton = skeleton(
+  unreviewedNames.map((n): [string, string] => [n.brandSlug, n.name]),
+);
 
 // Models the brand ships without any colourway.
 const silent = bags
@@ -199,16 +221,15 @@ const partial = bags.filter(
 );
 
 const skuTotal = bags.reduce((n, b) => n + (b.variant_count ?? 0), 0);
-const namedSkus = names.reduce((n, e) => n + e.skus, 0);
 
-const modelLinks = (list) =>
+const modelLinks = (list: Bag[]) =>
   [...list].sort(
     (a, b) => a.brand.localeCompare(b.brand) || a.name.localeCompare(b.name),
   );
 
 /* ---------- rejected products ---------- */
 
-const REASON_NOTES = {
+const REASON_NOTES: Record<string, string> = {
   unclassified:
     'looks like carry, but no category pattern matched its title, its shelving or its tags',
   'unclassified:known-bag':
@@ -236,10 +257,10 @@ const rejected = (rejectedPayload.rejected ?? [])
       (a.title ?? '').localeCompare(b.title ?? ''),
   );
 
-const reasonCount = new Map();
+const reasonCount = new Map<string, number>();
 for (const r of rejected) reasonCount.set(r.reason, (reasonCount.get(r.reason) ?? 0) + 1);
 const rejectReasons = [...reasonCount.keys()].sort(
-  (a, b) => reasonCount.get(b) - reasonCount.get(a),
+  (a, b) => (reasonCount.get(b) ?? 0) - (reasonCount.get(a) ?? 0),
 );
 const inCatalogRejects = rejected.filter((r) => r.inCatalog).length;
 const decidedRejects = rejected.filter((r) => r.decided).length;
@@ -250,17 +271,12 @@ const otherBrands = new Set(
 /* Products a ruling pulled back in are no longer rejected, so they are read
    out of the file the same way applied colours are. */
 const admitted = [];
-for (const [brand, entries] of Object.entries(categoryOverrides ?? {})) {
-  if (brand.startsWith('_') || typeof entries !== 'object' || entries === null) {
-    continue;
-  }
-  for (const [key, category] of Object.entries(entries)) {
-    if (category == null) continue;
-    const bag = bags.find(
-      (b) => b.brand_slug === brand && productKey(b.url) === normKey(key),
-    );
-    admitted.push({ brand: brandName(brand), key, category, bag: bag ?? null });
-  }
+for (const [brand, key, category] of eachRuling(categoryOverrides)) {
+  if (category == null) continue;
+  const bag = bags.find(
+    (b) => b.brand_slug === brand && productKey(b.url) === normKey(key),
+  );
+  admitted.push({ brand: brandName(brand), key, category, bag: bag ?? null });
 }
 admitted.sort((a, b) => a.brand.localeCompare(b.brand) || a.key.localeCompare(b.key));
 
@@ -268,7 +284,7 @@ admitted.sort((a, b) => a.brand.localeCompare(b.brand) || a.key.localeCompare(b.
    list covers everything the crawl saw, the catalog only the brands we
    publish. Say which, rather than letting the totals quietly disagree with the
    meta block. */
-const stamp = (s) => (s ? s.replace('T', ' ').replace('Z', ' UTC') : '—');
+const stamp = (s: string | null) => (s ? s.replace('T', ' ').replace('Z', ' UTC') : '—');
 const rejectStamp = rejectedPayload.generated_at ?? null;
 const catalogStamp = meta.generated_at ?? null;
 ---
@@ -468,9 +484,9 @@ const catalogStamp = meta.generated_at ?? null;
                 <td class="mono">
                   {[
                     ...new Set(
-                      (bag.variants ?? [])
-                        .filter((v) => v.color && !v.color_family)
-                        .map((v) => v.color.trim()),
+                      (bag.variants ?? []).flatMap((v) =>
+                        v.color && !v.color_family ? [v.color.trim()] : [],
+                      ),
                     ),
                   ].join(' · ')}
                 </td>
@@ -667,29 +683,43 @@ const catalogStamp = meta.generated_at ?? null;
      thousand static rows, so shipping it whole and hiding rows beats
      fetch-and-render: it works with scripting off, and there is no second copy
      of the data to keep in step. */
-  const table = document.querySelector('.rjtable');
+  /* Each of these is rendered by the markup above, so a miss is this file
+     disagreeing with itself rather than a state the page has to cope with.
+     Checked rather than asserted, because the kind matters as much as the
+     presence: the query box is read for its `.value`. */
+  const need = <T extends HTMLElement>(id: string, kind: new () => T): T => {
+    const el = document.getElementById(id);
+    if (!(el instanceof kind)) {
+      throw new Error(`#${id} is not the ${kind.name} this script expects`);
+    }
+    return el;
+  };
+
+  const table = document.querySelector<HTMLTableElement>('.rjtable');
   if (table) {
     const rows = [...table.tBodies[0].rows].map((el) => ({
       el,
-      reason: el.dataset.reason,
+      reason: el.dataset.reason ?? '',
       inCatalog: el.dataset.cat === '1',
       ruled: el.dataset.ruled === '1',
-      brand: el.dataset.brand,
-      key: el.dataset.key,
-      text: el.textContent.toLowerCase(),
+      brand: el.dataset.brand ?? '',
+      key: el.dataset.key ?? '',
+      text: (el.textContent ?? '').toLowerCase(),
     }));
-    const chips = [...document.querySelectorAll('.rjbar .chip[data-reason]')];
-    const catalogOnly = document.getElementById('rj-catalog');
-    const unreviewedOnly = document.getElementById('rj-unreviewed');
-    const query = document.getElementById('rj-q');
-    const count = document.getElementById('rj-count');
+    const chips = [
+      ...document.querySelectorAll<HTMLElement>('.rjbar .chip[data-reason]'),
+    ];
+    const catalogOnly = need('rj-catalog', HTMLButtonElement);
+    const unreviewedOnly = need('rj-unreviewed', HTMLButtonElement);
+    const query = need('rj-q', HTMLInputElement);
+    const count = need('rj-count', HTMLElement);
     let visible = rows;
 
     const apply = () => {
       const on = new Set(
         chips
           .filter((c) => c.getAttribute('aria-pressed') === 'true')
-          .map((c) => c.dataset.reason),
+          .map((c) => c.dataset.reason ?? ''),
       );
       const cat = catalogOnly.getAttribute('aria-pressed') === 'true';
       const fresh = unreviewedOnly.getAttribute('aria-pressed') === 'true';
@@ -716,7 +746,7 @@ const catalogStamp = meta.generated_at ?? null;
         apply();
       });
     }
-    let timer;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     query.addEventListener('input', () => {
       clearTimeout(timer);
       timer = setTimeout(apply, 90);
@@ -724,25 +754,26 @@ const catalogStamp = meta.generated_at ?? null;
 
     /* The skeleton is built from what is on screen, so the filter *is* the
        selection: narrow to one brand and one reason, then paste that. */
-    const out = document.getElementById('rj-skeleton-out');
-    const skeletonButton = document.getElementById('rj-skeleton');
+    const out = need('rj-skeleton-out', HTMLElement);
+    const skeletonButton = need('rj-skeleton', HTMLButtonElement);
     skeletonButton.addEventListener('click', () => {
       if (!visible.length) {
         out.textContent = 'Nothing shown — widen the filter first.';
         return;
       }
-      const shape = {};
+      const shape: Record<string, Record<string, string>> = {};
       for (const row of visible) (shape[row.brand] ??= {})[row.key] = '?';
-      out.textContent = JSON.stringify(shape, null, 1);
+      const text = JSON.stringify(shape, null, 1);
+      out.textContent = text;
       out.classList.remove('nil');
-      copy(out.textContent, skeletonButton);
+      copy(text, skeletonButton);
     });
   }
 
   /* Clipboard writes need a secure context, which localhost has and a LAN
      address does not. Say when it failed rather than leaving a button that
      looks like it worked — the text is on screen and selectable either way. */
-  async function copy(text, button) {
+  async function copy(text: string, button: HTMLElement) {
     const said = button.textContent;
     try {
       await navigator.clipboard.writeText(text);
@@ -753,10 +784,11 @@ const catalogStamp = meta.generated_at ?? null;
     setTimeout(() => { button.textContent = said; }, 1600);
   }
 
-  for (const button of document.querySelectorAll('[data-copy]')) {
+  for (const button of document.querySelectorAll<HTMLElement>('[data-copy]')) {
     button.addEventListener('click', () => {
-      const target = document.getElementById(button.dataset.copy);
-      if (target) copy(target.textContent, button);
+      const id = button.dataset.copy;
+      const target = id ? document.getElementById(id) : null;
+      if (target) copy(target.textContent ?? '', button);
     });
   }
 </script>

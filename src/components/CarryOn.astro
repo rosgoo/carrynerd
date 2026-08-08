@@ -5,6 +5,11 @@ import {
   airlines, airlinesUpdated, airlineFit, complianceSummary,
   fmtLimit, REGION_LABELS,
 } from '../lib/carryon.js';
+import type { Bag } from '../lib/types.d.ts';
+
+interface Props {
+  bag: Bag;
+}
 
 const { bag } = Astro.props;
 const summary = complianceSummary(bag);
@@ -18,7 +23,7 @@ const regions = summary
     }))
   : [];
 
-const mark = (v) =>
+const mark = (v: boolean | null) =>
   v == null ? { text: '—', cls: 'nil' }
   : v ? { text: 'fits', cls: 'instock' }
   : { text: 'no', cls: 'nil' };

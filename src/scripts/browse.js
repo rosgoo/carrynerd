@@ -177,11 +177,10 @@ addEventListener("unhandledrejection", e => {
 const PER = 60;
 
 let PAGE = 0;       // the last page painted
-let TOTAL = 0;      // how many bags match in total, not how many are drawn
-/* How many of those matches are paged. Favourites are lifted out of the pages
- * and drawn above them in one go, so they are counted in TOTAL — the line
- * above the grid is answering "how many match" — and not in this, which is
- * what the scroll asks whether there is another page of. */
+/* How many matches are paged. Favourites are lifted out of the pages and drawn
+ * above them in one go, so they count towards the total in the line above the
+ * grid — which answers "how many match" — and not towards this, which is what
+ * the scroll asks whether there is another page of. */
 let PAGED = 0;
 
 async function ask(page, boot = false) {
@@ -621,7 +620,6 @@ async function render({ boot = false } = {}) {
 
   out.removeAttribute("aria-busy");
   PAGE = 0;
-  TOTAL = data.total;
   // Absent for a reader with nothing saved, in which case every match is
   // paged and the two numbers are the same.
   PAGED = data.paged ?? data.total;

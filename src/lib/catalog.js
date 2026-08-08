@@ -12,10 +12,21 @@
  * catalog. Letting Vite resolve them makes the data a build-time dependency,
  * so a missing file is a failed build instead of a deployed blank site. */
 
-import payload from '../../data/bags.json';
+/**
+ * @import { Bag, Brand, CatalogMeta, CatalogPayload, PricePoint, PriceRow } from './types.d.ts'
+ */
+
+import rawPayload from '../../data/bags.json';
 import historyText from '../../data/price-history.jsonl?raw';
 
+/* bags.json is too large for TypeScript to infer a shape from, so it arrives as
+ * `any` and would hand an implicit `any` to every page that maps over it. The
+ * cast names what normalize.py actually writes — see types.d.ts. */
+const payload = /** @type {CatalogPayload} */ (rawPayload);
+
+/** @type {CatalogMeta} */
 export const meta = payload.meta ?? {};
+/** @type {Bag[]} */
 export const bags = payload.bags ?? [];
 
 if (!bags.length) {
@@ -25,7 +36,8 @@ if (!bags.length) {
   );
 }
 
-/** bag ids are `<brand-slug>__<model-slug>`; the route mirrors that split. */
+/** bag ids are `<brand-slug>__<model-slug>`; the route mirrors that split.
+ *  @param {string} id */
 export function splitId(id) {
   const at = id.indexOf('__');
   return at < 0
@@ -34,11 +46,13 @@ export function splitId(id) {
 }
 
 /** The permalink. `slug` is derived from the merged model name; the id is a
- *  storage key and can carry a colourway the page is not about. */
+ *  storage key and can carry a colourway the page is not about.
+ *  @param {Bag} bag */
 export function bagSlug(bag) {
   return bag.slug || splitId(bag.id).model;
 }
 
+/** @param {Bag} bag */
 export function bagHref(bag) {
   return `/bags/${bag.brand_slug ?? splitId(bag.id).brand}/${bagSlug(bag)}/`;
 }
@@ -67,6 +81,7 @@ export function bagHref(bag) {
  * meaningful number. For that category, volume and weight together *is* the
  * full spec.
  */
+/** @param {Bag | null | undefined} bag */
 export function isIndexable(bag) {
   if (!bag) return false;
   if (bag.dims_cm) return true;
@@ -81,6 +96,7 @@ export const indexablePaths = new Set(
 );
 
 export const brands = (() => {
+  /** @type {Map<string, Brand>} */
   const by = new Map();
   for (const bag of bags) {
     let entry = by.get(bag.brand_slug);
@@ -102,9 +118,11 @@ export const brands = (() => {
  * index by bag.
  */
 const history = (() => {
+  /** @type {Map<string, PriceRow[]>} */
   const by = new Map();
   for (const line of historyText.split('\n')) {
     if (!line.trim()) continue;
+    /** @type {PriceRow} */
     let row;
     try {
       row = JSON.parse(line);
@@ -123,9 +141,13 @@ const history = (() => {
  * The cheapest price seen on each date this bag changed, oldest first.
  * Collapses the per-SKU rows into one series — a reader wants "what did this
  * bag cost", not one line per colourway.
+ *
+ * @param {string} bagId
+ * @returns {PricePoint[]}
  */
 export function priceSeries(bagId) {
   const rows = history.get(bagId) ?? [];
+  /** @type {Map<string, number>} */
   const byDay = new Map();
   for (const row of rows) {
     if (row.price == null) continue;
@@ -138,7 +160,9 @@ export function priceSeries(bagId) {
     .map(([date, price]) => ({ date, price }));
 }
 
-/** Every recorded change for a bag, newest first — the table under the chart. */
+/** Every recorded change for a bag, newest first — the table under the chart.
+ *  @param {string} bagId
+ *  @returns {PriceRow[]} */
 export function priceChanges(bagId) {
   return (history.get(bagId) ?? [])
     .filter((row) => row.direction)
@@ -146,6 +170,7 @@ export function priceChanges(bagId) {
 }
 
 export const trackingSince = (() => {
+  /** @type {string | null} */
   let earliest = null;
   for (const list of history.values()) {
     const first = list[0]?.ts;

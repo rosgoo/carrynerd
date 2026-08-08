@@ -71,22 +71,55 @@ if (denied) return denied;
 </Base>
 
 <script>
+  /** One line of data/domains-todo.csv, as /api/internal/domains sends it.
+      Every column is a string; the CSV has no other kind. */
+  interface Row {
+    name: string;
+    domain: string;
+    platform: string;
+    best_guess: string;
+    why_unsure: string;
+    search: string;
+  }
+
   const API = '/api/internal/domains';
-  let rows = [];
-  let filter = 'todo';
-  let dirty = false, saving = false, saveTimer = null;
+  let rows: Row[] = [];
+  let saving = false;
+  let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const $ = (id) => document.getElementById(id);
-  const esc = (s) => String(s ?? '').replace(/[&<>"]/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  /* Every id and selector reached for below is in markup this file owns, so a
+     miss is a bug here rather than a state the page has to render around.
+     Saying that out loud beats a silent no-op on a typo'd id. */
+  const $ = (id: string): HTMLElement => {
+    const el = document.getElementById(id);
+    if (!el) throw new Error(`#${id} is missing from this page`);
+    return el;
+  };
 
-  const filled = (r) => (r.domain ?? '').trim() !== '';
+  const must = <T extends Element>(root: ParentNode, selector: string): T => {
+    const el = root.querySelector<T>(selector);
+    if (!el) throw new Error(`${selector} is missing from the row just built`);
+    return el;
+  };
 
-  const FILTERS = {
+  const ESCAPES: Record<string, string> =
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+  const esc = (s: unknown) =>
+    String(s ?? '').replace(/[&<>"]/g, (c) => ESCAPES[c] ?? c);
+
+  /** Whatever was thrown, as something printable. */
+  const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+  const filled = (r: Row) => (r.domain ?? '').trim() !== '';
+
+  type FilterKey = 'todo' | 'filled' | 'all';
+
+  const FILTERS: Record<FilterKey, { label: string; test: (r: Row) => boolean }> = {
     todo:   { label: 'needs a domain', test: (r) => !filled(r) },
     filled: { label: 'filled',         test: (r) => filled(r) },
     all:    { label: 'all',            test: () => true },
   };
+  let filter: FilterKey = 'todo';
 
   function counts() {
     const done = rows.filter(filled).length;
@@ -94,7 +127,6 @@ if (denied) return denied;
   }
 
   function scheduleSave() {
-    dirty = true;
     $('savestate').textContent = '· unsaved';
     clearTimeout(saveTimer);
     saveTimer = setTimeout(save, 600);
@@ -110,18 +142,17 @@ if (denied) return denied;
         body: JSON.stringify({ rows }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? res.status);
-      dirty = false;
       $('savestate').textContent = '· saved';
     } catch (e) {
-      $('savestate').textContent = `· SAVE FAILED: ${e.message}`;
+      $('savestate').textContent = `· SAVE FAILED: ${message(e)}`;
     } finally {
       saving = false;
       $('progress').textContent = counts();
     }
   }
 
-  function accept(i, tr) {
-    const input = tr.querySelector('input');
+  function accept(i: number, tr: HTMLTableRowElement) {
+    const input = must<HTMLInputElement>(tr, 'input');
     if (!input.value.trim()) input.value = rows[i].best_guess ?? '';
     rows[i].domain = input.value
       .trim().replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '');
@@ -129,7 +160,7 @@ if (denied) return denied;
     tr.classList.toggle('rowdone', filled(rows[i]));
     scheduleSave();
     // Jump to the next row still needing a domain, wrapping around.
-    const inputs = [...document.querySelectorAll('#rows input')];
+    const inputs = [...document.querySelectorAll<HTMLInputElement>('#rows input')];
     const after = inputs.slice(inputs.indexOf(input) + 1)
       .concat(inputs.slice(0, inputs.indexOf(input)));
     const next = after.find((el) => !el.value.trim());
@@ -141,7 +172,7 @@ if (denied) return denied;
   const WIRED = ['shopify', 'woocommerce', 'magento', 'bellroy', 'pages'];
   const CLOSED = ['unreachable', 'walled', 'hostile'];
 
-  function platformTag(p) {
+  function platformTag(p: string) {
     if (!p) return '<span class="tag">unprobed</span>';
     const cls = WIRED.includes(p) ? 'tag lowest'
       : CLOSED.includes(p) ? 'tag oos' : 'tag';
@@ -168,7 +199,7 @@ if (denied) return denied;
           <button type="button" data-accept>✓</button>
         </td>
         <td class="nil">${esc(r.why_unsure)}</td>`;
-      const input = tr.querySelector('input');
+      const input = must<HTMLInputElement>(tr, 'input');
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); accept(i, tr); }
       });
@@ -177,7 +208,7 @@ if (denied) return denied;
         tr.classList.toggle('rowdone', filled(rows[i]));
         scheduleSave();
       });
-      tr.querySelector('[data-accept]').addEventListener('click', () => accept(i, tr));
+      must(tr, '[data-accept]').addEventListener('click', () => accept(i, tr));
       tbody.appendChild(tr);
     });
     $('progress').textContent = counts();
@@ -186,7 +217,8 @@ if (denied) return denied;
   function renderFilters() {
     const holder = $('filters');
     holder.innerHTML = '';
-    for (const [key, f] of Object.entries(FILTERS)) {
+    for (const key of Object.keys(FILTERS) as FilterKey[]) {
+      const f = FILTERS[key];
       const n = rows.filter(f.test).length;
       const b = document.createElement('button');
       b.type = 'button';
@@ -209,7 +241,7 @@ if (denied) return denied;
       render();
     } catch (e) {
       $('status').innerHTML =
-        `Could not load the review list (<code>${esc(e.message)}</code>). ` +
+        `Could not load the review list (<code>${esc(message(e))}</code>). ` +
         'This page edits <code>data/domains-todo.csv</code> and therefore ' +
         'only works on a dev checkout: <code>npm run dev</code>.';
     }

@@ -15,6 +15,12 @@
  */
 import { fmtPrice } from '../lib/format.js';
 import { bagHref } from '../lib/catalog.js';
+import type { Bag } from '../lib/types.d.ts';
+
+interface Props {
+  bags?: Bag[];
+  limit?: number;
+}
 
 const { bags = [], limit = 12 } = Astro.props;
 
@@ -22,15 +28,21 @@ const { bags = [], limit = 12 } = Astro.props;
 // putting at the top of the page. 5% is the floor for calling it news.
 const MIN_OFF = 0.05;
 
+/* A drop we can actually quote: both ends of the move are known numbers, so
+   the percentage below is arithmetic on real prices rather than on a missing
+   field read as zero. Stated as a type predicate because that is also what
+   lets the map divide them without re-checking. */
+type Drop = Bag & { price_min: number; previous_price: number };
+
+const fell = (bag: Bag): bag is Drop =>
+  bag.price_direction === 'down' &&
+  typeof bag.previous_price === 'number' &&
+  typeof bag.price_min === 'number' &&
+  bag.price_min > 0 &&
+  bag.previous_price > bag.price_min;
+
 const drops = bags
-  .filter(
-    (bag) =>
-      bag.price_direction === 'down' &&
-      typeof bag.previous_price === 'number' &&
-      typeof bag.price_min === 'number' &&
-      bag.price_min > 0 &&
-      bag.previous_price > bag.price_min,
-  )
+  .filter(fell)
   .map((bag) => ({ bag, off: 1 - bag.price_min / bag.previous_price }))
   .filter((row) => row.off >= MIN_OFF)
   .sort((a, b) => b.off - a.off || a.bag.price_min - b.bag.price_min)

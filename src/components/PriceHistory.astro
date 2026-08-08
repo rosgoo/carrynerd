@@ -1,10 +1,18 @@
 ---
 import { fmtPrice, fmtDate } from '../lib/format.js';
+import type { PricePoint, PriceRow } from '../lib/types.d.ts';
 
 /* The ledger is a change log, not a daily sample, so the series is sparse by
    construction — one point per actual move. Drawing it as a step line rather
    than a smooth curve is the honest rendering: the price held flat between
    recorded changes, it did not drift. */
+interface Props {
+  series?: PricePoint[];
+  changes?: PriceRow[];
+  since?: string | null;
+  currency?: string;
+}
+
 const { series = [], changes = [], since = null, currency = 'USD' } = Astro.props;
 
 const W = 640;
@@ -21,8 +29,8 @@ const base = hi === lo ? lo - span / 2 : lo;
 const plotW = W - PAD.left - PAD.right;
 const plotH = H - PAD.top - PAD.bottom;
 
-const x = (i) => PAD.left + (series.length < 2 ? plotW / 2 : (i / (series.length - 1)) * plotW);
-const y = (p) => PAD.top + plotH - ((p - base) / span) * plotH;
+const x = (i: number) => PAD.left + (series.length < 2 ? plotW / 2 : (i / (series.length - 1)) * plotW);
+const y = (p: number) => PAD.top + plotH - ((p - base) / span) * plotH;
 
 // Step path: hold the previous price until the day it changed.
 const path = series
@@ -32,6 +40,11 @@ const path = series
   .join(' ');
 
 const ticks = hi === lo ? [hi] : [lo, (lo + hi) / 2, hi];
+
+// The axis end labels. Read out here rather than in the markup so the chart
+// branch below states once that it only draws a series with points in it.
+const first = series[0];
+const last = series[series.length - 1];
 ---
 <section class="pricehist">
   <h2>Price history</h2>
@@ -48,8 +61,8 @@ const ticks = hi === lo ? [hi] : [lo, (lo + hi) / 2, hi];
         ))}
         <path d={path} class="sparkline" />
         {series.map((pt, i) => <circle cx={x(i)} cy={y(pt.price)} r="2.5" class="sparkdot" />)}
-        <text x={PAD.left} y={H - 6} class="axis">{series[0].date}</text>
-        <text x={W - PAD.right} y={H - 6} class="axis" text-anchor="end">{series.at(-1).date}</text>
+        <text x={PAD.left} y={H - 6} class="axis">{first.date}</text>
+        <text x={W - PAD.right} y={H - 6} class="axis" text-anchor="end">{last.date}</text>
       </svg>
       <p class="note">
         Lowest recorded {fmtPrice(lo, currency)} · highest {fmtPrice(hi, currency)} ·
