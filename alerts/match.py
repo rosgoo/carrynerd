@@ -32,7 +32,9 @@ import urllib.error
 import urllib.request
 
 SITE_URL = os.environ.get("SITE_URL", "https://carrynerd.com").rstrip("/")
-ALERT_FROM = os.environ.get("ALERT_FROM", "carrynerd <alerts@carrynerd.com>")
+# Display name only — the address itself stays lower case. Must agree with the
+# default in src/lib/email.ts, which sends the confirmation half.
+ALERT_FROM = os.environ.get("ALERT_FROM", "CARRYNERD <alerts@carrynerd.com>")
 RESEND_ENDPOINT = "https://api.resend.com/emails"
 
 # Cloudflare fronts api.resend.com and blocks urllib's default
@@ -103,7 +105,7 @@ def render(event, unsub_url):
 
     html = f"""
 <div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;max-width:520px;color:#16181a">
-  <p style="letter-spacing:.1em;text-transform:uppercase;font-size:11px;color:#8e938f">carrynerd price drop</p>
+  <p style="letter-spacing:.1em;text-transform:uppercase;font-size:11px;color:#8e938f">CARRYNERD price drop</p>
   <h1 style="font-size:18px;margin:0 0 6px">{esc(name)}</h1>
   {f'<p style="font-size:12px;color:#5e6360;margin:0 0 12px">{esc(event["color"])}</p>' if event.get("color") else ''}
   <p style="font-size:26px;margin:0 0 4px;color:#e8430a;font-weight:600">{esc(now)}
