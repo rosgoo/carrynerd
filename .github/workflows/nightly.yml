@@ -426,8 +426,43 @@ jobs:
             data/price-state.json \
             data/fetch-log.json
 
-      # Read before the crawl so the check at the bottom of the job can tell
-      # "no work left" apart from "a night that silently contributed nothing".
+      # Re-read the pages already on disk, before crawling for new ones.
+      #
+      # The note below the crawl says a parser fix costs `enrich.py --reparse`
+      # and zero requests. That was true, and still nothing ever ran it — so
+      # the fix never arrived. The crawl skips every product already in the
+      # cache, by design, which means a corrected parser cannot reach the pages
+      # it already got wrong: the products that most need re-reading are
+      # precisely the ones the incremental rule excludes.
+      #
+      # The August weight guards are the case in point. On a local reparse they
+      # moved LiteAF's packs off a 133 g hip-belt option onto a real ~900 g, and
+      # Bonfus off its fabric's grams-per-square-yard. Every one of those
+      # products was already cached, so without this step the nightly would have
+      # gone on publishing the wrong figure indefinitely while the corrected
+      # parser sat in the repo doing nothing.
+      #
+      # That is the "whole enrich cache going stale because its entries predated
+      # a parser change" the note below remembers. Leaving the remedy as a
+      # manual step is what let it happen; at 0 requests and seconds of CPU it
+      # should not be a thing anyone has to remember to do.
+      #
+      # It replaces each cached entry outright rather than merging into it,
+      # which is the point — a stale answer has to be overwritable — and also
+      # the risk: a parser regression now reaches every cached product in one
+      # night instead of only the new ones. validate.py is what stands behind
+      # that, and its coverage-drop and density checks are the exact shape of
+      # thing a bad reparse would trip.
+      #
+      # A cold cache is a normal outcome — an evicted runner cache, a first run
+      # — and it says so and exits 0.
+      - name: Re-parse cached pages
+        run: python3 enrich.py --reparse
+
+      # Read after the reparse and before the crawl, so the check at the bottom
+      # of the job measures what the crawl contributed rather than what the
+      # reparse rewrote — it can then tell "no work left" apart from "a night
+      # that silently contributed nothing".
       - name: Note the enrich cache size
         id: enrich_before
         run: |

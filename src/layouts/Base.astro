@@ -87,6 +87,17 @@ const robots = noindex ? `noindex,${nofollow ? 'nofollow' : 'follow'}` : null;
     <div class="spacer"></div>
     <nav class="hbtns">
       <a class="hbtn" href="/">Browse</a>
+      {/* The hubs were reachable only from the footer, which is the right
+          place for a link graph and the wrong one for a reader: someone on
+          /daypacks/ had nothing above the fold telling them travel backpacks
+          were also held. A <details> rather than a scripted menu because
+          these pages mount no island — see the note on the script below. */}
+      <details class="hmenu">
+        <summary class="hbtn">Categories</summary>
+        <div class="hmenupanel">
+          {hubs.map((hub) => <a href={hub.href}>{hub.title}</a>)}
+        </div>
+      </details>
       <a class="hbtn" href="/carry-on/">Carry-on</a>
       <a class="hbtn" href="/brands/">Brands</a>
       <button class="hbtn units" id="units" title="Show lengths in centimetres or inches">
@@ -144,6 +155,21 @@ const robots = noindex ? `noindex,${nofollow ? 'nofollow' : 'follow'}` : null;
   // The browse island keeps two lengths in <input>s, which CSS cannot rewrite.
   // It listens for this and converts them.
   swap('units', 'data-units', 'units', ['cm', 'in'], 'unitchange');
+
+  // The categories menu opens and closes on its own — it is a <details>, which
+  // is the whole reason it can be the one navigation affordance on pages that
+  // run no other script. What a <details> has no notion of is dismissal, so
+  // that is all this adds: click anywhere else, or Escape, and it shuts.
+  // Without it the menu stays open behind whatever you looked at next.
+  const menu = document.querySelector<HTMLDetailsElement>('.hmenu');
+  if (menu) {
+    document.addEventListener('click', (e) => {
+      if (!menu.contains(e.target as Node)) menu.open = false;
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') menu.open = false;
+    });
+  }
 </script>
 
 <Analytics />
