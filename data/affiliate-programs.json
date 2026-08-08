@@ -1,0 +1,2155 @@
+{
+ "meta": {
+  "note": "Verdicts are evidence-based. 'none-found' means no signal either way, NOT that no programme exists \u2014 network membership is largely undetectable from a brand's own storefront. Markers are seeded, not measured; see --unknown-markers.",
+  "brand_count": 172
+ },
+ "brands": [
+  {
+   "brand": "Sherpani",
+   "domain": "sherpani.com",
+   "verdict": "in-house:uppromote",
+   "vendor": "uppromote",
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "uppromote marker in homepage source"
+   ],
+   "models": 168
+  },
+  {
+   "brand": "Eastpak",
+   "domain": "us.eastpak.com",
+   "verdict": "in-house:uppromote",
+   "vendor": "uppromote",
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "uppromote marker in homepage source"
+   ],
+   "models": 160
+  },
+  {
+   "brand": "Zpacks",
+   "domain": "zpacks.com",
+   "verdict": "in-house:affiliatly",
+   "vendor": "affiliatly",
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "affiliatly marker in homepage source"
+   ],
+   "models": 120
+  },
+  {
+   "brand": "Alpaka",
+   "domain": "alpakagear.com",
+   "verdict": "in-house:uppromote",
+   "vendor": "uppromote",
+   "network": "avantlink",
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "uppromote marker in homepage source",
+    "avantlink tracking in homepage source"
+   ],
+   "models": 85
+  },
+  {
+   "brand": "United by Blue",
+   "domain": "unitedbyblue.com",
+   "verdict": "in-house:uppromote",
+   "vendor": "uppromote",
+   "network": "avantlink",
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "uppromote marker in homepage source",
+    "avantlink tracking in homepage source"
+   ],
+   "models": 80
+  },
+  {
+   "brand": "Caribee",
+   "domain": "caribee.com",
+   "verdict": "in-house:shopify-collabs",
+   "vendor": "shopify-collabs",
+   "network": null,
+   "programme_url": "https://caribee.com/pages/caribee-ambassador-program",
+   "platform": "shopify",
+   "evidence": [
+    "programme page https://caribee.com/pages/caribee-ambassador-program",
+    "shopify-collabs marker on programme page"
+   ],
+   "models": 68
+  },
+  {
+   "brand": "Grams",
+   "domain": "grams28.com",
+   "verdict": "in-house:goaffpro",
+   "vendor": "goaffpro",
+   "network": "shareasale",
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "goaffpro marker in homepage source",
+    "shareasale tracking in homepage source"
+   ],
+   "models": 67
+  },
+  {
+   "brand": "Black Ember",
+   "domain": "blackember.com",
+   "verdict": "in-house:refersion",
+   "vendor": "refersion",
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "refersion marker in homepage source"
+   ],
+   "models": 55
+  },
+  {
+   "brand": "Trakke",
+   "domain": "trakke.co.uk",
+   "verdict": "in-house:refersion",
+   "vendor": "refersion",
+   "network": null,
+   "programme_url": "https://trakke.co.uk/pages/affiliates",
+   "platform": "shopify",
+   "evidence": [
+    "refersion marker in homepage source",
+    "programme page https://trakke.co.uk/pages/affiliates",
+    "refersion marker on programme page"
+   ],
+   "models": 26
+  },
+  {
+   "brand": "Millican",
+   "domain": "homeofmillican.com",
+   "verdict": "in-house:goaffpro",
+   "vendor": "goaffpro",
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "goaffpro marker in homepage source"
+   ],
+   "models": 23
+  },
+  {
+   "brand": "CabinZero",
+   "domain": "cabinzero.com",
+   "verdict": "in-house:uppromote",
+   "vendor": "uppromote",
+   "network": null,
+   "programme_url": "https://www.cabinzero.com/pages/affiliates",
+   "platform": "shopify",
+   "evidence": [
+    "uppromote marker in homepage source",
+    "programme page https://www.cabinzero.com/pages/affiliates",
+    "uppromote marker on programme page"
+   ],
+   "models": 22
+  },
+  {
+   "brand": "Brevite",
+   "domain": "brevite.co",
+   "verdict": "in-house:refersion",
+   "vendor": "refersion",
+   "network": "shareasale",
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "refersion marker in homepage source",
+    "shareasale tracking in homepage source"
+   ],
+   "models": 13
+  },
+  {
+   "brand": "Black Voyage",
+   "domain": "blackvoyage.com",
+   "verdict": "in-house:uppromote",
+   "vendor": "uppromote",
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "uppromote marker in homepage source"
+   ],
+   "models": 12
+  },
+  {
+   "brand": "Zorali",
+   "domain": "zorali.com",
+   "verdict": "in-house:social-snowball",
+   "vendor": "social-snowball",
+   "network": null,
+   "programme_url": "https://www.zorali.com/pages/affiliate-program",
+   "platform": "shopify",
+   "evidence": [
+    "social-snowball marker in homepage source",
+    "programme page https://www.zorali.com/pages/affiliate-program",
+    "social-snowball marker on programme page"
+   ],
+   "models": 11
+  },
+  {
+   "brand": "The Brown Buffalo",
+   "domain": "thebrownbuffalo.com",
+   "verdict": "in-house:social-snowball",
+   "vendor": "social-snowball",
+   "network": "avantlink",
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "social-snowball marker in homepage source",
+    "avantlink tracking in homepage source"
+   ],
+   "models": 10
+  },
+  {
+   "brand": "Modern Dayfarer",
+   "domain": "moderndayfarer.com",
+   "verdict": "in-house:refersion",
+   "vendor": "refersion",
+   "network": null,
+   "programme_url": "https://moderndayfarer.com/pages/affiliates",
+   "platform": "shopify",
+   "evidence": [
+    "refersion marker in homepage source",
+    "programme page https://moderndayfarer.com/pages/affiliates",
+    "refersion marker on programme page"
+   ],
+   "models": 10
+  },
+  {
+   "brand": "Able Carry",
+   "domain": "ablecarry.com",
+   "verdict": "in-house:uppromote",
+   "vendor": "uppromote",
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "uppromote marker in homepage source"
+   ],
+   "models": 8
+  },
+  {
+   "brand": "Code of Bell",
+   "domain": "codeofbell.com",
+   "verdict": "in-house:refersion",
+   "vendor": "refersion",
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "refersion marker in homepage source"
+   ],
+   "models": 8
+  },
+  {
+   "brand": "Minaal",
+   "domain": "minaal.com",
+   "verdict": "in-house:refersion",
+   "vendor": "refersion",
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "refersion marker in homepage source"
+   ],
+   "models": 6
+  },
+  {
+   "brand": "Attitude Supply",
+   "domain": "attitudesupply.com",
+   "verdict": "in-house:goaffpro",
+   "vendor": "goaffpro",
+   "network": null,
+   "programme_url": "https://atdsupply.com/pages/affiliate-program",
+   "platform": "shopify",
+   "evidence": [
+    "goaffpro marker in homepage source",
+    "programme page https://atdsupply.com/pages/affiliate-program",
+    "goaffpro marker on programme page"
+   ],
+   "models": 6
+  },
+  {
+   "brand": "Rework Gear",
+   "domain": "reworkgear.com",
+   "verdict": "in-house:uppromote",
+   "vendor": "uppromote",
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "uppromote marker in homepage source"
+   ],
+   "models": 5
+  },
+  {
+   "brand": "Arktype",
+   "domain": "arktypedesign.com",
+   "verdict": "in-house:refersion",
+   "vendor": "refersion",
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "refersion marker in homepage source"
+   ],
+   "models": 2
+  },
+  {
+   "brand": "Durston Gear",
+   "domain": "durstongear.com",
+   "verdict": "in-house:uppromote",
+   "vendor": "uppromote",
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "uppromote marker in homepage source"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Greenroom",
+   "domain": "greenroom136.com",
+   "verdict": "in-house:refersion",
+   "vendor": "refersion",
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [
+    "refersion marker in homepage source"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Haize Project",
+   "domain": "haizeproject.com",
+   "verdict": "in-house:goaffpro",
+   "vendor": "goaffpro",
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "goaffpro marker in homepage source"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Cotopaxi",
+   "domain": "cotopaxi.com",
+   "verdict": "page-only",
+   "vendor": null,
+   "network": null,
+   "programme_url": "https://www.cotopaxi.com/pages/do-good-ambassadors",
+   "platform": "shopify",
+   "evidence": [
+    "programme page https://www.cotopaxi.com/pages/do-good-ambassadors",
+    "no vendor identified \u2014 needs a look"
+   ],
+   "models": 148
+  },
+  {
+   "brand": "CALPAK",
+   "domain": "calpaktravel.com",
+   "verdict": "page-only",
+   "vendor": null,
+   "network": null,
+   "programme_url": "https://www.calpaktravel.com/pages/affiliate-program",
+   "platform": "shopify",
+   "evidence": [
+    "programme page https://www.calpaktravel.com/pages/affiliate-program",
+    "no vendor identified \u2014 needs a look"
+   ],
+   "models": 108
+  },
+  {
+   "brand": "Peak Design",
+   "domain": "peakdesign.com",
+   "verdict": "page-only",
+   "vendor": null,
+   "network": null,
+   "programme_url": "https://www.peakdesign.com/pages/brand-ambassadors",
+   "platform": "shopify",
+   "evidence": [
+    "programme page https://www.peakdesign.com/pages/brand-ambassadors",
+    "no vendor identified \u2014 needs a look"
+   ],
+   "models": 69
+  },
+  {
+   "brand": "Hyperlite Mountain Gear",
+   "domain": "hyperlitemountaingear.com",
+   "verdict": "page-only",
+   "vendor": null,
+   "network": null,
+   "programme_url": "https://hyperlitemountaingear.com/pages/hyperlite-mountain-gear-affiliate-program",
+   "platform": "shopify",
+   "evidence": [
+    "programme page https://hyperlitemountaingear.com/pages/hyperlite-mountain-gear-affiliate-program",
+    "no vendor identified \u2014 needs a look"
+   ],
+   "models": 40
+  },
+  {
+   "brand": "Burton",
+   "domain": "burton.com",
+   "verdict": "page-only",
+   "vendor": null,
+   "network": null,
+   "programme_url": "https://www.burton.com/en-us/pages/affiliate-program",
+   "platform": "shopify",
+   "evidence": [
+    "programme page https://www.burton.com/en-us/pages/affiliate-program",
+    "no vendor identified \u2014 needs a look"
+   ],
+   "models": 28
+  },
+  {
+   "brand": "Hynes Eagle",
+   "domain": "hyneseagle.com",
+   "verdict": "page-only",
+   "vendor": null,
+   "network": null,
+   "programme_url": "https://www.hyneseagle.com/pages/wholesale-affiliate-programs",
+   "platform": "shopify",
+   "evidence": [
+    "programme page https://www.hyneseagle.com/pages/wholesale-affiliate-programs",
+    "no vendor identified \u2014 needs a look"
+   ],
+   "models": 28
+  },
+  {
+   "brand": "Corsurf",
+   "domain": "corsurf.com",
+   "verdict": "page-only",
+   "vendor": null,
+   "network": null,
+   "programme_url": "https://www.corsurf.com/blogs/news/cor-surf-brand-ambassador-program",
+   "platform": "shopify",
+   "evidence": [
+    "programme page https://www.corsurf.com/blogs/news/cor-surf-brand-ambassador-program",
+    "no vendor identified \u2014 needs a look"
+   ],
+   "models": 20
+  },
+  {
+   "brand": "3FUL Gear",
+   "domain": "3fulgear.com",
+   "verdict": "page-only",
+   "vendor": null,
+   "network": null,
+   "programme_url": "https://3fulgear.com/affiliate-registration/",
+   "platform": "woocommerce",
+   "evidence": [
+    "programme page https://3fulgear.com/affiliate-registration/",
+    "no vendor identified \u2014 needs a look"
+   ],
+   "models": 10
+  },
+  {
+   "brand": "Avio Gear",
+   "domain": "aviotravel.com",
+   "verdict": "page-only",
+   "vendor": null,
+   "network": null,
+   "programme_url": "https://aviotravel.com/pages/ambassador-program",
+   "platform": "shopify",
+   "evidence": [
+    "programme page https://aviotravel.com/pages/ambassador-program",
+    "no vendor identified \u2014 needs a look"
+   ],
+   "models": 2
+  },
+  {
+   "brand": "Graphene-x",
+   "domain": "graphene-x.com",
+   "verdict": "page-only",
+   "vendor": null,
+   "network": null,
+   "programme_url": "https://www.graphene-x.com/affiliates",
+   "platform": "shopify",
+   "evidence": [
+    "programme page https://www.graphene-x.com/affiliates",
+    "no vendor identified \u2014 needs a look"
+   ],
+   "models": 2
+  },
+  {
+   "brand": "Mystery Ranch",
+   "domain": "www.mysteryranch.com",
+   "verdict": "page-only",
+   "vendor": null,
+   "network": null,
+   "programme_url": "https://www.mysteryranch.com/ambassadors",
+   "platform": "unknown",
+   "evidence": [
+    "programme page https://www.mysteryranch.com/ambassadors",
+    "no vendor identified \u2014 needs a look"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Craghoppers",
+   "domain": "craghoppers.com",
+   "verdict": "page-only",
+   "vendor": null,
+   "network": null,
+   "programme_url": "https://www.craghoppers.com/affiliates/",
+   "platform": "unknown",
+   "evidence": [
+    "programme page https://www.craghoppers.com/affiliates/",
+    "no vendor identified \u2014 needs a look"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Mystery Ranch",
+   "domain": "mysteryranch.com",
+   "verdict": "page-only",
+   "vendor": null,
+   "network": null,
+   "programme_url": "https://www.mysteryranch.com/ambassadors",
+   "platform": "unknown",
+   "evidence": [
+    "programme page https://www.mysteryranch.com/ambassadors",
+    "no vendor identified \u2014 needs a look"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Dagne Dover",
+   "domain": "dagnedover.com",
+   "verdict": "network:pepperjam",
+   "vendor": null,
+   "network": "pepperjam",
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "pepperjam tracking in homepage source"
+   ],
+   "models": 226
+  },
+  {
+   "brand": "Bagsmart",
+   "domain": "bagsmart.com",
+   "verdict": "network:shareasale",
+   "vendor": null,
+   "network": "shareasale",
+   "programme_url": "https://www.bagsmart.com/pages/affiliate-program",
+   "platform": "shopify",
+   "evidence": [
+    "shareasale tracking in homepage source",
+    "programme page https://www.bagsmart.com/pages/affiliate-program",
+    "shareasale named on programme page"
+   ],
+   "models": 137
+  },
+  {
+   "brand": "Lo & Sons",
+   "domain": "loandsons.com",
+   "verdict": "network:impact",
+   "vendor": null,
+   "network": "impact",
+   "programme_url": "https://www.loandsons.com/pages/affiliate-sign-up",
+   "platform": "shopify",
+   "evidence": [
+    "programme page https://www.loandsons.com/pages/affiliate-sign-up",
+    "impact named on programme page"
+   ],
+   "models": 123
+  },
+  {
+   "brand": "Tom Bihn",
+   "domain": "tombihn.com",
+   "verdict": "network:awin",
+   "vendor": null,
+   "network": "awin",
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "awin tracking in homepage source"
+   ],
+   "models": 116
+  },
+  {
+   "brand": "Aer",
+   "domain": "aersf.com",
+   "verdict": "network:awin",
+   "vendor": null,
+   "network": "awin",
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "awin tracking in homepage source"
+   ],
+   "models": 98
+  },
+  {
+   "brand": "Timbuk2",
+   "domain": "timbuk2.com",
+   "verdict": "network:pepperjam",
+   "vendor": null,
+   "network": "pepperjam",
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "pepperjam tracking in homepage source"
+   ],
+   "models": 82
+  },
+  {
+   "brand": "Pacsafe",
+   "domain": "pacsafe.com",
+   "verdict": "network:avantlink",
+   "vendor": null,
+   "network": "avantlink",
+   "programme_url": "https://pacsafe.com/pages/pacsafe-affiliate-program",
+   "platform": "shopify",
+   "evidence": [
+    "avantlink tracking in homepage source",
+    "programme page https://pacsafe.com/pages/pacsafe-affiliate-program",
+    "avantlink named on programme page"
+   ],
+   "models": 75
+  },
+  {
+   "brand": "Topo Designs",
+   "domain": "topodesigns.com",
+   "verdict": "network:avantlink",
+   "vendor": null,
+   "network": "avantlink",
+   "programme_url": "https://topodesigns.com/pages/affiliates",
+   "platform": "shopify",
+   "evidence": [
+    "avantlink tracking in homepage source",
+    "programme page https://topodesigns.com/pages/affiliates",
+    "avantlink named on programme page"
+   ],
+   "models": 74
+  },
+  {
+   "brand": "Ortlieb",
+   "domain": "us.ortlieb.com",
+   "verdict": "network:avantlink",
+   "vendor": null,
+   "network": "avantlink",
+   "programme_url": "https://us.ortlieb.com/pages/sponsoring-athletes",
+   "platform": "shopify",
+   "evidence": [
+    "avantlink tracking in homepage source",
+    "programme page https://us.ortlieb.com/pages/sponsoring-athletes",
+    "avantlink named on programme page"
+   ],
+   "models": 67
+  },
+  {
+   "brand": "Inside Line Equipment",
+   "domain": "ilequipment.com",
+   "verdict": "network:avantlink",
+   "vendor": null,
+   "network": "avantlink",
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "avantlink tracking in homepage source"
+   ],
+   "models": 66
+  },
+  {
+   "brand": "Kifaru",
+   "domain": "kifaru.net",
+   "verdict": "network:avantlink",
+   "vendor": null,
+   "network": "avantlink",
+   "programme_url": "https://kifaru.net/pages/affiliate-program",
+   "platform": "shopify",
+   "evidence": [
+    "avantlink tracking in homepage source",
+    "programme page https://kifaru.net/pages/affiliate-program",
+    "avantlink named on programme page"
+   ],
+   "models": 61
+  },
+  {
+   "brand": "Troubadour",
+   "domain": "troubadour.myshopify.com",
+   "verdict": "network:awin",
+   "vendor": null,
+   "network": "awin",
+   "programme_url": "https://checkout.troubadourgoods.com/pages/affiliates",
+   "platform": "shopify",
+   "evidence": [
+    "programme page https://checkout.troubadourgoods.com/pages/affiliates",
+    "awin named on programme page"
+   ],
+   "models": 59
+  },
+  {
+   "brand": "Knack Bags",
+   "domain": "knackbags.com",
+   "verdict": "network:impact",
+   "vendor": null,
+   "network": "impact",
+   "programme_url": "https://knackbags.com/pages/knack-affiliate-program",
+   "platform": "shopify",
+   "evidence": [
+    "impact tracking in homepage source",
+    "programme page https://knackbags.com/pages/knack-affiliate-program",
+    "impact named on programme page"
+   ],
+   "models": 55
+  },
+  {
+   "brand": "ULA Equipment",
+   "domain": "ula-equipment.com",
+   "verdict": "network:impact",
+   "vendor": null,
+   "network": "impact",
+   "programme_url": null,
+   "platform": "woocommerce",
+   "evidence": [
+    "impact tracking in homepage source"
+   ],
+   "models": 54
+  },
+  {
+   "brand": "Heimplanet",
+   "domain": "heimplanet.com",
+   "verdict": "network:avantlink",
+   "vendor": null,
+   "network": "avantlink",
+   "programme_url": "https://heimplanet.com/pages/ambassador",
+   "platform": "shopify",
+   "evidence": [
+    "avantlink tracking in homepage source",
+    "programme page https://heimplanet.com/pages/ambassador",
+    "avantlink named on programme page"
+   ],
+   "models": 52
+  },
+  {
+   "brand": "Vertx",
+   "domain": "vertx.com",
+   "verdict": "network:shareasale",
+   "vendor": null,
+   "network": "shareasale",
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "shareasale tracking in homepage source"
+   ],
+   "models": 49
+  },
+  {
+   "brand": "Mission Workshop",
+   "domain": "missionworkshop.com",
+   "verdict": "network:avantlink",
+   "vendor": null,
+   "network": "avantlink",
+   "programme_url": "https://missionworkshop.com/pages/affiliate-program",
+   "platform": "shopify",
+   "evidence": [
+    "avantlink tracking in homepage source",
+    "programme page https://missionworkshop.com/pages/affiliate-program",
+    "avantlink named on programme page"
+   ],
+   "models": 48
+  },
+  {
+   "brand": "Gossamer Gear",
+   "domain": "gossamergear.com",
+   "verdict": "network:avantlink",
+   "vendor": null,
+   "network": "avantlink",
+   "programme_url": "https://www.gossamergear.com/pages/affiliate-program",
+   "platform": "shopify",
+   "evidence": [
+    "avantlink tracking in homepage source",
+    "programme page https://www.gossamergear.com/pages/affiliate-program",
+    "avantlink named on programme page"
+   ],
+   "models": 44
+  },
+  {
+   "brand": "Chrome Industries",
+   "domain": "chromeindustries.com",
+   "verdict": "network:avantlink",
+   "vendor": null,
+   "network": "avantlink",
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "avantlink tracking in homepage source"
+   ],
+   "models": 40
+  },
+  {
+   "brand": "Mountainsmith",
+   "domain": "mountainsmith.com",
+   "verdict": "network:avantlink",
+   "vendor": null,
+   "network": "avantlink",
+   "programme_url": "https://mountainsmith.com/pages/outing-calendar",
+   "platform": "shopify",
+   "evidence": [
+    "programme page https://mountainsmith.com/pages/outing-calendar",
+    "avantlink named on programme page"
+   ],
+   "models": 38
+  },
+  {
+   "brand": "North St. Bags",
+   "domain": "northstbags.com",
+   "verdict": "network:avantlink",
+   "vendor": null,
+   "network": "avantlink",
+   "programme_url": "https://northstbags.com/pages/affiliate-program",
+   "platform": "shopify",
+   "evidence": [
+    "avantlink tracking in homepage source",
+    "programme page https://northstbags.com/pages/affiliate-program",
+    "avantlink named on programme page"
+   ],
+   "models": 31
+  },
+  {
+   "brand": "Mammut",
+   "domain": "www.mammut.com",
+   "verdict": "network:avantlink",
+   "vendor": null,
+   "network": "avantlink",
+   "programme_url": "https://www.mammut.com/us/en/mammut-affiliate",
+   "platform": "unknown",
+   "evidence": [
+    "programme page https://www.mammut.com/us/en/mammut-affiliate",
+    "avantlink named on programme page"
+   ],
+   "models": 31
+  },
+  {
+   "brand": "EVERGOODS",
+   "domain": "evergoods.us",
+   "verdict": "network:avantlink",
+   "vendor": null,
+   "network": "avantlink",
+   "programme_url": "https://evergoods.us/pages/evergoods-affiliate-program",
+   "platform": "shopify",
+   "evidence": [
+    "avantlink tracking in homepage source",
+    "programme page https://evergoods.us/pages/evergoods-affiliate-program",
+    "avantlink named on programme page"
+   ],
+   "models": 29
+  },
+  {
+   "brand": "Six Moon Designs",
+   "domain": "sixmoondesigns.com",
+   "verdict": "network:avantlink",
+   "vendor": null,
+   "network": "avantlink",
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "avantlink tracking in homepage source"
+   ],
+   "models": 29
+  },
+  {
+   "brand": "GORUCK",
+   "domain": "goruck.com",
+   "verdict": "network:avantlink",
+   "vendor": null,
+   "network": "avantlink",
+   "programme_url": "https://www.goruck.com/collections/all",
+   "platform": "shopify",
+   "evidence": [
+    "avantlink tracking in homepage source",
+    "programme page https://www.goruck.com/collections/all",
+    "avantlink named on programme page"
+   ],
+   "models": 26
+  },
+  {
+   "brand": "Nemo Equipment",
+   "domain": "nemoequipment.com",
+   "verdict": "network:avantlink",
+   "vendor": null,
+   "network": "avantlink",
+   "programme_url": "https://www.nemoequipment.com/pages/affiliate-sales",
+   "platform": "shopify",
+   "evidence": [
+    "avantlink tracking in homepage source",
+    "programme page https://www.nemoequipment.com/pages/affiliate-sales",
+    "avantlink named on programme page"
+   ],
+   "models": 26
+  },
+  {
+   "brand": "Matador",
+   "domain": "matadorup.com",
+   "verdict": "network:avantlink",
+   "vendor": null,
+   "network": "avantlink",
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "avantlink tracking in homepage source"
+   ],
+   "models": 20
+  },
+  {
+   "brand": "Tortuga",
+   "domain": "tortugabackpacks.com",
+   "verdict": "network:avantlink",
+   "vendor": null,
+   "network": "avantlink",
+   "programme_url": "https://www.tortugabackpacks.com/pages/affiliates",
+   "platform": "shopify",
+   "evidence": [
+    "avantlink tracking in homepage source",
+    "programme page https://www.tortugabackpacks.com/pages/affiliates",
+    "avantlink named on programme page"
+   ],
+   "models": 16
+  },
+  {
+   "brand": "Pakt",
+   "domain": "paktbags.com",
+   "verdict": "network:awin",
+   "vendor": null,
+   "network": "awin",
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "awin tracking in homepage source"
+   ],
+   "models": 14
+  },
+  {
+   "brand": "Airback",
+   "domain": "airback.us",
+   "verdict": "network:shareasale",
+   "vendor": null,
+   "network": "shareasale",
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "shareasale tracking in homepage source"
+   ],
+   "models": 12
+  },
+  {
+   "brand": "Ministry of Supply",
+   "domain": "ministryofsupply.com",
+   "verdict": "network:shareasale",
+   "vendor": null,
+   "network": "shareasale",
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "shareasale tracking in homepage source"
+   ],
+   "models": 4
+  },
+  {
+   "brand": "Gregory",
+   "domain": "www.gregory.com",
+   "verdict": "network:impact",
+   "vendor": null,
+   "network": "impact",
+   "programme_url": "https://www.gregory.com/affiliates.html",
+   "platform": "unknown",
+   "evidence": [
+    "programme page https://www.gregory.com/affiliates.html",
+    "impact named on programme page"
+   ],
+   "models": 2
+  },
+  {
+   "brand": "Moment",
+   "domain": "www.shopmoment.com",
+   "verdict": "network:impact",
+   "vendor": null,
+   "network": "impact",
+   "programme_url": "https://www.shopmoment.com/pages/affiliates",
+   "platform": "unknown",
+   "evidence": [
+    "programme page https://www.shopmoment.com/pages/affiliates",
+    "impact named on programme page"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "July",
+   "domain": "july.com",
+   "verdict": "network:impact",
+   "vendor": null,
+   "network": "impact",
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "impact tracking in homepage source"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Everyman",
+   "domain": "everyman.co",
+   "verdict": "network:avantlink",
+   "vendor": null,
+   "network": "avantlink",
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "avantlink tracking in homepage source"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Simond",
+   "domain": "simond.com",
+   "verdict": "network:awin",
+   "vendor": null,
+   "network": "awin",
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [
+    "awin tracking in homepage source"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Gregory",
+   "domain": "gregory.com",
+   "verdict": "network:impact",
+   "vendor": null,
+   "network": "impact",
+   "programme_url": "https://www.gregory.com/affiliates.html",
+   "platform": "unknown",
+   "evidence": [
+    "programme page https://www.gregory.com/affiliates.html",
+    "impact named on programme page"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Mammut",
+   "domain": "mammut.com",
+   "verdict": "network:avantlink",
+   "vendor": null,
+   "network": "avantlink",
+   "programme_url": "https://www.mammut.com/us/en/mammut-affiliate",
+   "platform": "unknown",
+   "evidence": [
+    "programme page https://www.mammut.com/us/en/mammut-affiliate",
+    "avantlink named on programme page"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Arcido",
+   "domain": "arcido.com",
+   "verdict": "unreachable",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [
+    "homepage no response"
+   ],
+   "models": 7
+  },
+  {
+   "brand": "Fjallraven",
+   "domain": "fjallraven.com",
+   "verdict": "unreachable",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [
+    "homepage 403"
+   ],
+   "models": 2
+  },
+  {
+   "brand": "Wotancraft",
+   "domain": "wotancraft.com",
+   "verdict": "unreachable",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [
+    "homepage no response"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Rickshaw Bagworks",
+   "domain": "rickshawbags.com",
+   "verdict": "unreachable",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [
+    "homepage 403"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Osprey",
+   "domain": "osprey.com",
+   "verdict": "unreachable",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [
+    "homepage 403"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "The North Face",
+   "domain": "thenorthface.com",
+   "verdict": "unreachable",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [
+    "homepage 403"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Cabelas",
+   "domain": "cabelas.com",
+   "verdict": "unreachable",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [
+    "homepage 403"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Day Owl",
+   "domain": "dayowl.com",
+   "verdict": "unreachable",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [
+    "homepage 308"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Kipling",
+   "domain": "kipling.com",
+   "verdict": "unreachable",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [
+    "homepage 403"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Kl\u00e4ttermusen",
+   "domain": "klattermusen.com",
+   "verdict": "unreachable",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [
+    "homepage 308"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "MEC",
+   "domain": "mec.ca",
+   "verdict": "unreachable",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [
+    "homepage 403"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Ogio",
+   "domain": "ogio.com",
+   "verdict": "unreachable",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [
+    "homepage 429 \u2014 rate limited, undetermined"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Patagonia",
+   "domain": "patagonia.com",
+   "verdict": "unreachable",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [
+    "homepage 404"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Remote Equipment",
+   "domain": "remoteeq.com",
+   "verdict": "unreachable",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [
+    "homepage 403"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Salomon",
+   "domain": "salomon.com",
+   "verdict": "unreachable",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [
+    "homepage 308"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Zeeksack",
+   "domain": "zeeksack.com",
+   "verdict": "unreachable",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [
+    "robots.txt disallows / (robots.txt disallows /)"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Pakt",
+   "domain": "pakt.com",
+   "verdict": "unreachable",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [
+    "homepage no response"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Moment",
+   "domain": "shopmoment.com",
+   "verdict": "unreachable",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [
+    "homepage 308"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Troubadour",
+   "domain": "troubadourgoods.com",
+   "verdict": "unreachable",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [
+    "homepage 308"
+   ],
+   "models": 0
+  },
+  {
+   "brand": "Dakine",
+   "domain": "dakine.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 597
+  },
+  {
+   "brand": "Db Journey",
+   "domain": "dbjourney.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 364
+  },
+  {
+   "brand": "Vaude",
+   "domain": "www.vaude.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 292
+  },
+  {
+   "brand": "Tatonka",
+   "domain": "www.tatonka.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "woocommerce",
+   "evidence": [],
+   "models": 242
+  },
+  {
+   "brand": "B\u00c9IS",
+   "domain": "beistravel.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 221
+  },
+  {
+   "brand": "SwissGear",
+   "domain": "swissgear.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 206
+  },
+  {
+   "brand": "Mismo",
+   "domain": "mismo.dk",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 190
+  },
+  {
+   "brand": "Deuter",
+   "domain": "www.deuter.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 187
+  },
+  {
+   "brand": "Away",
+   "domain": "awaytravel.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 184
+  },
+  {
+   "brand": "Tomtoc",
+   "domain": "tomtoc.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 173
+  },
+  {
+   "brand": "Bellroy",
+   "domain": "bellroy.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 148
+  },
+  {
+   "brand": "Forclaz",
+   "domain": "decathlon.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 147
+  },
+  {
+   "brand": "Portland Gear",
+   "domain": "portlandgear.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 143
+  },
+  {
+   "brand": "Eagle Creek",
+   "domain": "eaglecreek.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 109
+  },
+  {
+   "brand": "DEFY",
+   "domain": "defybags.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 108
+  },
+  {
+   "brand": "Tropicfeel",
+   "domain": "shop.tropicfeel.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 98
+  },
+  {
+   "brand": "C\u00f4te&Ciel",
+   "domain": "coteetciel.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 80
+  },
+  {
+   "brand": "Snow Peak",
+   "domain": "snowpeak.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 79
+  },
+  {
+   "brand": "WaterField Designs",
+   "domain": "sfbags.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 77
+  },
+  {
+   "brand": "Thule",
+   "domain": "www.thule.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 74
+  },
+  {
+   "brand": "JanSport",
+   "domain": "jansport.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 71
+  },
+  {
+   "brand": "Filson",
+   "domain": "filson.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 71
+  },
+  {
+   "brand": "Property Of",
+   "domain": "thepropertyof.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 68
+  },
+  {
+   "brand": "Rab",
+   "domain": "rab.equipment",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 65
+  },
+  {
+   "brand": "Red Oxx",
+   "domain": "redoxx.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 56
+  },
+  {
+   "brand": "Nomatic",
+   "domain": "nomatic.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 55
+  },
+  {
+   "brand": "LiteAF",
+   "domain": "liteaf.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "woocommerce",
+   "evidence": [],
+   "models": 54
+  },
+  {
+   "brand": "FHF Gear",
+   "domain": "fhfgear.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 48
+  },
+  {
+   "brand": "Baboon to the Moon",
+   "domain": "baboontothemoon.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 45
+  },
+  {
+   "brand": "WANDRD",
+   "domain": "wandrd.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 43
+  },
+  {
+   "brand": "RAWROW",
+   "domain": "rawrow.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 43
+  },
+  {
+   "brand": "Monos",
+   "domain": "monos.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 42
+  },
+  {
+   "brand": "Incase",
+   "domain": "incase.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 42
+  },
+  {
+   "brand": "Alchemy Equipment",
+   "domain": "alchemy-equipment.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 40
+  },
+  {
+   "brand": "Boundary Supply",
+   "domain": "boundarysupply.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 32
+  },
+  {
+   "brand": "Stubble & Co",
+   "domain": "stubbleandco.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 30
+  },
+  {
+   "brand": "Stubble & Co",
+   "domain": "stubbleandco.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 30
+  },
+  {
+   "brand": "Solgaard",
+   "domain": "solgaard.co",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 25
+  },
+  {
+   "brand": "YNOT",
+   "domain": "ynotmade.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 25
+  },
+  {
+   "brand": "Wave",
+   "domain": "waveproducts.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 24
+  },
+  {
+   "brand": "Bonfus",
+   "domain": "bonfus.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "woocommerce",
+   "evidence": [],
+   "models": 21
+  },
+  {
+   "brand": "Alpha One-Niner",
+   "domain": "alphaoneniner.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 19
+  },
+  {
+   "brand": "Ecohub",
+   "domain": "ecohubtravel.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 17
+  },
+  {
+   "brand": "Alpine Sea",
+   "domain": "alpinesea.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 17
+  },
+  {
+   "brand": "CamelBak",
+   "domain": "www.camelbak.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 16
+  },
+  {
+   "brand": "Stio",
+   "domain": "stio.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 13
+  },
+  {
+   "brand": "Tobiq",
+   "domain": "tobiq.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 11
+  },
+  {
+   "brand": "Bedouin Foundry",
+   "domain": "bedouinfoundry.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 7
+  },
+  {
+   "brand": "Kathmandu",
+   "domain": "kathmanduoutdoor.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 6
+  },
+  {
+   "brand": "Piorama",
+   "domain": "piorama.co",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 5
+  },
+  {
+   "brand": "Fyro",
+   "domain": "fyro.co",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 4
+  },
+  {
+   "brand": "Almond Oak",
+   "domain": "almondoak.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 3
+  },
+  {
+   "brand": "5.11 Tactical",
+   "domain": "511tactical.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 1
+  },
+  {
+   "brand": "Baggu",
+   "domain": "baggu.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "eBags",
+   "domain": "ebagsbrand.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "woocommerce",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "Samsonite",
+   "domain": "shop.samsonite.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "CampSaver",
+   "domain": "www.campsaver.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "Arc'teryx",
+   "domain": "arcteryx.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "Exped",
+   "domain": "exped.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "Fredrik Packers",
+   "domain": "fredrikpackers.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "Hanchor",
+   "domain": "hanchor.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "Hill People Gear",
+   "domain": "hillpeoplegear.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "Homiee",
+   "domain": "homieebackpack.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "woocommerce",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "Ikea",
+   "domain": "ikea.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "L.L.Bean",
+   "domain": "llbean.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "Mixed Works",
+   "domain": "mixedworks.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "Nike",
+   "domain": "nike.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "Packolab",
+   "domain": "packolab.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "Porter",
+   "domain": "ll-porter.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "Uniqlo",
+   "domain": "uniqlo.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "Yeti",
+   "domain": "yeti.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "CamelBak",
+   "domain": "camelbak.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "Deuter",
+   "domain": "deuter.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "Ortlieb",
+   "domain": "ortlieb.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "shopify",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "Tatonka",
+   "domain": "tatonka.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "woocommerce",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "Thule",
+   "domain": "thule.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 0
+  },
+  {
+   "brand": "Vaude",
+   "domain": "vaude.com",
+   "verdict": "none-found",
+   "vendor": null,
+   "network": null,
+   "programme_url": null,
+   "platform": "unknown",
+   "evidence": [],
+   "models": 0
+  }
+ ]
+}
