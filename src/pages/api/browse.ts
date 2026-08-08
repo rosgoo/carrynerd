@@ -24,7 +24,7 @@
  */
 
 import type { APIRoute } from 'astro';
-import { bags, meta } from '../../lib/catalog.js';
+import { bags, meta, byLabel } from '../../lib/catalog.js';
 
 export const prerender = false;
 
@@ -192,11 +192,6 @@ const ROWS: Row[] = (bags as Bag[]).map((b) => {
 
 /* ---------- sorting ---------- */
 
-/* One collator for the whole instance. localeCompare builds its collation table
- * on every call, and the brand sort asks for a comparison on the order of a
- * hundred thousand times. */
-const collator = new Intl.Collator();
-
 function nullsLast(x: number | null, y: number | null, dir: number) {
   if (x == null && y == null) return 0;
   if (x == null) return 1;
@@ -205,8 +200,7 @@ function nullsLast(x: number | null, y: number | null, dir: number) {
 }
 
 const SORTS: Record<string, (a: Row, b: Row) => number> = {
-  brand: (a, b) => collator.compare(a.brand, b.brand)
-               || collator.compare(a.name, b.name),
+  brand: (a, b) => byLabel(a.brand, b.brand) || byLabel(a.name, b.name),
   'price-asc': (a, b) => nullsLast(a.price_min, b.price_min, 1),
   'price-desc': (a, b) => nullsLast(a.price_min, b.price_min, -1),
   'vol-asc': (a, b) => nullsLast(a.volume_l, b.volume_l, 1),
@@ -255,7 +249,7 @@ const FACETS = {
       m.set(r.brand_slug, e);
     }
     return [...m.entries()]
-      .sort((a, b) => collator.compare(a[1].name, b[1].name))
+      .sort((a, b) => byLabel(a[1].name, b[1].name))
       .map(([slug, e]) => [slug, e.name, e.n] as const);
   })(),
 };

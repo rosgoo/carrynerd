@@ -36,6 +36,36 @@ if (!bags.length) {
   );
 }
 
+/* Alphabetical order for anything a reader scans as a list: brands, and models
+ * within a brand.
+ *
+ * Plain collation opens the catalogue with 3F UL Gear and 5.11 Tactical, so
+ * the first thing on a brand-sorted page is two numeric outliers standing in
+ * front of the alphabet — and Able Carry, the actual first entry, is below the
+ * fold of the A's. A name beginning with a digit has no place in an A-Z scan,
+ * so it sorts after it, the way a phone book has always done it.
+ *
+ * One collator for the whole module: localeCompare builds its collation table
+ * on every call, and the brand sort in api/browse.ts asks for a comparison on
+ * the order of a hundred thousand times.
+ *
+ * Only the first character picks the bucket; inside each, ordinary collation.
+ */
+const collator = new Intl.Collator();
+
+/** @param {string} s */
+const opensWithDigit = (s) => {
+  const c = s.charCodeAt(0);
+  return c >= 48 && c <= 57; // NaN on the empty string, which is correctly false
+};
+
+/** @param {string} a @param {string} b */
+export function byLabel(a, b) {
+  const x = opensWithDigit(a);
+  if (x !== opensWithDigit(b)) return x ? 1 : -1;
+  return collator.compare(a, b);
+}
+
 /** bag ids are `<brand-slug>__<model-slug>`; the route mirrors that split.
  *  @param {string} id */
 export function splitId(id) {
@@ -107,9 +137,9 @@ export const brands = (() => {
     entry.bags.push(bag);
   }
   for (const entry of by.values()) {
-    entry.bags.sort((a, b) => a.name.localeCompare(b.name));
+    entry.bags.sort((a, b) => byLabel(a.name, b.name));
   }
-  return [...by.values()].sort((a, b) => a.name.localeCompare(b.name));
+  return [...by.values()].sort((a, b) => byLabel(a.name, b.name));
 })();
 
 /* ---------- price history ----------

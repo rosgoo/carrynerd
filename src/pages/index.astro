@@ -1,6 +1,6 @@
 ---
 import Base from '../layouts/Base.astro';
-import { bags, meta, bagHref } from '../lib/catalog.js';
+import { bags, meta, bagHref, byLabel } from '../lib/catalog.js';
 import { catLabel } from '../lib/labels.js';
 import { fmtPrice } from '../lib/format.js';
 import Logo from '../components/Logo.astro';
@@ -18,7 +18,7 @@ const description =
 // the sitemap agrees with it. Same content either way — the grid is a nicer
 // presentation of this list, not different data.
 const fallback = [...bags].sort(
-  (a, b) => a.brand.localeCompare(b.brand) || a.name.localeCompare(b.name),
+  (a, b) => byLabel(a.brand, b.brand) || byLabel(a.name, b.name),
 );
 
 // A few brands sell from storefronts that quote something other than dollars,
