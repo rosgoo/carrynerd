@@ -30,6 +30,8 @@
 import { CAT_LABELS, FEATURE_LABELS, COLOUR_LABELS, COLOUR_SWATCH,
          COLOUR_ORDER } from '../lib/labels.js';
 import { thumb, THUMB } from '../lib/thumb.js';
+import { favourites, toggleFavourite, MAX_FAVOURITES,
+         savedFilters, saveFilter, forgetFilter, MAX_FILTERS } from '../lib/store.js';
 import { trackProductView } from './analytics.js';
 import './watch.js';
 
@@ -74,12 +76,26 @@ let BY_ID = new Map();
 // count line, and the strip in the header.
 let STATS = {};
 
+// slug → printed name, taken from the boot response's brand facet. Only the
+// name of a saved filter needs it: "Peak Design" rather than "peak-design".
+let BRAND_NAMES = new Map();
+
+/* The bags this browser has starred, as a Set for the card renderer.
+ *
+ * lib/store.js owns the list and localStorage owns the storage; this is a copy
+ * taken at the top of every render and after every toggle, so a second tab
+ * cannot leave it lying. Deliberately not part of S: S is the filter, and a
+ * favourite is not one — it changes where a bag is drawn, not whether it
+ * matches. The exception is S.favOnly, which is a filter and is spelled in the
+ * URL like the rest of them. */
+let FAV = new Set();
+
 const S = {
   q: "", cats: new Set(), brands: new Set(), feats: new Set(), mats: new Set(),
   colors: new Set(),
   volMin: null, volMax: null, priceMin: null, priceMax: null,
   weightMin: null, weightMax: null, linearMax: null,
-  presets: new Set(), stock: false, sale: false, sort: "brand",
+  presets: new Set(), stock: false, sale: false, favOnly: false, sort: "brand",
 };
 
 /* ---------- units ---------- */
@@ -162,12 +178,23 @@ const PER = 60;
 
 let PAGE = 0;       // the last page painted
 let TOTAL = 0;      // how many bags match in total, not how many are drawn
+/* How many of those matches are paged. Favourites are lifted out of the pages
+ * and drawn above them in one go, so they are counted in TOTAL — the line
+ * above the grid is answering "how many match" — and not in this, which is
+ * what the scroll asks whether there is another page of. */
+let PAGED = 0;
 
 async function ask(page, boot = false) {
   const p = stateParams();
   p.set("page", page);
   p.set("per", PER);
   if (boot) p.set("boot", "1");
+  /* Not in stateParams, and so not in the address bar: these ids are this
+   * browser's, and a link someone shares should carry their filter rather than
+   * a list of the bags they happen to have starred. The server only uses them
+   * to decide what to lift above the page — unless favonly is on, which is in
+   * stateParams because it genuinely does change which bags match. */
+  if (FAV.size) p.set("fav", [...FAV].join(","));
   const res = await fetch(`/api/browse?${p}`, { signal: ctrl?.signal });
   if (!res.ok) throw new Error(res.status);
   const data = await res.json();
@@ -220,6 +247,27 @@ function shotBlock(b) {
     </div>`;
 }
 
+/* The star, for a card and for a table row. Filled or hollow rather than a
+ * pressed-in colour block like the comparison tick: a favourite is a thing you
+ * keep, and the two controls sit next to each other in the card foot, so they
+ * have to be told apart at a glance rather than by reading them. */
+const favLabel = on => on ? "Remove from favourites" : "Save to favourites";
+
+const favBtn = (id, cls = "fav") => {
+  const on = FAV.has(id);
+  return `<button class="${cls}" data-fav aria-pressed="${on}"
+    title="${favLabel(on)}" aria-label="${favLabel(on)}">${on ? "★" : "☆"}</button>`;
+};
+
+/** The same button, repainted in place — used for the drawer's copy, which
+ *  outlives the grid under it, and by flipFavourite() for every other. */
+function paintFav(btn, on) {
+  btn.setAttribute("aria-pressed", on);
+  btn.setAttribute("aria-label", favLabel(on));
+  btn.title = favLabel(on);
+  btn.textContent = on ? "★" : "☆";
+}
+
 function card(b) {
   const on = compare.has(b.id);
   const swatches = (b.colors || []).slice(0, 5)
@@ -242,6 +290,7 @@ function card(b) {
       <div class="price">${fmtPrice(b.price_min, b.currency)}${
         b.price_max && b.price_max !== b.price_min ? `<s>–${fmtPrice(b.price_max, b.currency)}</s>` : ""}</div>
       <div class="dots">${swatches}${extra}</div>
+      ${favBtn(b.id)}
       <button class="cmp" data-cmp aria-pressed="${on}" title="Add to comparison">${on ? "✓" : "+"}</button>
     </div>
   </article>`;
@@ -263,15 +312,19 @@ function cssColor(name) {
   return "var(--line-2)";
 }
 
+// One list, so the skeleton's column count and the real table's cannot drift
+// apart — a column added here used to mean remembering a magic 12 two
+// functions down.
+const HEAD = ["★", "Brand", "Model", "Category", "Vol L", "Weight g",
+              `H×W×D ${dual("cm", "in")}`,
+              `Linear ${dual("cm", "in")}`,
+              "Laptop", "Price", "g/L", "Price/L", "Colours"];
+
 // The head and one row are separate so the table can be extended a chunk at a
 // time, the same way the grid is. See paintPage().
 function tableShell() {
-  const head = ["Brand", "Model", "Category", "Vol L", "Weight g",
-                `H×W×D ${dual("cm", "in")}`,
-                `Linear ${dual("cm", "in")}`,
-                "Laptop", "Price", "g/L", "Price/L", "Colours"];
   return `<div class="tablewrap"><table>
-    <thead><tr>${head.map(h => `<th>${h}</th>`).join("")}</tr></thead>
+    <thead><tr>${HEAD.map(h => `<th>${h}</th>`).join("")}</tr></thead>
     <tbody></tbody></table></div>`;
 }
 
@@ -279,6 +332,7 @@ function row(b) {
   const on = compare.has(b.id);
   const td = v => v == null ? '<td class="nil">—</td>' : `<td>${v}</td>`;
   return `<tr class="${on ? "sel" : ""}" data-id="${esc(b.id)}">
+    <td class="favcell">${favBtn(b.id)}</td>
     <td>${esc(b.brand)}</td>
     <td class="name"><a href="${esc(bagHref(b))}">${esc(b.name)}</a></td>
     <td>${esc(CAT_LABELS[b.category] || b.category)}</td>
@@ -316,9 +370,10 @@ function skeletonCard() {
 }
 
 function skeletonPage() {
-  // The 12 matches tableShell()'s column count, not anything about SKEL.
+  // Columns from HEAD, rows from SKEL — the two numbers are about different
+  // things and only one of them is about the skeleton.
   const rows = `<tr class="skel" aria-hidden="true">${
-    '<td><i class="bone"></i></td>'.repeat(12)}</tr>`.repeat(SKEL);
+    '<td><i class="bone"></i></td>'.repeat(HEAD.length)}</tr>`.repeat(SKEL);
   $("#results").innerHTML = VIEW === "grid"
     ? `<div class="grid">${skeletonCard().repeat(SKEL)}</div>`
     : tableShell().replace("<tbody>", `<tbody>${rows}`);
@@ -337,23 +392,76 @@ function skeletonPage() {
  * all. */
 let sentinelIO = null;
 
-const paintHost = () => VIEW === "grid" ? $("#results .grid") : $("#results tbody");
+/* Direct children of #results, because the favourites strip contains a grid —
+ * or a table — of exactly the same shape, and a descendant selector would
+ * append every page of results into it. */
+const paintHost = () => VIEW === "grid"
+  ? $("#results > .grid") : $("#results > .tablewrap tbody");
+
+const favHost = () => VIEW === "grid"
+  ? $("#favs .grid") : $("#favs tbody");
+
+/* The saved bags that match, drawn above the answer they are part of.
+ *
+ * The server lifts them out of the pages and sends them whole — see the pass
+ * in api/browse.ts — so this is the same card, in the same catalog sort order,
+ * simply drawn first. Filtered rather than pinned regardless: a favourite that
+ * does not match the filter on screen is not an exception to the filter, it is
+ * a bag you are not currently asking about. What the caption is for is saying
+ * so, when the two numbers disagree. */
+function favBlock(list) {
+  if (!list?.length) return "";
+  const inner = VIEW === "grid"
+    ? `<div class="grid">${list.map(card).join("")}</div>`
+    : tableShell().replace("<tbody>", `<tbody>${list.map(row).join("")}`);
+  return `<section class="favs" id="favs" aria-label="Favourites">
+    <div class="favhead"><h2>★ Favourites</h2>${favCaption(list.length)}</div>
+    ${inner}</section>`;
+}
+
+const favCaptionText = shown => shown === FAV.size
+  ? `${shown} saved` : `${shown} of ${FAV.size} saved match these filters`;
+const favCaption = shown => `<em class="favnote">${favCaptionText(shown)}</em>`;
+
+/* Four different nothings, and they want different sentences. "No matches"
+ * under a strip of favourites is a lie, and it is the wrong advice for someone
+ * who has simply not starred anything yet. */
+function emptyState(pinned) {
+  if (S.favOnly) {
+    // The strip is the entire answer: every favourite that matches is already
+    // drawn above, so there is nothing left to apologise for.
+    if (pinned) return "";
+    return FAV.size
+      ? `<div class="empty"><b>No favourites match</b>
+         None of your ${FAV.size} saved bags get through the other filters.</div>`
+      : `<div class="empty"><b>Nothing saved yet</b>
+         Star a bag — on a card here, or on its own page — and it is kept in
+         this browser and pinned to the top of every search.</div>`;
+  }
+  if (pinned) {
+    return `<div class="empty"><b>Nothing else matches</b>
+      Your favourites above are the only bags this filter leaves.</div>`;
+  }
+  return `<div class="empty"><b>No matches</b>
+    Every active range filter excludes bags whose value is unknown.
+    Widen a range or clear filters.</div>`;
+}
 
 /* One page of bags into the DOM. `fresh` says whether this is the first page of
  * a new answer — which rebuilds the shell and throws away the scroll position,
  * deliberately, because the results below it are about a different question —
  * or the next page of the one already drawn, which must not. */
-function paintPage(list, fresh) {
+function paintPage(list, fresh, favs) {
   const out = $("#results");
   if (fresh) {
     sentinelIO?.disconnect();
+    const pinned = favBlock(favs);
     if (!list.length) {
-      out.innerHTML = `<div class="empty"><b>No matches</b>
-        Every active range filter excludes bags whose value is unknown.
-        Widen a range or clear filters.</div>`;
+      out.innerHTML = pinned + emptyState(Boolean(pinned));
       return;
     }
-    out.innerHTML = (VIEW === "grid" ? '<div class="grid"></div>' : tableShell())
+    out.innerHTML = pinned
+      + (VIEW === "grid" ? '<div class="grid"></div>' : tableShell())
       + '<div id="sentinel" aria-hidden="true"></div>';
   }
   const host = paintHost();
@@ -372,7 +480,7 @@ function paintPage(list, fresh) {
 
 /** The sentinel has a job only while there is a page after this one. */
 function retireSentinel() {
-  if ((PAGE + 1) * PER < TOTAL) return;
+  if ((PAGE + 1) * PER < PAGED) return;
   sentinelIO?.disconnect();
   $("#sentinel")?.remove();
 }
@@ -381,7 +489,7 @@ function retireSentinel() {
  *  because the answer is complete, because one is already on the way, or
  *  because the state moved on while this was in flight. */
 async function nextPage() {
-  if (loading || (PAGE + 1) * PER >= TOTAL) return false;
+  if (loading || (PAGE + 1) * PER >= PAGED) return false;
   loading = true;
   const mine = gen;
   try {
@@ -467,7 +575,12 @@ async function render({ boot = false } = {}) {
   ctrl?.abort();
   ctrl = new AbortController();
   loading = false;
+  // Re-read rather than trusted: another tab may have starred something since
+  // the last answer, and this is the one place every path through the island
+  // passes on its way to asking for a new one.
+  FAV = new Set(favourites());
   syncURL();
+  renderSaved();
 
   const out = $("#results");
   out.setAttribute("aria-busy", "true");
@@ -509,8 +622,11 @@ async function render({ boot = false } = {}) {
   out.removeAttribute("aria-busy");
   PAGE = 0;
   TOTAL = data.total;
+  // Absent for a reader with nothing saved, in which case every match is
+  // paged and the two numbers are the same.
+  PAGED = data.paged ?? data.total;
   countLine(data);
-  paintPage(data.bags, true);
+  paintPage(data.bags, true, data.favs);
   renderTray();
   return data;
 }
@@ -530,6 +646,240 @@ function syncSelection(id) {
     }
   });
   renderTray();
+}
+
+/* ---------- favourites ---------- */
+
+/* A star pressed now contradicts an answer drawn a moment ago, and the cheap
+ * way to settle that is to re-render — which would throw away the scroll
+ * position of somebody who has just scrolled two hundred cards to reach the
+ * bag they starred. So the card is moved rather than redrawn: the same node,
+ * out of the results and into the strip at the top, which is where the next
+ * answer would have put it anyway.
+ *
+ * Going the other way it goes back to the front of the results rather than to
+ * the place the sort would give it, which this file cannot work out without
+ * asking. Nothing vanishes and nothing is drawn twice; the next filter change
+ * files it properly. */
+function flipFavourite(id) {
+  const { on, full } = toggleFavourite(id);
+  if (full) {
+    return say(`That is ${MAX_FAVOURITES} favourites — the most this keeps.` +
+               ' Un-star one to make room.');
+  }
+  FAV = new Set(favourites());
+
+  // Every copy of the button. A bag is drawn once in the results, but the
+  // drawer keeps its own star for whatever it last opened, and that one is
+  // still on screen while this is clicked from underneath it.
+  $$("[data-fav]").forEach(btn => {
+    if (btn.closest("[data-id]")?.dataset.id === id) paintFav(btn, on);
+  });
+
+  // Scoped to the results: the drawer's star carries the same id, and moving
+  // the drawer into the favourites strip is not what anybody meant.
+  const node = $(`#results [data-id="${CSS.escape(id)}"]`);
+  const host = on ? openFavStrip() : paintHost();
+  // No host going back means the results are showing an empty state — under
+  // "favourites only", un-starring genuinely does remove the bag from the
+  // answer, so letting the node go is the honest outcome rather than a bug.
+  if (node) host ? host[on ? "append" : "prepend"](node) : node.remove();
+
+  trimFavStrip();
+  paintFavCount();
+}
+
+/** The strip, made if it is not already there. Drawn by hand rather than by
+ *  re-rendering because the answer it belongs to is still on screen. */
+function openFavStrip() {
+  let sec = $("#favs");
+  if (!sec) {
+    sec = document.createElement("section");
+    sec.id = "favs";
+    sec.className = "favs";
+    sec.setAttribute("aria-label", "Favourites");
+    sec.innerHTML =
+      '<div class="favhead"><h2>★ Favourites</h2><em class="favnote"></em></div>'
+      + (VIEW === "grid" ? '<div class="grid"></div>' : tableShell());
+    $("#results").prepend(sec);
+  }
+  return favHost();
+}
+
+/** Keep the caption honest, and take the strip away once it is empty rather
+ *  than leaving a heading over nothing. */
+function trimFavStrip() {
+  const sec = $("#favs");
+  if (!sec) return;
+  const shown = favHost()?.children.length ?? 0;
+  if (!shown) return sec.remove();
+  const note = $(".favnote", sec);
+  if (note) note.textContent = favCaptionText(shown);
+}
+
+const paintFavCount = () => {
+  const el = $("#favcount");
+  if (el) el.textContent = FAV.size;
+};
+
+/* ---------- saved filters ---------- */
+
+/* A saved filter is a name and the query string this page already speaks — the
+ * one in the address bar, which is also the one /api/browse is asked. Keeping
+ * the URL's own spelling rather than a structured copy of S means applying a
+ * saved filter is the same operation as opening a link somebody sent, and that
+ * the two can never come to mean different things. lib/store.js does the
+ * keeping; everything here is about naming and applying. */
+
+/** A suggested name, from what is actually switched on. Nobody wants to name
+ *  a filter, and "Peak Design · under 30 L · in stock" is what they would have
+ *  typed. Truncated hard: this is a chip in a 264px rail. */
+function describeState() {
+  const names = (set, label) => [...set].map(v => label(v)).join(", ");
+  const span = (lo, hi, unit) =>
+    lo != null && hi != null ? `${lo}–${hi}${unit}`
+      : lo != null ? `over ${lo}${unit}`
+      : hi != null ? `under ${hi}${unit}` : null;
+
+  const bits = [
+    S.q && `“${S.q}”`,
+    S.brands.size && names(S.brands, s => BRAND_NAMES.get(s) || s),
+    S.cats.size && names(S.cats, c => CAT_LABELS[c] || c),
+    S.colors.size && names(S.colors, c => COLOUR_LABELS[c] || c),
+    S.mats.size && [...S.mats].join(", "),
+    S.feats.size && names(S.feats, f => FEATURE_LABELS[f] || f),
+    // No currency symbol on the price: the catalog quotes a few brands in
+    // pounds and euros and never converts, so a "$" here would be a claim the
+    // filter itself does not make.
+    span(S.priceMin, S.priceMax, "") && `price ${span(S.priceMin, S.priceMax, "")}`,
+    span(S.volMin, S.volMax, " L"),
+    span(S.weightMin, S.weightMax, " g"),
+    S.linearMax != null && `≤${Math.round(S.linearMax)}cm linear`,
+    S.presets.has("carryon") && "carry-on",
+    S.presets.has("underseat") && "under seat",
+    S.stock && "in stock",
+    S.sale && "on sale",
+    S.favOnly && "favourites",
+  ].filter(Boolean);
+
+  if (!bits.length) return "";
+  const name = bits.slice(0, 3).join(" · ") + (bits.length > 3 ? " +more" : "");
+  return name.length > 48 ? name.slice(0, 47) + "…" : name;
+}
+
+/* Redrawn on every render, which is also every time the filter changes — that
+ * is what keeps the chip for the filter you are currently looking at lit, and
+ * the save button disabled while there is nothing to save. */
+function renderSaved() {
+  const list = savedFilters();
+  const current = stateParams().toString();
+
+  const box = $("#savedlist");
+  if (box) {
+    box.innerHTML = list.length ? list.map(f => `<span class="savedchip">
+        <button data-apply="${esc(f.id)}" aria-pressed="${f.query === current}"
+                title="${esc(f.name)}">${esc(f.name)}</button>
+        <button class="forget" data-forget="${esc(f.id)}"
+                aria-label="Forget ${esc(f.name)}" title="Forget">✕</button>
+      </span>`).join("")
+      : '<p class="savednone">Nothing saved yet. Set some filters, then Save.</p>';
+  }
+
+  const save = $("#savefilter");
+  if (save) {
+    save.disabled = !current;
+    save.title = current ? "Save these filters" : "Set a filter first";
+  }
+  paintFavCount();
+}
+
+/** A line in the rail for anything that went wrong quietly — a storage
+ *  refusal, a cap. Cleared by the next thing that succeeds. */
+function say(msg) {
+  const el = $("#savedmsg");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.hidden = !msg;
+}
+
+/** Everything in S back to its default. Shared by Clear and by applying a
+ *  saved filter, which are the same operation with a different query string. */
+function resetState() {
+  Object.assign(S, {
+    q: "", volMin: null, volMax: null, priceMin: null, priceMax: null,
+    weightMin: null, weightMax: null, linearMax: null, stock: false,
+    sale: false, favOnly: false, sort: "brand",
+  });
+  [S.cats, S.brands, S.feats, S.mats, S.colors, S.presets].forEach(s => s.clear());
+}
+
+/** Become this query string: the address bar, the controls and the results.
+ *
+ *  The view survives it. A saved filter says which bags, and Clear says which
+ *  bags it no longer is; neither is an opinion about whether you were reading
+ *  a grid or a table. */
+function applyQuery(query) {
+  const view = VIEW;
+  resetState();
+  // The facet boxes hide options rather than filter bags, so they survive a
+  // render untouched and have to be told explicitly — otherwise the rail keeps
+  // a half-hidden brand list after everything else has changed.
+  clearFacetSearches();
+  history.replaceState(null, "", query ? "?" + query : location.pathname);
+  loadURL();
+  paintView(view);
+  say("");
+  render();
+}
+
+/* Saving is two steps rather than a prompt(): a suggested name to accept or
+ * type over, in a field in the rail. prompt() is blocked outright in some
+ * browsers and in every embedded webview, and a filter you cannot name is a
+ * filter you cannot save. */
+function mountSaveForm() {
+  const form = $("#savedform");
+  const name = $("#savedname");
+
+  const open = on => {
+    form.hidden = !on;
+    if (!on) return;
+    name.value = describeState();
+    name.focus();
+    name.select();
+  };
+
+  $("#savefilter").addEventListener("click", () => {
+    if (!stateParams().toString()) {
+      return say("Nothing to save — no filters are set.");
+    }
+    say("");
+    open(form.hidden);
+  });
+
+  $("#savedcancel").addEventListener("click", () => open(false));
+
+  form.addEventListener("submit", e => {
+    e.preventDefault();
+    const { ok, reason } = saveFilter(name.value, stateParams().toString());
+    if (!ok) {
+      return say(reason === "full"
+        ? `That is ${MAX_FILTERS} saved filters — the most this keeps.` +
+          " Forget one to make room."
+        : reason === "empty"
+        ? "Nothing to save — no filters are set."
+        : "This browser would not store it — private mode, or no room left.");
+    }
+    open(false);
+    renderSaved();
+  });
+
+  // Before the page-wide handler sees it, which would shut the filter panel
+  // out from under the field being cancelled.
+  form.addEventListener("keydown", e => {
+    if (e.key !== "Escape") return;
+    e.stopPropagation();
+    open(false);
+  });
 }
 
 /* ---------- facets ---------- */
@@ -559,6 +909,10 @@ function buildFacets({ facets, coverage, stats }) {
   $("#f-mat").innerHTML = facets.materials
     .map(([v, n]) => `<button class="check" data-f="mat" data-v="${esc(v)}" aria-pressed="false"><i></i>${
       esc(v)}<b>${n}</b></button>`).join("");
+
+  // Kept for describeState(), which names a saved filter after what is in it
+  // and would otherwise call it "peak-design".
+  BRAND_NAMES = new Map(facets.brands.map(([slug, name]) => [slug, name]));
 
   // Filed by name, not by slug and not by count: the rail prints names, and a
   // reader looking for one scans the alphabet.
@@ -810,6 +1164,12 @@ async function openDetail(id) {
   // Lives in the drawer's own markup, pinned below the scrolling body — see
   // index.astro. Only the destination changes per bag.
   $("#detfull").href = bagHref(b);
+  // The star does the same, in the header. It carries the id itself rather
+  // than sitting inside something that does, which is what lets one delegated
+  // handler serve it and the cards alike.
+  const star = $("#detfav");
+  star.dataset.id = b.id;
+  paintFav(star, FAV.has(b.id));
   $("#detoverlay").classList.add("on");
   // The drawer is the other place a bag gets looked at and bought from, and the
   // only one that never loads a model page. Without this the clicks it produces
@@ -836,6 +1196,11 @@ function stateParams() {
   for (const k of RANGE_KEYS) if (S[k] != null) p.set(k, S[k]);
   if (S.stock) p.set("stock", "1");
   if (S.sale) p.set("sale", "1");
+  // Written like any other filter, because it is one. What it means travels
+  // with the reader rather than with the link: somebody else opening this URL
+  // gets their own favourites, which is the only thing it could honestly do
+  // without a copy of the list riding along in the address bar.
+  if (S.favOnly) p.set("favonly", "1");
   if (S.sort !== "brand") p.set("sort", S.sort);
   return p;
 }
@@ -855,8 +1220,8 @@ function loadURL() {
   for (const k of RANGE_KEYS) if (p.has(k)) S[k] = Number(p.get(k));
   S.stock = p.get("stock") === "1";
   S.sale = p.get("sale") === "1";
+  S.favOnly = p.get("favonly") === "1";
   S.sort = p.get("sort") || "brand";
-  VIEW = p.get("view") || "grid";
 
   $("#sort").value = S.sort;
   $("#vol-min").value = S.volMin ?? ""; $("#vol-max").value = S.volMax ?? "";
@@ -866,9 +1231,18 @@ function loadURL() {
   syncSliders();
   $("#f-stock").setAttribute("aria-pressed", S.stock);
   $("#f-sale").setAttribute("aria-pressed", S.sale);
-  $("#viewgrid").setAttribute("aria-pressed", VIEW === "grid");
-  $("#viewtable").setAttribute("aria-pressed", VIEW === "table");
+  $("#f-fav").setAttribute("aria-pressed", S.favOnly);
+  paintView(p.get("view") || "grid");
   syncFacetButtons();
+}
+
+/** The view, and the two buttons that say which one it is. Separate from
+ *  setView() below, which also asks for the results again — applying a saved
+ *  filter and reading the URL both need to set it without a second request. */
+function paintView(v) {
+  VIEW = v;
+  $("#viewgrid").setAttribute("aria-pressed", v === "grid");
+  $("#viewtable").setAttribute("aria-pressed", v === "table");
 }
 
 function syncFacetButtons() {
@@ -1058,6 +1432,24 @@ function wire() {
       preset.setAttribute("aria-pressed", S.presets.has(k));
       return render();
     }
+    const fav = e.target.closest("[data-fav]");
+    if (fav) return flipFavourite(fav.closest("[data-id]").dataset.id);
+
+    const apply = e.target.closest("[data-apply]");
+    if (apply) {
+      const hit = savedFilters().find(f => f.id === apply.dataset.apply);
+      // Pressing the chip for the filter already on screen turns it off, the
+      // way every other control in the rail does.
+      if (hit) applyQuery(hit.query === stateParams().toString() ? "" : hit.query);
+      return;
+    }
+    const forget = e.target.closest("[data-forget]");
+    if (forget) {
+      forgetFilter(forget.dataset.forget);
+      say("");
+      return renderSaved();
+    }
+
     const cmp = e.target.closest("[data-cmp]");
     if (cmp) {
       const id = cmp.closest("[data-id]").dataset.id;
@@ -1114,29 +1506,19 @@ function wire() {
   });
   toggle("#f-stock", "stock");
   toggle("#f-sale", "sale");
+  toggle("#f-fav", "favOnly");
 
   $("#sort").addEventListener("change", e => { S.sort = e.target.value; render(); });
 
-  $("#clear").addEventListener("click", () => {
-    Object.assign(S, {
-      q: "", volMin: null, volMax: null, priceMin: null, priceMax: null,
-      weightMin: null, weightMax: null, linearMax: null, stock: false,
-      sale: false, sort: "brand",
-    });
-    [S.cats, S.brands, S.feats, S.mats, S.colors, S.presets].forEach(s => s.clear());
-    // The facet boxes hide options rather than filter bags, so they survive a
-    // render untouched — Clear has to say so explicitly or the rail keeps a
-    // half-hidden brand list after everything else has reset.
-    clearFacetSearches();
-    history.replaceState(null, "", location.pathname);
-    loadURL();
-    render();
-  });
+  $("#clear").addEventListener("click", () => applyQuery(""));
+
+  // Nothing in here can do anything without JavaScript and localStorage, so
+  // the markup ships hidden and this is what admits it exists.
+  $("#saved").hidden = false;
+  mountSaveForm();
 
   const setView = v => {
-    VIEW = v;
-    $("#viewgrid").setAttribute("aria-pressed", v === "grid");
-    $("#viewtable").setAttribute("aria-pressed", v === "table");
+    paintView(v);
     render();
   };
   $("#viewgrid").addEventListener("click", () => setView("grid"));
