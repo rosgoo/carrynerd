@@ -10,8 +10,11 @@ page once and reads both.
 
 This is one request per product, so it is the expensive stage. It caches every
 page result and is fully resumable — rerun it and it picks up where it stopped.
-Run it from a residential connection; Shopify's edge throttles datacenter IPs
-on these endpoints hard enough to make it impractical from a cloud host.
+Unlike /products.json — which rate-limits per client IP and throttles
+datacenter ranges on sight — product pages are ordinary CDN-fronted HTML, and
+the nightly crawls them from Actions runners without pushback. robots.txt is
+honoured per store: a disallowed path is never fetched, and a declared
+Crawl-delay floors how soon the same store is asked again.
 
 Usage:
     python3 enrich.py                 # everything missing dims, 1.5s pacing
@@ -27,11 +30,12 @@ import os
 import re
 import sys
 import time
+from urllib.parse import urlsplit
 
 from normalize import (CM_PER_IN, FEATURES, MATERIALS, PAGE_LABEL, VOLUME_RE,
                        detect, find_dims_cm, find_laptop_in, find_volume_bag,
                        find_weight_g, page_near_label, strip_html)
-from fetch import Pacer, get
+from fetch import Pacer, get, robots, robots_allows
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(HERE, "data", "enrich-cache.json")
@@ -504,6 +508,7 @@ def main():
 
         pacer = Pacer(args.delay)
         transient = 0
+        robots_skipped = 0
         # Two circuit breakers, because "one store is angry" and "our IP is
         # blocked" need opposite responses and the old loop conflated them.
         #
@@ -519,6 +524,7 @@ def main():
         # each 429 served while blocked is what extends the block.
         streak = 0
         cooling = {}     # brand -> epoch seconds it may be tried again
+        next_ok = {}     # brand -> earliest epoch its Crawl-delay permits
         strikes = {}     # brand -> consecutive transient failures
         cooled_out = {}  # brand -> status that retired it
         deferred = []
@@ -532,9 +538,32 @@ def main():
             if time.time() < cooling.get(slug, 0):
                 deferred.append(bag)
                 continue
+            # robots.txt, one cached parse per domain (fetch.robots). A
+            # disallowed path is cached like a 404 — a permanent answer, not
+            # worth re-asking nightly.
+            parts = urlsplit(bag["url"])
+            allowed, _why = robots_allows(parts.netloc, parts.path)
+            if not allowed:
+                cache[bag["id"]] = {"_status": "robots-disallowed"}
+                robots_skipped += 1
+                continue
+            _, crawl_delay, _ = robots(parts.netloc)
             i += 1
             pacer.wait()
+            if crawl_delay:
+                # A declared Crawl-delay is per store, not global, so it is a
+                # sleep here rather than an entry in `cooling`: a cooling
+                # store's bags get deferred, and deferred bags are dropped
+                # when the queue empties — which would ration a declaring
+                # store to one page a night once its brand dominates the
+                # queue's tail. Interleaving spaces a store's requests by
+                # (delay × live brands), so this sleep is zero until then.
+                behind = next_ok.get(slug, 0.0) - time.time()
+                if behind > 0:
+                    time.sleep(behind)
             status, headers, body = get(bag["url"], timeout=25)
+            if crawl_delay:
+                next_ok[slug] = time.time() + crawl_delay
             if status in (429, 0) or 500 <= status < 600:
                 if status == 429:
                     wait_s = float(headers.get("Retry-After", 60) or 60)
@@ -596,6 +625,10 @@ def main():
         if transient:
             print(f"  {transient} transient failures (429/5xx) left uncached "
                   f"— rerun to pick them up", flush=True)
+        if robots_skipped:
+            print(f"  {robots_skipped} products skipped — robots.txt "
+                  f"disallows their path; cached so they are not re-asked",
+                  flush=True)
         if cooled_out:
             print("  stores dropped this run (throttling us, try later): "
                   + ", ".join(f"{k} [{v}]" for k, v in cooled_out.items()),

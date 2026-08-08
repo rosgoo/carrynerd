@@ -5,12 +5,15 @@
 #
 #   fetch     /products.json only, ~3 requests per brand. Sharded across a
 #             small matrix so the whole brand list finishes inside one run.
-#   assemble  normalize, an incremental enrichment delta, price tracking, and
-#             the alert matcher. Single runner, single commit.
+#   assemble  normalize, price tracking (banked immediately), an enrichment
+#             batch, and the alert matcher. Single runner, single commit.
 #
-# The expensive first enrichment pass is NOT here. It is thousands of product
-# pages and it belongs on a home machine with a residential IP and no six-hour
-# job cap — see the README. This only ever picks up the nightly delta.
+# The enrichment backlog drains here too, ~800 pages a night. The old premise —
+# that a first pass this size belongs on a home machine with a residential IP —
+# was calibrated for /products.json, which throttles datacenter ranges on
+# sight. Product pages are ordinary CDN-fronted HTML: interleaved across ~84
+# brands, a store sees ~10 requests a night, minutes apart, and runners get
+# clean 200s. At that rate the whole backlog clears in about a week.
 #
 # Pushing to main is what triggers the site rebuild: Vercel's git integration
 # deploys the commit. There is no deploy hook to keep in sync.
@@ -94,14 +97,18 @@ env:
   # DELAY exists because /products.json rate-limits per client IP and throttles
   # datacenter ranges on sight. Enrichment does not touch that endpoint — it
   # fetches ordinary product pages, which are CDN-fronted HTML with nothing
-  # like the same limit — so it was inheriting a number calibrated for a
+  # like the same limit — so 30 was inheriting a number calibrated for a
   # different problem and paying an hour a night to read 60 pages.
   #
-  # Now equal to DELAY by coincidence rather than by inheritance: both were
-  # stepped down from 65 on the same evidence, and they are free to diverge.
-  # Product pages are the softer limit of the two, so this is the one to lower
-  # first if either moves again.
-  ENRICH_DELAY: '30'
+  # 8 is the global spacing, not what any one store feels: enrich.py
+  # interleaves across every brand with work left (~84), so a single store
+  # sees roughly one request per (8s × live brands) ≈ 11 minutes — politer
+  # than the page adapters' sequential 5s crawl of one store. The evidence
+  # for stepping down: the 30s nights ran 60/60 HTTP 200 across 60 different
+  # stores. robots.txt Crawl-delay is honoured per brand on top of this, and
+  # the breakers (--give-up-after, --cool-off) bound a wrong guess at one
+  # night. Raise this line if the enrich log starts showing 429s.
+  ENRICH_DELAY: '8'
   # And the page adapters, for the same reason a third time. They fetch one
   # product page each, not /products.json, so they were paying the feed's
   # per-IP limit for requests that never touch it. CamelBak was 124 pages:
@@ -383,11 +390,70 @@ jobs:
       - name: Normalize
         run: python3 normalize.py
 
+      # Before the enrichment crawl, which is the long pole of this job now
+      # that it reads hundreds of pages a night. The ledger is the one output
+      # that cannot be backfilled — a crawl that hangs into the job timeout
+      # must not cost the night's price observations — and track_prices.py
+      # reads none of the fields enrich writes, so the order was free to
+      # choose. Both rewrite bags.json in place and preserve each other's
+      # fields, so the swap changes nothing downstream.
+      #
+      # `forget_prices` is empty on every scheduled run, which is the point: a
+      # reset is a claim that our own numbers were wrong, and that is a thing a
+      # person decides once, not a setting a cron carries. See the note on the
+      # flag in track_prices.py — without it, correcting Db and Mismo's currency
+      # mails a fake 90%-off announcement for 554 models.
+      - name: Track prices
+        run: |
+          python3 track_prices.py \
+            --events-out data/price-events.json \
+            --forget "${{ inputs.forget_prices }}"
+
+      # Banked the moment it exists, not at the end of the job. The bank step
+      # at the bottom used to be the only push, which tied the ledger's fate
+      # to every step between here and there — with a two-hour crawl in that
+      # gap, a hang or a timeout would have discarded the one file that cannot
+      # be rebuilt at any price. The final bank still lists these paths;
+      # tonight's copies will simply already be in the data repo, and
+      # data-push.sh is a no-op on an unchanged file.
+      - name: Bank the ledger before the long crawl
+        env:
+          DATA_REPO: ${{ vars.DATA_REPO }}
+          DATA_TOKEN: ${{ secrets.DATA_TOKEN }}
+        run: |
+          bash scripts/data-push.sh \
+            data/price-history.jsonl \
+            data/price-state.json \
+            data/fetch-log.json
+
+      # Read before the crawl so the check at the bottom of the job can tell
+      # "no work left" apart from "a night that silently contributed nothing".
+      - name: Note the enrich cache size
+        id: enrich_before
+        run: |
+          n=$(python3 -c "
+          import json, os
+          p = 'data/enrich-cache.json'
+          print(len(json.load(open(p))) if os.path.exists(p) else 0)")
+          echo "entries=$n" >> "$GITHUB_OUTPUT"
+
       # Incremental by construction: enrich.py skips anything already in
-      # data/enrich-cache.json, which is committed, so this only ever sees
-      # genuinely new SKUs. Capped and allowed to fail — product pages from a
-      # datacenter IP are the throttled path, and a slow night here must not
-      # block the price commit, which is the part that cannot be backfilled.
+      # data/enrich-cache.json, which is committed, so a night only ever sees
+      # what the backlog still owes. 800 × 8s ≈ 1h47m of a job that was using
+      # 40 of its 330 minutes; each store sees ~10 of those pages, minutes
+      # apart. At this rate the backlog clears in about a week, after which
+      # this reads only the nightly delta of new SKUs.
+      #
+      # No continue-on-error, where there used to be one. Its job was to keep
+      # a slow crawl from blocking the price commit; the ledger is banked
+      # above, so nothing irreplaceable sits downstream any more. A throttled
+      # night still exits 0 by design — the breakers abort politely and the
+      # cache merge into bags.json runs regardless — so a green step does not
+      # mean pages were read; the check at the bottom of the job is what says
+      # that. A red step here means the script itself crashed, and then
+      # bags.json never got its cache merge, which the gate would reject
+      # anyway — better to stop at the honest step than at the gate.
+      #
       # --cache-pages is not optional. Without it the HTML is parsed once and
       # dropped, so the next parser fix costs a re-crawl of every page — and
       # this project has already paid that once: the notes record a whole
@@ -402,19 +468,7 @@ jobs:
       # which must not end up in a public repo. The cache steps below are what
       # make it survive between runs without publishing it.
       - name: Enrich new products
-        continue-on-error: true
-        run: python3 enrich.py --limit 60 --delay ${{ env.ENRICH_DELAY }} --cache-pages
-
-      # `forget_prices` is empty on every scheduled run, which is the point: a
-      # reset is a claim that our own numbers were wrong, and that is a thing a
-      # person decides once, not a setting a cron carries. See the note on the
-      # flag in track_prices.py — without it, correcting Db and Mismo's currency
-      # mails a fake 90%-off announcement for 554 models.
-      - name: Track prices
-        run: |
-          python3 track_prices.py \
-            --events-out data/price-events.json \
-            --forget "${{ inputs.forget_prices }}"
+        run: python3 enrich.py --limit 800 --delay ${{ env.ENRICH_DELAY }} --cache-pages
 
       # Cached by image URL in data/image-bg.json, which is committed, so a
       # normal night samples only the photos that changed. Runs after enrich
@@ -535,6 +589,43 @@ jobs:
           DATA_TOKEN: ${{ secrets.DATA_TOKEN }}
           DEPLOY_HOOK: ${{ secrets.DEPLOY_HOOK }}
         run: bash scripts/data-push.sh data/bags.json
+
+      # The silent-zero check. A fully throttled crawl exits 0 by design —
+      # the breakers stop it politely — which at 60 pages a night was a cheap
+      # loss and at 800 is a lost day of the backlog week. Last on purpose: by
+      # the time this can fire, the ledger is banked, alerts are matched and
+      # the catalogue is published, so going red costs the night nothing — it
+      # is purely a signal. Zero growth with zero backlog is the crawl being
+      # finished, not a failure; robots-disallowed pages are cached entries,
+      # so a store that refuses us still counts as the backlog shrinking.
+      - name: Fail loudly if the crawl moved nothing
+        env:
+          ENRICH_BEFORE: ${{ steps.enrich_before.outputs.entries }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          from enrich import enrichable
+          before = int(os.environ["ENRICH_BEFORE"])
+          cache = (json.load(open("data/enrich-cache.json"))
+                   if os.path.exists("data/enrich-cache.json") else {})
+          bags = json.load(open("data/bags.json"))["bags"]
+          backlog = [b for b in bags
+                     if b["id"] not in cache and enrichable(b)
+                     and (b.get("dims_cm") is None
+                          or b.get("laptop_in") is None)]
+          grew = len(cache) - before
+          line = f"enrich: +{grew} pages tonight, {len(backlog)} still queued"
+          print(line)
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              with open(summary, "a") as f:
+                  f.write(line + "\n")
+          if grew == 0 and backlog:
+              print(f"::error::enrichment contributed nothing tonight with "
+                    f"{len(backlog)} products still queued — read the enrich "
+                    f"step's log for 429s or challenge markers")
+              sys.exit(1)
+          PY
 
   # The other half of the freshness story, and the slow half.
   #

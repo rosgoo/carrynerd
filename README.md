@@ -102,18 +102,24 @@ audited by reading a file instead of re-deriving the evidence.
 
 `.github/workflows/nightly.yml` runs the pipeline and commits the diff. Three
 jobs: a sharded price/stock pass over `/products.json`, then a single assemble
-job that normalizes, picks up the enrichment delta, tracks prices, matches
-alerts and commits, then a reporting job that builds the crawl history. Pushing
-the commit is what triggers the site rebuild.
+job that normalizes, tracks prices — banking the ledger immediately, before
+anything slow can lose it — crawls an enrichment batch, matches alerts and
+commits, then a reporting job that builds the crawl history. Pushing the
+commit is what triggers the site rebuild.
 
 Sharding splits the brand *list* across runners so the pass finishes inside one
 run. Each shard is an ordinary polite client — paced, honouring `Retry-After`,
 never retrying a block another shard hit. Grow the matrix as the brand list
 grows; never in response to a 429.
 
-**The first enrichment backfill does not belong in Actions.** It is thousands of
-product pages, and datacenter IPs get throttled on those immediately. Run it
-once from a home machine; after that the nightly delta is tens of pages.
+**The enrichment backfill drains through the nightly**, ~800 pages a night.
+The old warning here — that a backfill this size belongs on a home machine —
+was calibrated for `/products.json`, which throttles datacenter IPs on sight.
+Product pages are ordinary CDN-fronted HTML: interleaved across every brand
+with work left, a store sees ~10 requests a night, minutes apart, and runners
+get clean 200s. `enrich.py` honours robots.txt per store — a disallowed path
+is never fetched, a declared `Crawl-delay` paces that store — and the nightly
+fails loudly if a night contributes nothing while the backlog is non-empty.
 
 **Run this from a residential connection.** Shopify's edge rate-limits
 `/products.json` per client IP and throttles datacenter ranges almost
@@ -349,10 +355,14 @@ brands that have no affiliate programme.
   there and the regexes missed it — much cheaper to fix). Able Carry is the
   clearest `js-rendered` case: its product pages contain no dimension string
   anywhere in the HTML.
-- **Enrichment caches parsed output, not the page.** So every parser
-  improvement costs a full re-crawl to apply to already-seen products. Caching
-  the compressed HTML instead would make parser iteration free and is the
-  obvious next change to `enrich.py`.
+- **The page corpus is paid for and not yet used.** `--cache-pages` keeps the
+  compressed HTML (gitignored — it holds brands' full marketing copy — and
+  persisted only in the Actions cache), so a parser fix costs
+  `enrich.py --reparse` and zero requests. But nothing runs `--reparse`
+  automatically, and the pages live only on GitHub's runners, so cache
+  entries written by an older parser stay stale until someone re-parses or
+  `--refresh`es them. Once in the cache, a product is never revisited — even
+  when the parse found nothing.
 - Category classification is keyword-first, falling back to the store's own
   collections (`fetch.py --collections`) where the title carries no category
   word — WANDRD's entire PRVKE line, for instance. Collections also supply the
