@@ -100,7 +100,11 @@ export interface Bag {
   merged_urls?: string[];
 
   /* Written by track_prices.py after the crawl, so absent from a build that
-   * has not tracked yet. `price_direction` is the last recorded move. */
+   * has not tracked yet. `price_direction` is the net move over the tracker's
+   * drop window (5 days), not the last run: a price that fell and held writes
+   * one ledger row and would otherwise stop being a sale the next night, while
+   * one that fell and rebounded nets out and carries no direction at all.
+   * `previous_price` is accordingly what it cost entering that window. */
   price_direction?: 'up' | 'down' | null;
   previous_price?: number | null;
   price_changed_at?: string | null;

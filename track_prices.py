@@ -16,7 +16,9 @@ weekly produce the same file size if nothing changed.
     data/price-state.json      last known state per SKU, for fast diffing
 
 It also writes back onto data/bags.json so the site can surface drops:
-`previous_price`, `price_changed_at`, `price_direction`, `lowest_ever`.
+`previous_price`, `price_changed_at`, `price_direction`, `lowest_ever`. Those
+describe the last DROP_WINDOW_DAYS rather than the last run — see the note on
+that constant for why a change log makes those two very different pages.
 
 Usage:
     python3 track_prices.py              # record changes since last run
@@ -34,12 +36,34 @@ import argparse
 import collections
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BAGS = os.path.join(HERE, "data", "bags.json")
 HISTORY = os.path.join(HERE, "data", "price-history.jsonl")
 STATE = os.path.join(HERE, "data", "price-state.json")
+
+# How long a drop stays news. The annotation this feeds is what puts a model on
+# the home page's "Newly on sale" strip and prints "was £X" on its page, and at
+# one night — which is what this was before there was a window at all — that is
+# a strip which is empty on most days. It is not a hypothetical: across the
+# first week of August the nightly recorded drops on 3 of 7 nights, so the
+# section rendered nothing at all on the other 4, including two consecutive
+# nights either side of a 44-model sale.
+#
+# The failure was that the annotation was read off *this run's* change rows. A
+# sale that starts on Tuesday and runs all week only writes a row on Tuesday —
+# the ledger is a change log, so a price that holds is silent by design — and
+# the strip therefore advertised the sale on the one night it began and then
+# dropped it while it was still running. What a reader wants from a page like
+# that is what is on sale now, not what changed while they were asleep.
+#
+# Five days rather than a longer window because a storefront sale that has run
+# longer than that is a price, not an event, and the compare-at badge on the
+# product itself already says so. Alerts are deliberately not on this clock:
+# they read price-events.json, which is still strictly this run's changes,
+# because an email is an interruption and one drop is worth exactly one of them.
+DROP_WINDOW_DAYS = 5
 
 
 def load_json(path, default):
@@ -83,11 +107,86 @@ def ambiguous_skus(variants):
     return {sku for sku, n in counts.items() if n > 1}
 
 
+def moves_since(path, since):
+    """Each bag's net price move across the window: {bag_id: (direction, ref)}.
+
+    Reads the ledger rather than this run's rows, which is the entire point. A
+    change log says nothing about a price that held, so "what moved tonight" and
+    "what is cheap this week" are different questions and only the second one is
+    worth putting on a page.
+
+    Per variant it compares the ends of the window and ignores the path between
+    them: the earliest row's `prev_price` is what the variant carried *into* the
+    window, the latest row's `price` is what it carries now. Comparing ends is
+    what makes a rebound disappear on its own — a drop that was taken back has
+    both rows in here, and only the ends say the sale is over. Reading the last
+    row alone would keep calling it a sale until the window slid past it.
+
+    A variant with no row in the window has not moved in five days and so has no
+    entry, which is how a sale ages out without anything having to expire it.
+
+    Bag level takes the deepest proportional move of its variants, matching what
+    the strip renders: percent off, so a £4 move on a £40 pouch outranks a £10
+    move on a £400 pack. `rebased` rows reset the reference — a variant whose
+    currency or market changed mid-window has an old number that is not in the
+    same unit as the new one, and subtracting across that boundary is the
+    category error the tracker re-baselines to avoid in the first place.
+    """
+    if not os.path.exists(path):
+        return {}
+
+    # (bag_id, sku, color) rather than the state's variant_key, because a row
+    # does not carry the positional index that key falls back to. It is the same
+    # identity the ledger is written with, so it round-trips exactly.
+    ends = {}
+    for line in open(path):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            # A half-written final line, from a run killed mid-append. The
+            # ledger is append-only, so this can only ever be the last one.
+            continue
+        if row.get("ts", "") < since:
+            continue
+        ident = (row.get("bag_id"), row.get("sku"), row.get("color"))
+        end = ends.get(ident)
+        if end is None or row.get("rebased"):
+            # A rebase starts a new series: everything before it is in another
+            # unit. Dropping the reference here is what stops a NOK price being
+            # subtracted from a USD one five days later.
+            end = ends[ident] = {"ref": None, "cur": None}
+        if end["ref"] is None and row.get("prev_price"):
+            end["ref"] = row["prev_price"]
+        if row.get("price"):
+            end["cur"] = row["price"]
+
+    best = {}
+    for (bag_id, _sku, _color), end in ends.items():
+        ref, cur = end["ref"], end["cur"]
+        if not ref or not cur or ref == cur:
+            continue
+        ratio = cur / ref
+        if bag_id not in best or ratio < best[bag_id][0]:
+            best[bag_id] = (ratio, ref, cur)
+
+    return {bag_id: ("down" if cur < ref else "up", ref)
+            for bag_id, (_ratio, ref, cur) in best.items()}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--events-out", default="",
                     help="write this run's changes here for the alert matcher")
+    ap.add_argument("--drop-window-days", type=int, default=DROP_WINDOW_DAYS,
+                    help="how many days a price move keeps annotating its bag, "
+                         "and so how long a sale stays on the strip and prints "
+                         f"a 'was' price (default {DROP_WINDOW_DAYS}). Only the "
+                         "site's display; alert emails are always this run's "
+                         "changes alone")
     ap.add_argument("--forget", default="",
                     help="comma-separated brand slugs whose price state to drop "
                          "before comparing, so the next observation baselines "
@@ -249,6 +348,12 @@ def main():
 
     # Annotate bags.json so the front end can show drops without parsing the
     # whole history file.
+    #
+    # Read after the append above, so tonight's rows are in the window and a
+    # drop appears on the night it happens as well as for the days after.
+    since = (datetime.now(timezone.utc) - timedelta(days=args.drop_window_days)
+             ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    moves = moves_since(HISTORY, since)
     annotated = 0
     for bag in bags:
         prices, lows, changed, direction, prev = [], [], None, None, None
@@ -264,12 +369,9 @@ def main():
             if entry.get("last_change"):
                 changed = max(changed or "", entry["last_change"])
 
-        matching = [r for r in rows
-                    if r["bag_id"] == bag["id"] and r.get("direction")]
-        if matching:
-            drop = min(matching, key=lambda r: r.get("delta", 0))
-            direction = drop["direction"]
-            prev = drop.get("prev_price")
+        move = moves.get(bag["id"])
+        if move:
+            direction, prev = move
             annotated += 1
 
         bag["lowest_ever"] = round(min(lows), 2) if lows else None

@@ -1,5 +1,5 @@
 ---
-/* Newly on sale — the drops this crawl actually saw.
+/* Newly on sale — the drops still standing from the last few days.
  *
  * Reads bags.json, not the ledger. track_prices.py has already worked out
  * which models moved and annotated each one with `price_direction`,
@@ -9,9 +9,17 @@
  * "Newly" is load-bearing and is why this filters on `price_direction` rather
  * than on `on_sale`. `on_sale` is a standing state — 1,168 models carry a
  * compare-at price, most of them permanently, and a strip of those is a
- * clearance aisle nobody returns to. A drop recorded on the last run is news,
- * and it is the thing the price ledger exists to know that a storefront's own
- * badge cannot tell you.
+ * clearance aisle nobody returns to. A recent drop is news, and it is the thing
+ * the price ledger exists to know that a storefront's own badge cannot tell you.
+ *
+ * "Recent" is a window and not the last run, which is a correction rather than
+ * a preference. The ledger is a change log: a sale that runs all week writes a
+ * row on the night it starts and is silent afterwards, so keyed to one run this
+ * strip showed a sale on day one and hid it on days two through five while it
+ * was still on. It rendered nothing at all on 4 of the first 7 nights of
+ * August. The window lives in track_prices.py — the annotation is already the
+ * answer by the time it reaches here, and a bag whose price has since rebounded
+ * never carries `down`, so nothing below has to check whether the sale is over.
  */
 import { fmtPrice } from '../lib/format.js';
 import { bagHref } from '../lib/catalog.js';
