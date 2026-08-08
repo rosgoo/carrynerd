@@ -23,6 +23,7 @@
  */
 
 import type { APIRoute } from 'astro';
+import type { JSONValue } from 'postgres';
 import { sql } from '../../../lib/db.ts';
 import { emailHash } from '../../../lib/email.ts';
 
@@ -110,10 +111,15 @@ function constantTimeEqual(a: string, b: string): boolean {
  *
  * `from`, `subject` and the bounce detail are kept: they are ours, or they are
  * the provider's description of what went wrong, and both are what makes a row
- * on the dashboard diagnosable rather than just a count. */
-function redact(data: Record<string, unknown>): Record<string, unknown> {
+ * on the dashboard diagnosable rather than just a count.
+ *
+ * Returns JSONValue rather than unknown because the value goes straight to
+ * db.json(): every field arrived via JSON.parse of the raw body, so it is
+ * serialisable by construction, but the compiler cannot see that through
+ * `unknown`. */
+function redact(data: Record<string, unknown>): Record<string, JSONValue> {
   const { to, ...rest } = data;
-  return rest;
+  return rest as Record<string, JSONValue>;
 }
 
 /* Which failures are permanent.
@@ -167,6 +173,11 @@ export const POST: APIRoute = async ({ request }) => {
   try {
     const db = sql();
 
+    // `db.json()` and not `JSON.stringify(...)::jsonb` — see the same note in
+    // api/watch.ts. postgres.js serialises the value itself once the cast tells
+    // it the type, so pre-stringifying stores a jsonb string and every
+    // `payload->>'subject'` on the dashboard reads NULL.
+    //
     // `on conflict do nothing` on svix_id is the idempotency: Resend retries
     // any webhook it did not get a 2xx for, and a slow response here would
     // otherwise double-count on the dashboard.
@@ -177,7 +188,7 @@ export const POST: APIRoute = async ({ request }) => {
         ${providerId},
         ${type},
         ${event.created_at ?? null},
-        ${JSON.stringify(redact(data))}::jsonb
+        ${db.json(redact(data))}
       )
       on conflict (svix_id) do nothing
     `;

@@ -60,12 +60,19 @@ export const POST: APIRoute = async ({ request, url }) => {
     const db = sql();
     const confirm = token();
 
+    // `db.json()` and not `JSON.stringify(...)::jsonb`. postgres.js infers the
+    // parameter type from the cast and serialises the value itself, so handing
+    // it an already-serialised string encodes it twice: the column ends up
+    // holding a jsonb *string* rather than an object, and every
+    // `criteria->>'brand_slug'` in alerts/match.py reads NULL. Nothing errors —
+    // the matcher simply selects no subscriptions, for anyone, forever.
+    //
     // Idempotent: the same address watching the same thing updates the token
     // in place instead of stacking rows. `xmax = 0` is the standard Postgres
     // tell for "this was an insert, not an update".
     const rows = await db`
       insert into subscriptions (email, criteria, confirm_token, unsub_token)
-      values (${email}, ${JSON.stringify(criteria)}::jsonb, ${confirm}, ${token()})
+      values (${email}, ${db.json(criteria)}, ${confirm}, ${token()})
       on conflict (lower(email), md5(criteria::text)) do update
         set confirm_token = case
               when subscriptions.confirmed_at is null
