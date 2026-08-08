@@ -1,10 +1,33 @@
 ---
+/* A brand's shelf: the browse instrument, pointed at one maker.
+ *
+ * This was a six-column table of every model, which is the right page for a
+ * brand holding eight bags and the wrong one for Dakine, which holds 597. A
+ * reader arriving here wants the same three questions the front page answers —
+ * how big, how heavy, how much — and they were being handed a spreadsheet to
+ * scroll instead of the controls that answer them.
+ *
+ * So it mounts the same island, with the brand already settled by the path
+ * rather than ticked in the rail. That is a scope rather than a filter: it does
+ * not appear in the address bar, Clear does not empty it, and the rail counts
+ * against this brand's shelf rather than the catalogue — a Colour group listing
+ * only the colours this brand actually sells, and a price track spanning its
+ * own range rather than four thousand dollars of other people's luggage. See
+ * the scope section in pages/api/browse.ts.
+ *
+ * The table did not go anywhere. It is the fallback inside #results, which the
+ * island replaces on load — so a crawler, and anyone with no JavaScript, still
+ * gets every model and every spec on one page, and the JSON-LD below still
+ * describes something that is genuinely in the markup.
+ */
 import Base from '../../layouts/Base.astro';
+import BrowseHead from '../../components/BrowseHead.astro';
+import BrowseShell from '../../components/BrowseShell.astro';
 import WatchForm from '../../components/WatchForm.astro';
 import Measure from '../../components/Measure.astro';
 import { brands, bagHref } from '../../lib/catalog.js';
 import { catLabel } from '../../lib/labels.js';
-import { SITE_NAME } from '../../lib/brand.js';
+import { SITE_NAME_DISPLAY } from '../../lib/brand.js';
 import { fmtPrice, fmtVolume, fmtWeight, fmtDims } from '../../lib/format.js';
 import roster from '../../../brands.json';
 
@@ -33,7 +56,14 @@ const prices = brand.bags.map((b) => b.price_min).filter((p) => p != null);
 const cur = brand.bags[0]?.currency ?? 'USD';
 const cats = [...new Set(brand.bags.map((b) => b.category))].map(catLabel);
 
-const title = `${brand.name} bags — every model, specs & prices | ${SITE_NAME}`;
+// The same note the front page's price slider carries, asked of one shelf. Rare
+// on a brand page — one storefront usually quotes one currency — and computed
+// rather than assumed so it says nothing on the brands where that holds.
+const otherCurrencies = [
+  ...new Set(brand.bags.map((b) => b.currency).filter((c) => c && c !== 'USD')),
+].sort();
+
+const title = `${brand.name} bags — every model, specs & prices | ${SITE_NAME_DISPLAY}`;
 const description =
   `All ${brand.bags.length} ${brand.name} models in the index` +
   (prices.length ? `, from ${fmtPrice(Math.min(...prices), cur)}` : '') +
@@ -64,51 +94,71 @@ const jsonLd = {
     <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
   </Fragment>
 
-  <div class="page">
+  <BrowseHead slot="header"
+              placeholder={`search ${brand.name} — model, material, feature…`} />
+
+  {/* Above the shell, spanning the rail as well as the grid, where the sale
+      strip sits on the front page. Everything in it is what the grid below
+      cannot say: whose shelf this is, how to reach the maker, and how to be
+      told when one of their prices moves. The results are an infinite scroll,
+      so anything left underneath them is somewhere nobody arrives. */}
+  <section class="brandbar">
     <nav class="crumbs" aria-label="Breadcrumb">
       <a href="/">Bags</a> <span>/</span>
       <a href="/brands/">Brands</a> <span>/</span>
       <b>{brand.name}</b>
     </nav>
 
-    <h1>{brand.name}</h1>
-    <p class="note">
-      {brand.bags.length} {brand.bags.length === 1 ? 'model' : 'models'}
-      {cats.length > 0 && ` · ${cats.join(', ')}`}
-      {prices.length > 0 && ` · ${fmtPrice(Math.min(...prices), cur)}–${fmtPrice(Math.max(...prices), cur)}`}
-      {domain && (
-        <Fragment>
-          {' · '}
-          <a href={`https://${domain}/`} target="_blank" rel="noopener nofollow"
-             data-brandlink="brand_page"
-             data-brandlink-brand={brand.name}>{domain} ↗</a>
-        </Fragment>
-      )}
-    </p>
+    <div class="brandmain">
+      <div class="brandid">
+        <h1>{brand.name}</h1>
+        <p class="brandfacts">
+          {brand.bags.length} {brand.bags.length === 1 ? 'model' : 'models'}
+          {cats.length > 0 && ` · ${cats.join(', ')}`}
+          {prices.length > 0 && ` · ${fmtPrice(Math.min(...prices), cur)}–${fmtPrice(Math.max(...prices), cur)}`}
+          {domain && (
+            <Fragment>
+              {' · '}
+              <a href={`https://${domain}/`} target="_blank" rel="noopener nofollow"
+                 data-brandlink="brand_page"
+                 data-brandlink-brand={brand.name}>{domain} ↗</a>
+            </Fragment>
+          )}
+        </p>
+      </div>
 
-    {/* Six columns of figures do not fit a phone at any padding worth having,
-        so the table scrolls inside its own box rather than taking the page
-        sideways with it. */}
-    <div class="xscroll">
-    <table class="spectable brandtable">
-      <thead>
-        <tr><th>Model</th><th>Category</th><th>Volume</th><th>Weight</th><th>H×W×D</th><th>Price</th></tr>
-      </thead>
-      <tbody>
-        {brand.bags.map((bag) => (
-          <tr>
-            <td><a href={bagHref(bag)}>{bag.name}</a></td>
-            <td>{catLabel(bag.category)}</td>
-            <td class={bag.volume_l == null ? 'nil' : ''}>{fmtVolume(bag.volume_l) ?? '—'}</td>
-            <td class={bag.weight_g == null ? 'nil' : ''}>{fmtWeight(bag.weight_g) ?? '—'}</td>
-            <td class={bag.dims_cm == null ? 'nil' : ''}><Measure value={fmtDims(bag.dims_cm)} /></td>
-            <td>{fmtPrice(bag.price_min, bag.currency)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+      <WatchForm brandSlug={brand.slug} name={`anything from ${brand.name}`} currency={cur} />
     </div>
+  </section>
 
-    <WatchForm brandSlug={brand.slug} name={`anything from ${brand.name}`} currency={cur} />
-  </div>
+  <BrowseShell brand={{ slug: brand.slug, name: brand.name }}
+               otherCurrencies={otherCurrencies}>
+    {/* The fallback, and the crawler's copy of this page. Six columns of
+        figures do not fit a phone at any padding worth having, so the table
+        scrolls inside its own box rather than taking the page sideways with
+        it. */}
+    <div class="xscroll">
+      <table class="spectable brandtable">
+        <thead>
+          <tr><th>Model</th><th>Category</th><th>Volume</th><th>Weight</th><th>H×W×D</th><th>Price</th></tr>
+        </thead>
+        <tbody>
+          {brand.bags.map((bag) => (
+            <tr>
+              <td><a href={bagHref(bag)}>{bag.name}</a></td>
+              <td>{catLabel(bag.category)}</td>
+              <td class={bag.volume_l == null ? 'nil' : ''}>{fmtVolume(bag.volume_l) ?? '—'}</td>
+              <td class={bag.weight_g == null ? 'nil' : ''}>{fmtWeight(bag.weight_g) ?? '—'}</td>
+              <td class={bag.dims_cm == null ? 'nil' : ''}><Measure value={fmtDims(bag.dims_cm)} /></td>
+              <td>{fmtPrice(bag.price_min, bag.currency)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </BrowseShell>
+
+  <script>
+    import '../../scripts/browse.js';
+  </script>
 </Base>

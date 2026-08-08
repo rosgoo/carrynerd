@@ -3,11 +3,12 @@ import Base from '../layouts/Base.astro';
 import { bags, meta, bagHref, byLabel } from '../lib/catalog.js';
 import { catLabel } from '../lib/labels.js';
 import { fmtPrice } from '../lib/format.js';
-import Logo from '../components/Logo.astro';
+import BrowseHead from '../components/BrowseHead.astro';
+import BrowseShell from '../components/BrowseShell.astro';
 import SaleStrip from '../components/SaleStrip.astro';
-import { SITE_NAME, SITE_NAME_DISPLAY, TAGLINE } from '../lib/brand.js';
+import { SITE_NAME_DISPLAY, TAGLINE } from '../lib/brand.js';
 
-const title = `${SITE_NAME} — ${TAGLINE}`;
+const title = `${SITE_NAME_DISPLAY} — ${TAGLINE}`;
 const description =
   `Compare ${meta.bag_count ?? bags.length} bags across ${meta.brand_count ?? 0} ` +
   'brands on volume, weight, dimensions and price. Specs normalised from public ' +
@@ -32,32 +33,12 @@ const otherCurrencies = [
   ...new Set(bags.map((b) => b.currency).filter((c) => c && c !== 'USD')),
 ].sort();
 ---
+{/* The chrome, the rail and the grid are components because the brand pages
+    mount the same island — see components/BrowseShell.astro. This page is the
+    unscoped case: no brand fixed, so the rail keeps its Brand group and the
+    counts are the catalogue's. */}
 <Base title={title} description={description}>
-  <header slot="header" class="browsehead">
-    <a class="brand" href="/"><Logo size={17} />{SITE_NAME_DISPLAY}</a>
-    <div class="stats" id="stats"></div>
-    <div class="searchwrap">
-      <input id="q" type="search" placeholder="search brand, model, material, feature…" autocomplete="off" spellcheck="false" />
-    </div>
-    {/* Moves into the filter panel below the mobile breakpoint — a phone has
-        room for the wordmark and one control beside it, and the panel is the
-        only full-width surface on the page. See mountChrome() in browse.js. */}
-    <div class="hbtns" id="hbtns">
-      <a class="hbtn" href="/carry-on/">Carry-on</a>
-      <a class="hbtn" href="/brands/">Brands</a>
-      <button class="hbtn" id="viewgrid" aria-pressed="true">Grid</button>
-      <button class="hbtn" id="viewtable" aria-pressed="false">Table</button>
-      <button class="hbtn units" id="units" title="Show lengths in centimetres or inches">
-        <span class="u-cm">cm</span><span class="u-in">in</span>
-      </button>
-      <button class="hbtn" id="theme" title="Toggle theme">Theme</button>
-    </div>
-    {/* Stays in the header at every width: it is the way back to the controls
-        that left it. */}
-    <button class="hbtn burger" id="railtoggle" aria-controls="rail" aria-expanded="false">
-      <span class="bars" aria-hidden="true"></span>Filters
-    </button>
-  </header>
+  <BrowseHead slot="header" />
 
   {/* Above the shell, so it spans the filter rail as well as the grid. It is
       not a filter and it is not a result — it is the one thing on the page
@@ -66,239 +47,18 @@ const otherCurrencies = [
       no drops rather than sitting there empty. */}
   <SaleStrip bags={bags} />
 
-  <div class="shell">
-    {/* Alphabetical by heading. The old order was the order the facets were
-        built in, which meant the one people reach for first — Brand — sat
-        ninth, below three collapsed groups. Nothing here ranks above anything
-        else, so the only ordering that a stranger can predict is the alphabet.
-        Data coverage is the exception and stays pinned last: it filters
-        nothing, it is a footnote about the catalog. */}
-    <aside class="rail" id="rail">
-      {/* Shown only while the rail is a drawer. */}
-      <div class="railhead">
-        <b>Filters</b>
-        <button class="railclose" id="railclose" aria-label="Close filters">✕</button>
-      </div>
-
-      {/* The one part of the rail that is about you rather than about the
-          catalog, so it sits above every filter group rather than in the
-          alphabet with them: a saved filter is how you arrive at the filters,
-          not one of them.
-
-          Ships hidden and is revealed by the island. There are no accounts
-          here — all of this lives in this browser's localStorage, see
-          lib/store.js — so with no JavaScript there is nothing to reveal, and
-          a panel offering to remember things that cannot be remembered is
-          worse than no panel. */}
-      <section class="saved" id="saved" hidden>
-        <div class="savedhead">
-          <b>Saved</b>
-          <button class="savedbtn" id="savefilter">+ Save filter</button>
-        </div>
-        <form class="savedform" id="savedform" hidden>
-          <input id="savedname" type="text" maxlength="48" autocomplete="off"
-                 spellcheck="false" placeholder="name this filter"
-                 aria-label="Name for this filter" />
-          <button class="savedok" type="submit">Save</button>
-          <button class="savedcancel" type="button" id="savedcancel"
-                  aria-label="Cancel">✕</button>
-        </form>
-        <div class="savedlist" id="savedlist"></div>
-        <p class="savedmsg" id="savedmsg" role="status" aria-live="polite" hidden></p>
-        <button class="check favonly" id="f-fav" aria-pressed="false">
-          <i></i>★ Favourites only<b id="favcount">0</b>
-        </button>
-      </section>
-
-      <details class="fgroup" open>
-        <summary>Availability</summary>
-        <div class="fbody">
-          <div class="checks">
-            <button class="check" id="f-stock" aria-pressed="false"><i></i>In stock only</button>
-            <button class="check" id="f-sale" aria-pressed="false"><i></i>On sale</button>
-          </div>
-        </div>
-      </details>
-
-      <details class="fgroup" open>
-        <summary>Brand</summary>
-        <div class="fbody"><div class="checks" id="f-brand"></div></div>
-      </details>
-
-      <details class="fgroup" open>
-        <summary>Category</summary>
-        <div class="fbody"><div class="chips" id="f-cat"></div></div>
-      </details>
-
-      <details class="fgroup" open>
-        <summary>Colour</summary>
-        <div class="fbody"><div class="checks" id="f-color"></div></div>
-      </details>
-
-      <details class="fgroup">
-        <summary>Features</summary>
-        <div class="fbody"><div class="checks" id="f-feat"></div></div>
-      </details>
-
-      <details class="fgroup">
-        <summary>Material</summary>
-        <div class="fbody"><div class="checks" id="f-mat"></div></div>
-      </details>
-
-      <details class="fgroup">
-        <summary>Max linear dimension</summary>
-        <div class="fbody">
-          <div class="rangerow">
-            <input id="linear-max" type="number" min="0" step="5"
-                   placeholder="max total h+w+d (cm)"
-                   data-ph-cm="max total h+w+d (cm)"
-                   data-ph-in="max total h+w+d (in)" />
-          </div>
-          <div class="checks" style="margin-top:8px">
-            <button class="check" data-preset="carryon" aria-pressed="false"><i></i>Fits common carry-on (<span class="u-cm">≤115cm</span><span class="u-in">≤45in</span> linear)</button>
-            <button class="check" data-preset="underseat" aria-pressed="false"><i></i>Fits under seat (<span class="u-cm">≤40×30×20</span><span class="u-in">≤16×12×8</span>)</button>
-          </div>
-        </div>
-      </details>
-
-      <details class="fgroup" open>
-        <summary>Price</summary>
-        <div class="fbody">
-          <div class="dual" data-dual="price">
-            <div class="track"><div class="fill"></div></div>
-            <input class="lo" type="range" aria-label="Minimum price" />
-            <input class="hi" type="range" aria-label="Maximum price" />
-          </div>
-          <div class="rangerow">
-            <input id="price-min" type="number" placeholder="min" min="0" step="10" />
-            <em>—</em>
-            <input id="price-max" type="number" placeholder="max" min="0" step="10" />
-          </div>
-          {otherCurrencies.length > 0 && (
-            <p class="note" style="padding:10px 0 0;border:none">
-              Mostly USD. {otherCurrencies.join(' and ')} where the brand sells
-              in it — shown as charged, never converted, so this range compares
-              the figures rather than their worth.
-            </p>
-          )}
-        </div>
-      </details>
-
-      <details class="fgroup" open>
-        <summary>Volume — litres</summary>
-        <div class="fbody">
-          {/* The slider's bounds come from the catalog at runtime, so the
-              track always spans what actually exists rather than a guess
-              baked in here. See initSliders() in browse.js. */}
-          <div class="dual" data-dual="vol">
-            <div class="track"><div class="fill"></div></div>
-            <input class="lo" type="range" aria-label="Minimum volume" />
-            <input class="hi" type="range" aria-label="Maximum volume" />
-          </div>
-          <div class="rangerow">
-            <input id="vol-min" type="number" placeholder="min" min="0" step="1" />
-            <em>—</em>
-            <input id="vol-max" type="number" placeholder="max" min="0" step="1" />
-          </div>
-        </div>
-      </details>
-
-      <details class="fgroup">
-        <summary>Weight — grams</summary>
-        <div class="fbody">
-          <div class="dual" data-dual="weight">
-            <div class="track"><div class="fill"></div></div>
-            <input class="lo" type="range" aria-label="Minimum weight" />
-            <input class="hi" type="range" aria-label="Maximum weight" />
-          </div>
-          <div class="rangerow">
-            <input id="weight-min" type="number" placeholder="min" min="0" step="50" />
-            <em>—</em>
-            <input id="weight-max" type="number" placeholder="max" min="0" step="50" />
-          </div>
-        </div>
-      </details>
-
-      <details class="fgroup">
-        <summary>Data coverage</summary>
-        <div class="fbody">
-          <div class="cov" id="coverage"></div>
-          <p class="note" style="padding:10px 0 0;border:none">
-            Fields we could not establish are shown as “—”, never estimated.
-            Every value records where it came from; open any bag to see its
-            provenance.
-          </p>
-        </div>
-      </details>
-
-    </aside>
-
-    <main>
-      <div class="toolbar">
-        <div class="count" id="count">loading…</div>
-        <button class="tbtn" id="clear">Clear</button>
-        <div class="spacer"></div>
-        <select id="sort">
-          <option value="brand">Sort · Brand A–Z</option>
-          <option value="price-asc">Price ↑</option>
-          <option value="price-desc">Price ↓</option>
-          <option value="vol-asc">Volume ↑</option>
-          <option value="vol-desc">Volume ↓</option>
-          <option value="weight-asc">Weight ↑</option>
-          <option value="gpl">Grams per litre ↑</option>
-          <option value="ppl">Price per litre ↑</option>
-        </select>
-      </div>
-      <div id="results">
-        <ul class="nojs-index">
-          {fallback.map((bag) => (
-            <li>
-              <a href={bagHref(bag)}>
-                <b>{bag.brand}</b> {bag.name}
-                <em>{catLabel(bag.category)}{bag.volume_l ? ` · ${bag.volume_l} L` : ''} · {fmtPrice(bag.price_min, bag.currency)}</em>
-              </a>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </main>
-  </div>
-
-  <div class="tray" id="tray">
-    <div class="picked" id="picked"></div>
-    <button class="btn ghost" id="cmpclear">Clear</button>
-    <button class="btn" id="cmpopen">Compare</button>
-  </div>
-
-  <div class="overlay" id="cmpoverlay">
-    <div class="sheet">
-      <header>
-        <h2>Comparison</h2>
-        <button class="btn ghost" data-close>Close ✕</button>
-      </header>
-      <div class="inner" id="cmpbody"></div>
-    </div>
-  </div>
-
-  <div class="overlay" id="detoverlay">
-    <div class="drawer">
-      <header>
-        <h2 id="dettitle">Detail</h2>
-        {/* Carries its own data-id, set per bag by openDetail() — the cards
-            take theirs from the article around them, and this has no article
-            around it. */}
-        <button class="fav" id="detfav" data-fav aria-pressed="false"
-                title="Save to favourites" aria-label="Save to favourites">☆</button>
-        <button class="btn ghost" data-close>Close ✕</button>
-      </header>
-      <div class="inner" id="detbody"></div>
-      {/* Outside .inner on purpose: the way through to the model page is the
-          drawer's main exit and it used to sit last in the scroll, below the
-          colourway table and the signup, where nobody scrolled to find it.
-          openDetail() sets the href. */}
-      <a class="btn detfull" id="detfull" href="/">Full specs &amp; price history →</a>
-    </div>
-  </div>
+  <BrowseShell otherCurrencies={otherCurrencies}>
+    <ul class="nojs-index">
+      {fallback.map((bag) => (
+        <li>
+          <a href={bagHref(bag)}>
+            <b>{bag.brand}</b> {bag.name}
+            <em>{catLabel(bag.category)}{bag.volume_l ? ` · ${bag.volume_l} L` : ''} · {fmtPrice(bag.price_min, bag.currency)}</em>
+          </a>
+        </li>
+      ))}
+    </ul>
+  </BrowseShell>
 
   <script>
     import '../scripts/browse.js';

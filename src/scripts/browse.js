@@ -141,6 +141,27 @@ const fmtPrice  = (n, c) => n == null ? "—" : cur(c) + (Number.isInteger(n) ? 
 const gpl = b => (b.weight_g && b.volume_l) ? b.weight_g / b.volume_l : null;
 const ppl = b => (b.price_min && b.volume_l) ? b.price_min / b.volume_l : null;
 
+/* ---------- the page's own filter ---------- */
+
+/* Some pages are a filter before a reader touches one. /brands/able-carry/ runs
+ * this same island with the brand already settled by the path, and the shell
+ * says so in markup — see components/BrowseShell.astro.
+ *
+ * It is deliberately not folded into S. S is what the reader chose, and what
+ * the reader chose is what goes in the address bar, what a saved filter keeps
+ * and what Clear empties; the brand on a brand page survives all three, because
+ * the path already says it and clearing your way onto the whole catalogue
+ * without moving is not something a page should let you do. So it rides on the
+ * request as `scope`, which is also what tells the server to count the rail
+ * against that brand's shelf rather than against the catalogue.
+ *
+ * `unlock` is the same filter spelled as an ordinary one, for the way out: the
+ * front page with this brand merely ticked. */
+const shell = document.getElementById("shell");
+const LOCK = new URLSearchParams(shell?.dataset.lock || "");
+const UNLOCK = shell?.dataset.unlock || "";
+const SCOPED = LOCK.has("scope");
+
 /* ---------- asking the server ---------- */
 
 /* Matching used to be a function here — haystack(), matches(), a table of
@@ -185,6 +206,9 @@ let PAGED = 0;
 
 async function ask(page, boot = false) {
   const p = stateParams();
+  // The one thing in the request that is not in the address bar, because the
+  // path is already carrying it.
+  for (const [k, v] of LOCK) p.set(k, v);
   p.set("page", page);
   p.set("per", PER);
   if (boot) p.set("boot", "1");
@@ -557,8 +581,11 @@ function countLine({ total, counts, stats }) {
       ` known to be absent</em>`
     : "";
 
+  // "· 1 brands" is not a finding about a brand page, and the heading above it
+  // has already said whose shelf this is.
+  const brands = SCOPED ? "" : ` · ${counts.brands} brands`;
   $("#count").innerHTML = `<b>${total}</b> of ${(stats || STATS).bags} bags` +
-    ` · ${counts.brands} brands · ${counts.skus} SKUs` + caveat;
+    `${brands} · ${counts.skus} SKUs` + caveat;
 }
 
 /* Ask the current state what it matches, and draw the first page of the answer.
@@ -913,12 +940,25 @@ function buildFacets({ facets, coverage, stats }) {
   BRAND_NAMES = new Map(facets.brands.map(([slug, name]) => [slug, name]));
 
   // Filed by name, not by slug and not by count: the rail prints names, and a
-  // reader looking for one scans the alphabet.
-  $("#f-brand").innerHTML = facets.brands
+  // reader looking for one scans the alphabet. Absent on a scoped page, where
+  // the brand is the page rather than one of the choices in it.
+  const brandBox = $("#f-brand");
+  if (brandBox) brandBox.innerHTML = facets.brands
     .map(([slug, name, n]) => `<button class="check" data-f="brand" data-v="${esc(slug)}" aria-pressed="false"><i></i>${
       esc(name)}<b>${n}</b></button>`).join("");
 
   ["#f-brand", "#f-color", "#f-feat", "#f-mat"].forEach(mountFacetSearch);
+
+  /* A group that came out empty is hidden rather than left to open onto
+   * nothing. It never happens on the whole catalogue — every facet has
+   * thousands behind it — but a scoped rail is counting one brand's shelf, and
+   * a maker whose colourways name no colour we can read would otherwise get a
+   * Colour heading with a blank panel under it. Only the data-driven groups:
+   * Availability and the ranges are always worth offering. */
+  for (const sel of ["#f-cat", "#f-color", "#f-feat", "#f-mat", "#f-brand"]) {
+    const group = $(sel)?.closest(".fgroup");
+    if (group) group.hidden = !$(sel).children.length;
+  }
 
   const labels = { volume_l: "Volume", dims_cm: "Dims", weight_g: "Weight",
                    laptop_in: "Laptop", price_min: "Price" };
@@ -927,9 +967,11 @@ function buildFacets({ facets, coverage, stats }) {
       <div class="covbar"><i style="width:${v.pct}%"></i></div>
       <b>${v.pct}%</b></div>`).join("");
 
+  // Scoped, these are the brand's own three numbers — and the middle one is
+  // then always 1, so it goes.
   $("#stats").innerHTML =
     `<span><b>${stats.bags ?? "—"}</b> BAGS</span>` +
-    `<span><b>${stats.brands ?? "—"}</b> BRANDS</span>` +
+    (SCOPED ? "" : `<span><b>${stats.brands ?? "—"}</b> BRANDS</span>`) +
     `<span><b>${stats.skus ?? "—"}</b> SKUS</span>`;
 }
 
@@ -973,6 +1015,29 @@ function mountFacetSearch(sel) {
   list.before(box);
   list.after(none);
 
+  /* Searching this particular list is the one moment on the site where a
+   * reader is actively looking for a brand by name, which makes it the one
+   * moment where "we don't have it" is a finding rather than an absence they
+   * had to go looking for. So the Brand list — and only the Brand list — grows
+   * a way to say so, right where they are looking.
+   *
+   * It appears with the filtered list rather than only when nothing matched:
+   * a search for "tom" that turns up one unrelated maker is the same
+   * disappointment as a search that turns up none, and a button that arrives
+   * only on the empty state is a button nobody knows exists.
+   *
+   * The dialog itself is in the layout — see components/RequestBrand.astro.
+   * This is only an opener, so it needs no markup of its own beyond the
+   * attribute the delegated listener watches for. */
+  const ask = sel === "#f-brand" ? document.createElement("button") : null;
+  if (ask) {
+    ask.type = "button";
+    ask.className = "freq";
+    ask.hidden = true;
+    ask.setAttribute("data-request-brand", "");
+    none.after(ask);
+  }
+
   box.addEventListener("input", () => {
     const q = box.value.trim().toLowerCase();
     let shown = 0;
@@ -986,6 +1051,16 @@ function mountFacetSearch(sel) {
       if (hit) shown++;
     }
     none.hidden = shown > 0;
+    if (ask) {
+      ask.hidden = !q;
+      // What they typed, carried into the dialog's Brand field. Their spelling
+      // rather than a matched slug: there is nothing here to match against,
+      // and their spelling is the whole content of the request.
+      ask.dataset.brand = box.value.trim();
+      ask.textContent = shown
+        ? "Request a brand"
+        : `Request “${box.value.trim()}”`;
+    }
   });
 }
 
@@ -1109,7 +1184,21 @@ async function fetchOne(id) {
 async function openDetail(id) {
   const b = BY_ID.get(id) ?? await fetchOne(id);
   if (!b) return;
-  $("#dettitle").textContent = `${b.brand} — ${b.name}`;
+
+  // Every way out of the drawer to the seller carries the same attributes,
+  // because analytics.js reads them off whichever one was clicked. Three of
+  // them share it now — the title, the row under the photo and the bar pinned
+  // at the bottom — so the drawer's job, sending the reader on, is legible
+  // before any of the specs are.
+  const outAttrs = `href="${esc(b.url)}" target="_blank" rel="noopener nofollow"
+    data-buy="browse_overlay"
+    data-buy-id="${esc(b.id)}"
+    data-buy-brand="${esc(b.brand)}"
+    data-buy-model="${esc(b.name)}"
+    data-buy-price="${esc(b.price_min ?? "")}"`;
+
+  const title = `${esc(b.brand)} — ${esc(b.name)}`;
+  $("#dettitle").innerHTML = b.url ? `<a ${outAttrs}>${title} ↗</a>` : title;
 
   const row = (label, val, prov) => `<div class="drow"><em>${label}</em>
     <span>${val ?? "—"}${prov ? `<i class="prov">${esc(prov)}</i>` : ""}</span></div>`;
@@ -1132,6 +1221,10 @@ async function openDetail(id) {
     ${b.image ? `<div class="shot" style="aspect-ratio:16/10;border-bottom:1px solid var(--line)${
         b.image_bg ? `;--shot-bg:${esc(b.image_bg)}` : ""}">
       <img src="${esc(thumb(b.image, THUMB.hero))}" alt="${esc(b.name)}"></div>` : ""}
+    <div class="detgo">
+      ${b.url ? `<a class="detgo-out" ${outAttrs}>Open on ${esc(b.brand)} ↗</a>` : ""}
+      <a class="detgo-alt" href="${esc(bagHref(b))}">Full specs →</a>
+    </div>
     ${row("Brand", `<a href="/brands/${esc(b.brand_slug)}/">${esc(b.brand)} →</a>`)}
     ${row("Category", esc(CAT_LABELS[b.category] || b.category))}
     ${row("Price", b.price_min === b.price_max ? fmtPrice(b.price_min, b.currency)
@@ -1150,18 +1243,35 @@ async function openDetail(id) {
     ${variants ? `<table class="vartable">
       <thead><tr><th>Colourway</th><th>SKU</th><th>Price</th><th>Stock</th></tr></thead>
       <tbody>${variants}</tbody></table>` : ""}
-    ${b.url ? `<div class="note">
-      <a href="${esc(b.url)}" target="_blank" rel="noopener nofollow"
-         data-buy="browse_overlay"
-         data-buy-id="${esc(b.id)}"
-         data-buy-brand="${esc(b.brand)}"
-         data-buy-model="${esc(b.name)}"
-         data-buy-price="${esc(b.price_min ?? "")}">Open on ${esc(b.brand)} ↗</a>
-    </div>` : ""}
     ${watchForm(b)}`;
+
   // Lives in the drawer's own markup, pinned below the scrolling body — see
-  // index.astro. Only the destination changes per bag.
-  $("#detfull").href = bagHref(b);
+  // index.astro. Everything about it changes per bag, including where it goes:
+  // outbound for anything with a store URL, and the model page for the few
+  // without one, which is also the only case where it must not report a
+  // buy_click.
+  const buy = $("#detbuy");
+  if (b.url) {
+    buy.href = b.url;
+    buy.target = "_blank";
+    buy.rel = "noopener nofollow";
+    buy.textContent = `Open on ${b.brand} ↗`;
+    Object.assign(buy.dataset, {
+      buy: "browse_overlay",
+      buyId: b.id,
+      buyBrand: b.brand,
+      buyModel: b.name,
+      buyPrice: b.price_min ?? "",
+    });
+  } else {
+    buy.href = bagHref(b);
+    buy.removeAttribute("target");
+    buy.removeAttribute("rel");
+    buy.textContent = "Full specs & price history →";
+    for (const k of ["buy", "buyId", "buyBrand", "buyModel", "buyPrice"]) {
+      delete buy.dataset[k];
+    }
+  }
   // The star does the same, in the header. It carries the id itself rather
   // than sitting inside something that does, which is what lets one delegated
   // handler serve it and the cards alike.
@@ -1207,6 +1317,17 @@ function syncURL() {
   const p = stateParams();
   if (VIEW !== "grid") p.set("view", VIEW);
   history.replaceState(null, "", p.toString() ? "?" + p : location.pathname);
+
+  /* The way off a scoped page, kept in step with the filters on it. Whatever is
+   * set here still means the same thing on the front page, so it travels — with
+   * the brand demoted from the page's premise to a ticked box, which is the
+   * whole point of following the link. Rebuilt rather than wired once: it is a
+   * link to the state, and the state is what keeps changing. */
+  const out = $("#unscope");
+  if (!out) return;
+  const q = new URLSearchParams(UNLOCK);
+  for (const [k, v] of p) q.set(k, v);
+  out.href = "/?" + q;
 }
 
 function loadURL() {

@@ -223,27 +223,27 @@ const ORDERS: Record<string, Row[]> = Object.fromEntries(
 
 /* ---------- facets ---------- */
 
-/* Counted over the whole catalogue rather than over the current match set, the
- * same way the rail has always been built: a facet count that moved as filters
- * were applied would say how many bags are left, when the question it is
- * answering is how many exist. Static per deploy, so it is built here and only
- * shipped on the boot request. */
-const tally = (of: (r: Row) => Iterable<string>) => {
+/* Counted over the rows the page is about rather than over the current match
+ * set, the same way the rail has always been built: a facet count that moved as
+ * filters were applied would say how many bags are left, when the question it
+ * is answering is how many exist. Static per deploy, so it is built once per
+ * scope and only shipped on the boot request. */
+const tally = (rows: Row[], of: (r: Row) => Iterable<string>) => {
   const m = new Map<string, number>();
-  for (const r of ROWS) for (const v of of(r)) m.set(v, (m.get(v) ?? 0) + 1);
+  for (const r of rows) for (const v of of(r)) m.set(v, (m.get(v) ?? 0) + 1);
   return [...m.entries()].sort((a, b) => b[1] - a[1]);
 };
 
-const FACETS = {
-  categories: tally((r) => (r.category ? [r.category] : [])),
-  features: tally((r) => r.features),
-  materials: tally((r) => r.materials),
-  colors: tally((r) => r.colours),
+const facetsOf = (rows: Row[]) => ({
+  categories: tally(rows, (r) => (r.category ? [r.category] : [])),
+  features: tally(rows, (r) => r.features),
+  materials: tally(rows, (r) => r.materials),
+  colors: tally(rows, (r) => r.colours),
   /* Slug, display name, count — the rail prints the name and files by it, and
    * without the name here it would have to guess one from the slug. */
   brands: (() => {
     const m = new Map<string, { name: string; n: number }>();
-    for (const r of ROWS) {
+    for (const r of rows) {
       const e = m.get(r.brand_slug) ?? { name: r.brand, n: 0 };
       e.n++;
       m.set(r.brand_slug, e);
@@ -252,28 +252,109 @@ const FACETS = {
       .sort((a, b) => byLabel(a[1].name, b[1].name))
       .map(([slug, e]) => [slug, e.name, e.n] as const);
   })(),
-};
+});
 
 /* What the slider tracks span. Taken from the data rather than from constants
  * so a handle parked at either end means "no bound" rather than "a bound that
  * happens to equal the extreme" — which is what keeps an untouched slider out
  * of the URL and out of the filter. */
-const BOUNDS = {
-  volume_l: Math.max(0, ...ROWS.map((r) => r.volume_l ?? 0)),
-  price_min: Math.max(0, ...ROWS.map((r) => r.price_min ?? 0)),
-  weight_g: Math.max(0, ...ROWS.map((r) => r.weight_g ?? 0)),
-};
+const boundsOf = (rows: Row[]) => ({
+  volume_l: Math.max(0, ...rows.map((r) => r.volume_l ?? 0)),
+  price_min: Math.max(0, ...rows.map((r) => r.price_min ?? 0)),
+  weight_g: Math.max(0, ...rows.map((r) => r.weight_g ?? 0)),
+});
 
+/* The fields the coverage meter reports on. normalize.py already writes these
+ * percentages for the whole catalogue — meta.coverage — and this recomputes
+ * the same five for a scope, because "47% have a volume" is a fact about the
+ * catalogue and the rail on a brand page is asking about the brand. */
+const COVERAGE_FIELDS = ['volume_l', 'dims_cm', 'weight_g', 'laptop_in',
+                         'price_min'] as const;
+
+const coverageOf = (rows: Row[]) =>
+  Object.fromEntries(COVERAGE_FIELDS.map((f) => {
+    const have = rows.reduce((n, r) => n + (r.bag[f] != null ? 1 : 0), 0);
+    return [f, { have, pct: rows.length ? Math.round((have / rows.length) * 100) : 0 }];
+  }));
+
+const statsOf = (rows: Row[]) => ({
+  bags: rows.length,
+  brands: new Set(rows.map((r) => r.brand_slug)).size,
+  skus: rows.reduce((n, r) => n + r.variant_count, 0),
+});
+
+const FACETS = facetsOf(ROWS);
+const BOUNDS = boundsOf(ROWS);
+const COVERAGE = meta.coverage ?? {};
+
+/* Read off the manifest rather than recounted, because these are the numbers
+ * the rest of the site prints and they have to be the same ones. */
 const STATS = {
   bags: meta.bag_count ?? ROWS.length,
   brands: meta.brand_count ?? null,
   skus: meta.sku_count ?? null,
 };
 
+/* ---------- scope ---------- */
+
+/* A scope is the filter a page *is*, as opposed to the filters a reader sets.
+ *
+ * /brands/able-carry/ runs the same island as the front page with one answer
+ * already settled by the URL path, so the brand rides on every request as
+ * `scope=brand:able-carry` instead of as an ordinary `brand=` filter. The
+ * difference is not decoration: a scope also decides what the rail is counting.
+ * Facet counts, slider bounds, the coverage meter and the count line's
+ * denominator all have to be about the brand, or the panel is describing a
+ * catalogue the page is not showing — a colour with 900 bags behind it that
+ * empties the grid when pressed, and a price track spanning four thousand
+ * dollars of other people's luggage.
+ *
+ * Everything a scope needs is fixed for the life of a deploy, so it is built on
+ * first sight and kept. Bounded by the number of brands, and only the brands
+ * anyone actually opens are ever built. */
+type Boot = {
+  facets: ReturnType<typeof facetsOf>;
+  bounds: ReturnType<typeof boundsOf>;
+  coverage: Record<string, unknown>;
+  stats: Record<string, number | null>;
+};
+
+const SCOPES = new Map<string, Boot>();
+
+function scoped(slug: string): Boot {
+  let hit = SCOPES.get(slug);
+  if (!hit) {
+    const rows = ROWS.filter((r) => r.brand_slug === slug);
+    hit = {
+      facets: facetsOf(rows),
+      bounds: boundsOf(rows),
+      coverage: coverageOf(rows),
+      stats: statsOf(rows),
+    };
+    SCOPES.set(slug, hit);
+  }
+  return hit;
+}
+
+/** `brand:<slug>`, or nothing. An unreadable scope is refused rather than
+ *  ignored: dropping it would answer with the whole catalogue on a page whose
+ *  heading promises one brand, which is the one wrong answer available. */
+function readScope(raw: string | null) {
+  if (!raw) return { ok: true as const, slug: null };
+  const at = raw.indexOf(':');
+  const kind = at < 0 ? raw : raw.slice(0, at);
+  const value = at < 0 ? '' : raw.slice(at + 1);
+  if (kind !== 'brand' || !value) return { ok: false as const, slug: null };
+  return { ok: true as const, slug: value };
+}
+
 /* ---------- the query ---------- */
 
 type Query = {
   terms: string[];
+  /* The page's own brand, from `scope` — not a filter the reader set and not
+   * one they can clear. See the scope section above. */
+  scope: string | null;
   cats: Set<string>;
   brands: Set<string>;
   feats: string[];
@@ -300,10 +381,11 @@ const RANGES = ['volMin', 'volMax', 'priceMin', 'priceMax',
 const list = (p: URLSearchParams, k: string) =>
   (p.get(k) ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 
-function parse(p: URLSearchParams): Query {
+function parse(p: URLSearchParams, scope: string | null): Query {
   const presets = new Set(list(p, 'preset'));
   const q: Query = {
     terms: (p.get('q') ?? '').toLowerCase().split(/\s+/).filter(Boolean),
+    scope,
     cats: new Set(list(p, 'cat')),
     brands: new Set(list(p, 'brand')),
     feats: list(p, 'feat'),
@@ -331,7 +413,9 @@ function parse(p: URLSearchParams): Query {
 }
 
 /** True when the query asks anything at all — the boot payload rides on the
- *  unfiltered first page, and this is how that page is recognised. */
+ *  unfiltered first page, and this is how that page is recognised. A scope is
+ *  deliberately not counted: it is the page rather than a filter on it, and a
+ *  brand page's own first request is exactly the one that needs the rail. */
 const isFiltered = (q: Query) =>
   q.terms.length > 0 || q.cats.size > 0 || q.brands.size > 0 ||
   q.feats.length > 0 || q.mats.length > 0 || q.colours.length > 0 ||
@@ -343,8 +427,12 @@ const isFiltered = (q: Query) =>
  * every comparison: a bag with no measured volume cannot be asserted to sit
  * inside a volume window, and reading it as zero would be an assertion. */
 function matches(r: Row, q: Query) {
-  // First, because it is the cheapest test on the list and the one most likely
-  // to reject: "favourites only" is at most sixty bags out of eight thousand.
+  // First, and before the filters, because it is not one: a scoped request is
+  // asking about one brand's shelf and everything below is asking about that
+  // shelf. It is also the most selective test here by a wide margin.
+  if (q.scope && r.brand_slug !== q.scope) return false;
+  // Then the cheapest of the filters, and the one most likely to reject:
+  // "favourites only" is at most sixty bags out of eight thousand.
   if (q.favOnly && !q.favs.has(r.id)) return false;
   for (const t of q.terms) if (!r.hay.includes(t)) return false;
   if (q.cats.size && !q.cats.has(r.category)) return false;
@@ -377,7 +465,12 @@ export const GET: APIRoute = ({ url }) => {
   const pageRaw = Number(p.get('page') ?? 0);
   const page = Number.isInteger(pageRaw) && pageRaw >= 0 ? pageRaw : 0;
 
-  const q = parse(p);
+  const scope = readScope(p.get('scope'));
+  if (!scope.ok) {
+    return json({ error: 'scope must be brand:<slug>' }, 400);
+  }
+
+  const q = parse(p, scope.slug);
   const order = ORDERS[p.get('sort') ?? 'brand'] ?? ORDERS.brand!;
 
   const from = page * per;
@@ -439,8 +532,9 @@ export const GET: APIRoute = ({ url }) => {
     // Three integers, on every response rather than only at boot: the count
     // line reads "N of 8,079 bags" on every render, and a client that had to
     // remember the denominator from a request several filters ago is a client
-    // that prints the wrong one after a reload.
-    stats: STATS,
+    // that prints the wrong one after a reload. Scoped, the denominator is the
+    // shelf the page is about — "12 of 34 Able Carry bags".
+    stats: q.scope ? scoped(q.scope).stats : STATS,
   };
 
   /* The rail, the slider tracks and the coverage meter are the same on every
@@ -449,9 +543,12 @@ export const GET: APIRoute = ({ url }) => {
    * that request rather than giving them their own keeps the island's first
    * paint at one round trip. */
   if (p.get('boot') === '1' || (page === 0 && !isFiltered(q))) {
-    body.facets = FACETS;
-    body.bounds = BOUNDS;
-    body.coverage = meta.coverage ?? {};
+    const boot = q.scope
+      ? scoped(q.scope)
+      : { facets: FACETS, bounds: BOUNDS, coverage: COVERAGE };
+    body.facets = boot.facets;
+    body.bounds = boot.bounds;
+    body.coverage = boot.coverage;
   }
 
   return json(body, 200, CACHE);

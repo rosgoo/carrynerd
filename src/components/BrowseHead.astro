@@ -1,0 +1,48 @@
+---
+/* The browse header: the one that carries the search field.
+ *
+ * Shared by every page that mounts the island — the front page and each brand
+ * page — because the island reaches into it by id. #q, the two view buttons and
+ * the hamburger are not decoration the pages happen to agree on; they are the
+ * controls browse.js wires, and a page that mounted the island without them
+ * would fail on the first line of loadURL(). One component is what stops that
+ * being a thing anyone has to remember.
+ */
+import Logo from './Logo.astro';
+import { SITE_NAME_DISPLAY } from '../lib/brand.js';
+
+interface Props {
+  /** What to say in the search field. A scoped page searches inside its own
+   *  shelf, so it says so rather than offering the catalogue. */
+  placeholder?: string;
+}
+
+const {
+  placeholder = 'search brand, model, material, feature…',
+} = Astro.props;
+---
+<header class="browsehead">
+  <a class="brand" href="/"><Logo size={17} />{SITE_NAME_DISPLAY}</a>
+  <div class="stats" id="stats"></div>
+  <div class="searchwrap">
+    <input id="q" type="search" placeholder={placeholder} autocomplete="off" spellcheck="false" />
+  </div>
+  {/* Moves into the filter panel below the mobile breakpoint — a phone has
+      room for the wordmark and one control beside it, and the panel is the
+      only full-width surface on the page. See mountChrome() in browse.js. */}
+  <div class="hbtns" id="hbtns">
+    <a class="hbtn" href="/carry-on/">Carry-on</a>
+    <a class="hbtn" href="/brands/">Brands</a>
+    <button class="hbtn" id="viewgrid" aria-pressed="true">Grid</button>
+    <button class="hbtn" id="viewtable" aria-pressed="false">Table</button>
+    <button class="hbtn units" id="units" title="Show lengths in centimetres or inches">
+      <span class="u-cm">cm</span><span class="u-in">in</span>
+    </button>
+    <button class="hbtn" id="theme" title="Toggle theme">Theme</button>
+  </div>
+  {/* Stays in the header at every width: it is the way back to the controls
+      that left it. */}
+  <button class="hbtn burger" id="railtoggle" aria-controls="rail" aria-expanded="false">
+    <span class="bars" aria-hidden="true"></span>Filters
+  </button>
+</header>

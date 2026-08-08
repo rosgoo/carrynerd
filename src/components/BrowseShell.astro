@@ -1,0 +1,282 @@
+---
+/* The browse instrument panel: filter rail, results, comparison tray, drawer.
+ *
+ * Everything below the header that browse.js draws into or reads out of. It was
+ * the front page's markup and it is now shared, because a brand page is the
+ * same instrument pointed at one shelf — see the `brand` prop. Keeping one copy
+ * is what stops the two drifting into a rail that has a control on one page and
+ * not the other, which the island would find out about at runtime.
+ *
+ * The default slot goes inside #results and is the answer for a reader with no
+ * JavaScript: the island replaces it on load. It is not a placeholder — it is
+ * the page's only working fallback, and render() hands it back if the first
+ * request fails.
+ */
+interface Props {
+  /** The brand this page is about, if it is about one. Present, the rail loses
+   *  its Brand group — the path already answered that question — and the island
+   *  scopes every request and every count to the brand. */
+  brand?: { slug: string; name: string } | null;
+  /** Currencies other than USD in whatever the page is showing. The price
+   *  slider compares figures across them without converting, which is worth
+   *  saying under the slider rather than leaving a reader to spot a £. */
+  otherCurrencies?: string[];
+}
+
+const { brand = null, otherCurrencies = [] } = Astro.props;
+
+/* Two spellings of the same fact, both read by browse.js. `lock` is what rides
+ * on the request — and what tells the server to count the rail against this
+ * brand's shelf rather than the catalogue. `unlock` is the same thing as an
+ * ordinary filter, for the link out. */
+const lock = brand ? `scope=brand:${brand.slug}` : null;
+const unlock = brand ? new URLSearchParams({ brand: brand.slug }).toString() : null;
+---
+<div class="shell" id="shell" data-lock={lock} data-unlock={unlock}>
+  {/* Alphabetical by heading. The old order was the order the facets were
+      built in, which meant the one people reach for first — Brand — sat
+      ninth, below three collapsed groups. Nothing here ranks above anything
+      else, so the only ordering that a stranger can predict is the alphabet.
+      Data coverage is the exception and stays pinned last: it filters
+      nothing, it is a footnote about the catalog. */}
+  <aside class="rail" id="rail">
+    {/* Shown only while the rail is a drawer. */}
+    <div class="railhead">
+      <b>Filters</b>
+      <button class="railclose" id="railclose" aria-label="Close filters">✕</button>
+    </div>
+
+    {/* The one part of the rail that is about you rather than about the
+        catalog, so it sits above every filter group rather than in the
+        alphabet with them: a saved filter is how you arrive at the filters,
+        not one of them.
+
+        Ships hidden and is revealed by the island. There are no accounts
+        here — all of this lives in this browser's localStorage, see
+        lib/store.js — so with no JavaScript there is nothing to reveal, and
+        a panel offering to remember things that cannot be remembered is
+        worse than no panel. */}
+    <section class="saved" id="saved" hidden>
+      <div class="savedhead">
+        <b>Saved</b>
+        <button class="savedbtn" id="savefilter">+ Save filter</button>
+      </div>
+      <form class="savedform" id="savedform" hidden>
+        <input id="savedname" type="text" maxlength="48" autocomplete="off"
+               spellcheck="false" placeholder="name this filter"
+               aria-label="Name for this filter" />
+        <button class="savedok" type="submit">Save</button>
+        <button class="savedcancel" type="button" id="savedcancel"
+                aria-label="Cancel">✕</button>
+      </form>
+      <div class="savedlist" id="savedlist"></div>
+      <p class="savedmsg" id="savedmsg" role="status" aria-live="polite" hidden></p>
+      <button class="check favonly" id="f-fav" aria-pressed="false">
+        <i></i>★ Favourites only<b id="favcount">0</b>
+      </button>
+    </section>
+
+    {/* Where the Brand group would be, saying what is standing in for it.
+        A locked filter that says nothing is a filter a reader spends a while
+        looking for, and the link is the honest answer to why they were looking:
+        the same filters, on the whole catalogue, with this brand merely ticked.
+        browse.js keeps its href in step with the rail — see syncURL(). */}
+    {brand && (
+      <section class="flock">
+        <em class="lbl">Brand</em>
+        <b>{brand.name}</b>
+        <a id="unscope" href={`/?${unlock}`}>Compare against other brands →</a>
+      </section>
+    )}
+
+    <details class="fgroup" open>
+      <summary>Availability</summary>
+      <div class="fbody">
+        <div class="checks">
+          <button class="check" id="f-stock" aria-pressed="false"><i></i>In stock only</button>
+          <button class="check" id="f-sale" aria-pressed="false"><i></i>On sale</button>
+        </div>
+      </div>
+    </details>
+
+    {!brand && (
+      <details class="fgroup" open>
+        <summary>Brand</summary>
+        <div class="fbody"><div class="checks" id="f-brand"></div></div>
+      </details>
+    )}
+
+    <details class="fgroup" open>
+      <summary>Category</summary>
+      <div class="fbody"><div class="chips" id="f-cat"></div></div>
+    </details>
+
+    <details class="fgroup" open>
+      <summary>Colour</summary>
+      <div class="fbody"><div class="checks" id="f-color"></div></div>
+    </details>
+
+    <details class="fgroup">
+      <summary>Features</summary>
+      <div class="fbody"><div class="checks" id="f-feat"></div></div>
+    </details>
+
+    <details class="fgroup">
+      <summary>Material</summary>
+      <div class="fbody"><div class="checks" id="f-mat"></div></div>
+    </details>
+
+    <details class="fgroup">
+      <summary>Max linear dimension</summary>
+      <div class="fbody">
+        <div class="rangerow">
+          <input id="linear-max" type="number" min="0" step="5"
+                 placeholder="max total h+w+d (cm)"
+                 data-ph-cm="max total h+w+d (cm)"
+                 data-ph-in="max total h+w+d (in)" />
+        </div>
+        <div class="checks" style="margin-top:8px">
+          <button class="check" data-preset="carryon" aria-pressed="false"><i></i>Fits common carry-on (<span class="u-cm">≤115cm</span><span class="u-in">≤45in</span> linear)</button>
+          <button class="check" data-preset="underseat" aria-pressed="false"><i></i>Fits under seat (<span class="u-cm">≤40×30×20</span><span class="u-in">≤16×12×8</span>)</button>
+        </div>
+      </div>
+    </details>
+
+    <details class="fgroup" open>
+      <summary>Price</summary>
+      <div class="fbody">
+        <div class="dual" data-dual="price">
+          <div class="track"><div class="fill"></div></div>
+          <input class="lo" type="range" aria-label="Minimum price" />
+          <input class="hi" type="range" aria-label="Maximum price" />
+        </div>
+        <div class="rangerow">
+          <input id="price-min" type="number" placeholder="min" min="0" step="10" />
+          <em>—</em>
+          <input id="price-max" type="number" placeholder="max" min="0" step="10" />
+        </div>
+        {otherCurrencies.length > 0 && (
+          <p class="note" style="padding:10px 0 0;border:none">
+            Mostly USD. {otherCurrencies.join(' and ')} where the brand sells
+            in it — shown as charged, never converted, so this range compares
+            the figures rather than their worth.
+          </p>
+        )}
+      </div>
+    </details>
+
+    <details class="fgroup" open>
+      <summary>Volume — litres</summary>
+      <div class="fbody">
+        {/* The slider's bounds come from the catalog at runtime, so the
+            track always spans what actually exists rather than a guess
+            baked in here — and on a brand page, what exists is that
+            brand's. See initSliders() in browse.js. */}
+        <div class="dual" data-dual="vol">
+          <div class="track"><div class="fill"></div></div>
+          <input class="lo" type="range" aria-label="Minimum volume" />
+          <input class="hi" type="range" aria-label="Maximum volume" />
+        </div>
+        <div class="rangerow">
+          <input id="vol-min" type="number" placeholder="min" min="0" step="1" />
+          <em>—</em>
+          <input id="vol-max" type="number" placeholder="max" min="0" step="1" />
+        </div>
+      </div>
+    </details>
+
+    <details class="fgroup">
+      <summary>Weight — grams</summary>
+      <div class="fbody">
+        <div class="dual" data-dual="weight">
+          <div class="track"><div class="fill"></div></div>
+          <input class="lo" type="range" aria-label="Minimum weight" />
+          <input class="hi" type="range" aria-label="Maximum weight" />
+        </div>
+        <div class="rangerow">
+          <input id="weight-min" type="number" placeholder="min" min="0" step="50" />
+          <em>—</em>
+          <input id="weight-max" type="number" placeholder="max" min="0" step="50" />
+        </div>
+      </div>
+    </details>
+
+    <details class="fgroup">
+      <summary>Data coverage</summary>
+      <div class="fbody">
+        <div class="cov" id="coverage"></div>
+        <p class="note" style="padding:10px 0 0;border:none">
+          Fields we could not establish are shown as “—”, never estimated.
+          Every value records where it came from; open any bag to see its
+          provenance.
+        </p>
+      </div>
+    </details>
+
+  </aside>
+
+  <main>
+    <div class="toolbar">
+      <div class="count" id="count">loading…</div>
+      <button class="tbtn" id="clear">Clear</button>
+      <div class="spacer"></div>
+      <select id="sort">
+        {/* Same value either way — the server sorts by brand then model, and
+            within one brand that is the model. Only the label changes, because
+            "Brand A–Z" on a page with one brand on it reads as a control that
+            does nothing. */}
+        <option value="brand">{brand ? 'Sort · Model A–Z' : 'Sort · Brand A–Z'}</option>
+        <option value="price-asc">Price ↑</option>
+        <option value="price-desc">Price ↓</option>
+        <option value="vol-asc">Volume ↑</option>
+        <option value="vol-desc">Volume ↓</option>
+        <option value="weight-asc">Weight ↑</option>
+        <option value="gpl">Grams per litre ↑</option>
+        <option value="ppl">Price per litre ↑</option>
+      </select>
+    </div>
+    <div id="results">
+      <slot />
+    </div>
+  </main>
+</div>
+
+<div class="tray" id="tray">
+  <div class="picked" id="picked"></div>
+  <button class="btn ghost" id="cmpclear">Clear</button>
+  <button class="btn" id="cmpopen">Compare</button>
+</div>
+
+<div class="overlay" id="cmpoverlay">
+  <div class="sheet">
+    <header>
+      <h2>Comparison</h2>
+      <button class="btn ghost" data-close>Close ✕</button>
+    </header>
+    <div class="inner" id="cmpbody"></div>
+  </div>
+</div>
+
+<div class="overlay" id="detoverlay">
+  <div class="drawer">
+    <header>
+      {/* openDetail() fills this with a link to the seller when the bag has
+          one, and with plain text when it does not. */}
+      <h2 id="dettitle">Detail</h2>
+      {/* Carries its own data-id, set per bag by openDetail() — the cards
+          take theirs from the article around them, and this has no article
+          around it. */}
+      <button class="fav" id="detfav" data-fav aria-pressed="false"
+              title="Save to favourites" aria-label="Save to favourites">☆</button>
+      <button class="btn ghost" data-close>Close ✕</button>
+    </header>
+    <div class="inner" id="detbody"></div>
+    {/* Outside .inner on purpose: the way out to the seller is the drawer's
+        main exit and it used to sit last in the scroll, below the colourway
+        table and the signup, where nobody scrolled to find it. openDetail()
+        sets the href, the label and the tracking attributes — the bar is the
+        seller's store for any bag we hold a URL for, and only falls back to
+        the model page when we do not. */}
+    <a class="btn detbuy" id="detbuy" href="/">Open ↗</a>
+  </div>
+</div>
