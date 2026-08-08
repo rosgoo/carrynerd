@@ -41,7 +41,10 @@
 export const SITE_NAME = 'carrynerd';
 export const SITE_NAME_DISPLAY = 'CARRYNERD';
 
-export const TAGLINE = 'carry spec index';
+/* "backpack", not "carry": the tab is a search result and a bookmark before it
+   is anything else, and the word people actually type is the noun, not the
+   category the name already says. */
+export const TAGLINE = 'backpack spec index';
 
 /** Contact addresses referenced by /bot and /privacy. */
 export const CONTACT = {

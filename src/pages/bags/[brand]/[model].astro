@@ -5,10 +5,10 @@ import WatchForm from '../../../components/WatchForm.astro';
 import Offers from '../../../components/Offers.astro';
 import Measure from '../../../components/Measure.astro';
 import CarryOn from '../../../components/CarryOn.astro';
-import { bags, bagSlug, bagHref, isIndexable, priceSeries, priceChanges, trackingSince } from '../../../lib/catalog.js';
+import { bags, bagSlug, bagHref, isIndexable, priceSeries, priceChanges, trackingSince, variantUrls } from '../../../lib/catalog.js';
 import { hubByCategory } from '../../../lib/hubs.js';
 import { catLabel, featureLabel, sourceLabel } from '../../../lib/labels.js';
-import { SITE_NAME } from '../../../lib/brand.js';
+import { SITE_NAME_DISPLAY } from '../../../lib/brand.js';
 import {
   fmtPrice, fmtPriceRange, fmtWeight, fmtDims, fmtVolume, fmtLaptop,
   fmtLinear, gramsPerLitre, pricePerLitre, currencySymbol,
@@ -30,6 +30,10 @@ const { bag } = Astro.props;
 
 const series = priceSeries(bag.id);
 const changes = priceChanges(bag.id);
+
+// Positional: wayUrls[i] belongs to bag.variants[i], and is null where the
+// colourway cannot be placed on a page — see variantUrls in lib/catalog.js.
+const wayUrls = variantUrls(bag);
 
 // Related: same brand first, then same category elsewhere. Cheap internal
 // linking, and it is what a reader comparing two packs actually wants.
@@ -115,7 +119,7 @@ const breadcrumbs = {
   ],
 };
 
-const title = `${bag.brand} ${bag.name} — specs, dimensions & price | ${SITE_NAME}`;
+const title = `${bag.brand} ${bag.name} — specs, dimensions & price | ${SITE_NAME_DISPLAY}`;
 // Metric in the meta description regardless of the reader's toggle: this is
 // the crawler-facing copy, it is baked at build time, and the structured data
 // below states CMT too.
@@ -227,6 +231,13 @@ const description =
       </div>
     </div>
 
+    {/* Directly under the hero, ahead of the specs. A reader who has just seen
+        the photo and the price is at the moment of deciding, and "not at that
+        price" is the commonest answer — catching that address here, rather
+        than at the foot of a long page they will not scroll to, is the whole
+        point of the form. */}
+    <WatchForm bagId={bag.id} name={`the ${bag.name}`} currency={bag.currency} />
+
     <section>
       <h2>Specifications</h2>
       <table class="spectable">
@@ -261,6 +272,68 @@ const description =
       </p>
     </section>
 
+    <PriceHistory series={series} changes={changes} since={trackingSince} currency={bag.currency} />
+
+    {bag.variants?.length > 0 && (
+      <section>
+        <h2>Colourways &amp; SKUs</h2>
+        {/* A colourway name, a SKU, a price and a stock word will not fold
+            onto a 320px phone, and unwrapped this table was taking the whole
+            page sideways with it — which put every other block on the page,
+            the watch form included, out of line with the screen. It scrolls
+            inside its own box instead, as the brand and airline tables
+            already do. */}
+        <div class="xscroll">
+        <table class="vartable">
+          <thead>
+            <tr><th>Colourway</th><th>SKU</th><th>Price</th><th>Stock</th></tr>
+          </thead>
+          <tbody>
+            {bag.variants.map((v, i) => (
+              <tr>
+                {/* The link is on the colourway, the row's identity, and not
+                    also on the SKU beside it: both would point at the same
+                    page, and a screen reader would read the destination out
+                    twice. Outbound like every other buy path here, and
+                    attributed the same way — the tracker reads the seller off
+                    the href, and the price it reports is this SKU's, which is
+                    the one on the row. */}
+                {wayUrls[i] ? (
+                  <td class="waycell">
+                    <a href={wayUrls[i]} target="_blank" rel="noopener nofollow"
+                       data-buy="variant_row"
+                       data-buy-id={bag.id}
+                       data-buy-brand={bag.brand}
+                       data-buy-model={bag.name}
+                       data-buy-price={v.price}>
+                      {v.image && <img class="waythumb" src={v.image} alt="" loading="lazy" width="26" height="26" style={v.image_bg && `--shot-bg:${v.image_bg}`} />}
+                      <span>{v.color || v.title || '—'}</span>
+                    </a>
+                  </td>
+                ) : (
+                  <td class="waycell">
+                    {v.image && <img class="waythumb" src={v.image} alt="" loading="lazy" width="26" height="26" style={v.image_bg && `--shot-bg:${v.image_bg}`} />}
+                    {v.color || v.title || '—'}
+                  </td>
+                )}
+                <td class="mono">{v.sku || '—'}</td>
+                <td>
+                  {fmtPrice(v.price, bag.currency)}
+                  {v.compare_at && v.price && v.compare_at > v.price && (
+                    <s> {fmtPrice(v.compare_at, bag.currency)}</s>
+                  )}
+                </td>
+                <td class={v.available ? 'instock' : 'nil'}>
+                  {v.available ? 'in stock' : 'out'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        </div>
+      </section>
+    )}
+
     <CarryOn bag={bag} />
 
     {(bag.materials?.length || bag.features?.length) && (
@@ -283,50 +356,7 @@ const description =
       </section>
     )}
 
-    {bag.variants?.length > 0 && (
-      <section>
-        <h2>Colourways &amp; SKUs</h2>
-        {/* A colourway name, a SKU, a price and a stock word will not fold
-            onto a 320px phone, and unwrapped this table was taking the whole
-            page sideways with it — which put every other block on the page,
-            the watch form included, out of line with the screen. It scrolls
-            inside its own box instead, as the brand and airline tables
-            already do. */}
-        <div class="xscroll">
-        <table class="vartable">
-          <thead>
-            <tr><th>Colourway</th><th>SKU</th><th>Price</th><th>Stock</th></tr>
-          </thead>
-          <tbody>
-            {bag.variants.map((v) => (
-              <tr>
-                <td class="waycell">
-                  {v.image && <img class="waythumb" src={v.image} alt="" loading="lazy" width="26" height="26" style={v.image_bg && `--shot-bg:${v.image_bg}`} />}
-                  {v.color || v.title || '—'}
-                </td>
-                <td class="mono">{v.sku || '—'}</td>
-                <td>
-                  {fmtPrice(v.price, bag.currency)}
-                  {v.compare_at && v.price && v.compare_at > v.price && (
-                    <s> {fmtPrice(v.compare_at, bag.currency)}</s>
-                  )}
-                </td>
-                <td class={v.available ? 'instock' : 'nil'}>
-                  {v.available ? 'in stock' : 'out'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
-      </section>
-    )}
-
     <Offers bag={bag} />
-
-    <PriceHistory series={series} changes={changes} since={trackingSince} currency={bag.currency} />
-
-    <WatchForm bagId={bag.id} name={`the ${bag.name}`} currency={bag.currency} />
 
     {related.length > 0 && (
       <section>

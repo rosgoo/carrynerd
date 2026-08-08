@@ -1,14 +1,14 @@
 ---
 import Base from '../layouts/Base.astro';
-import { SITE_NAME, CONTACT } from '../lib/brand.js';
+import { SITE_NAME, SITE_NAME_DISPLAY, CONTACT } from '../lib/brand.js';
 
 /* Required, not decorative: the alerts plane stores email addresses, and a
    double opt-in flow without a privacy notice is an incomplete one. Kept short
    because a notice nobody reads protects nobody. */
-const title = `Privacy — ${SITE_NAME}`;
+const title = `Privacy — ${SITE_NAME_DISPLAY}`;
 const description =
   `What ${SITE_NAME} stores, why, and how to have it deleted. Browsing is anonymous; `
-  + 'the only personal data held is the email address on a price watch.';
+  + 'the only personal data held is an email address you typed in yourself.';
 ---
 <Base title={title} description={description}>
   <div class="page">
@@ -18,7 +18,8 @@ const description =
     <h1>Privacy</h1>
     <p class="note">
       Short version: browsing is anonymous, and the only personal data held is
-      an email address you typed into a price watch.
+      an email address you typed in yourself — into a price watch, or onto a
+      brand request, where it is optional.
     </p>
 
     <section>
@@ -47,6 +48,20 @@ const description =
         built from, and never appear in application logs; those record a
         numeric subscription id instead.
       </p>
+    </section>
+
+    <section>
+      <h2>Brand requests</h2>
+      <table class="spectable">
+        <tbody>
+          <tr><th scope="row">What we store</th><td>The brand you named, the storefront link if you gave one, and your email address if you gave one. All three are what you typed; nothing is collected from you in the background.</td></tr>
+          <tr><th scope="row">Why</th><td>To decide what to crawl next. A brand asked for often is one we add sooner, and that ordering needs the requests counted rather than read once and deleted.</td></tr>
+          <tr><th scope="row">Your address</th><td>Optional, and not a subscription. It is there so we can answer you once, if the brand lands. It joins no list, gets no other mail, and is not the address a price watch uses.</td></tr>
+          <tr><th scope="row">Spam control</th><td>To stop one sender flooding the queue we store a one-way digest of your IP address mixed with today's date, and never the address itself. Because the date is inside it, the digest stops matching you at midnight UTC — it can count today's requests and cannot follow you across days.</td></tr>
+          <tr><th scope="row">How long</th><td>Until the brand is added or ruled out, at which point the request has done its job.</td></tr>
+          <tr><th scope="row">Deletion</th><td>Write to <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a> and it goes, address and all.</td></tr>
+        </tbody>
+      </table>
     </section>
 
     <section>

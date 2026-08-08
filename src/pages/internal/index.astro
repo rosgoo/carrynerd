@@ -1,7 +1,7 @@
 ---
 import Base from '../../layouts/Base.astro';
 import { bags, bagHref, meta } from '../../lib/catalog.js';
-import { SITE_NAME } from '../../lib/brand.js';
+import { SITE_NAME_DISPLAY } from '../../lib/brand.js';
 import { guard } from '../../lib/dash.ts';
 import type { Bag, RejectedPayload, Variant } from '../../lib/types.d.ts';
 import rawRejected from '../../../data/rejected.json';
@@ -289,7 +289,7 @@ const rejectStamp = rejectedPayload.generated_at ?? null;
 const catalogStamp = meta.generated_at ?? null;
 ---
 <Base
-  title={`Coverage audit — internal — ${SITE_NAME}`}
+  title={`Coverage audit — internal — ${SITE_NAME_DISPLAY}`}
   description="Internal audit of unclassified colourways and rejected products."
   noindex={true}
 >
@@ -299,6 +299,7 @@ const catalogStamp = meta.generated_at ?? null;
       <span>·</span> <a href="#colours">Colours</a>
       <span>·</span> <a href="#rejects">Rejects</a>
       <span>·</span> <a href="/internal/domains/">Domains</a>
+      <span>·</span> <a href="/internal/requests/">Requests</a>
       <span>·</span> <a href="/internal/email/">Email</a>
     </nav>
     <h1>Coverage audit</h1>

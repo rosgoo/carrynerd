@@ -29,7 +29,7 @@ export const prerender = false;
  * whatever they liked into the report. */
 const NAMES = new Set(['product_view', 'buy_click', 'brand_click']);
 const PLACEMENTS = new Set([
-  'product_page', 'offers_table', 'browse_overlay',
+  'product_page', 'offers_table', 'variant_row', 'browse_overlay',
   // Where a brand_click can come from. Kept in the same set rather than a
   // second one because the column is the same column; the pairing that matters
   // (which name goes with which placement) is enforced by the two senders in

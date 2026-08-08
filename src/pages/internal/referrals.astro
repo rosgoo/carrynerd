@@ -7,18 +7,20 @@
  * collecting them, and the events table holds no session, address or agent to
  * rebuild them from even if we wanted to.
  *
- * THE DENOMINATOR IS THE WHOLE DIFFICULTY. Clicks arrive from three placements
- * but views from only two, because 'offers_table' is the buy table *on the
- * model page* — it has no view of its own, it shares the model page's. Dividing
- * each placement's clicks by its own views would compare offers_table against
- * nothing and quietly overstate every other row. So the rate is computed per
- * SURFACE, where a surface is a thing that can be looked at:
+ * THE DENOMINATOR IS THE WHOLE DIFFICULTY. Clicks arrive from four placements
+ * but views from only two, because 'offers_table' and 'variant_row' are both
+ * buy paths *on the model page* — neither has a view of its own, they share the
+ * model page's. Dividing each placement's clicks by its own views would compare
+ * them against nothing and quietly overstate every other row. So the rate is
+ * computed per SURFACE, where a surface is a thing that can be looked at:
  *
- *   Model page    views: product_page     clicks: product_page + offers_table
+ *   Model page    views: product_page
+ *                 clicks: product_page + offers_table + variant_row
  *   Browse drawer views: browse_overlay   clicks: browse_overlay
  *
- * Placement is still shown underneath, as counts only, because which of the two
- * buttons on the model page gets used is a real question — just not a rate.
+ * Placement is still shown underneath, as counts only, because which of the
+ * three buy paths on the model page gets used is a real question — just not a
+ * rate.
  */
 import Base from '../../layouts/Base.astro';
 import { sql } from '../../lib/db.ts';
@@ -114,8 +116,10 @@ const surfaces = [
   {
     label: 'Model page',
     views: count('product_view', 'product_page'),
-    clicks: count('buy_click', 'product_page') + count('buy_click', 'offers_table'),
-    note: 'buy button + offers table',
+    clicks: count('buy_click', 'product_page')
+      + count('buy_click', 'offers_table')
+      + count('buy_click', 'variant_row'),
+    note: 'buy button + offers table + colourway rows',
   },
   {
     label: 'Browse drawer',
@@ -128,7 +132,7 @@ const surfaces = [
 const totalViews = surfaces.reduce((t, s) => t + s.views, 0);
 const totalClicks = surfaces.reduce((t, s) => t + s.clicks, 0);
 
-const placements = ['product_page', 'offers_table', 'browse_overlay'].map((p) => ({
+const placements = ['product_page', 'offers_table', 'variant_row', 'browse_overlay'].map((p) => ({
   placement: p,
   views: count('product_view', p),
   clicks: count('buy_click', p),

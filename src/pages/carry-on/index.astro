@@ -17,7 +17,7 @@ import {
   measured, fittingCarryOn, fittingPersonal, carryOnAirlineCount,
 } from '../../lib/carryon-index.js';
 import { hubs, COMMON_CARRYON_CM } from '../../lib/hubs.js';
-import { SITE_NAME } from '../../lib/brand.js';
+import { SITE_NAME, SITE_NAME_DISPLAY } from '../../lib/brand.js';
 import { fmtLinear } from '../../lib/format.js';
 
 /* Computed here rather than asserted: the spread between the strictest and
@@ -44,7 +44,7 @@ const rows = airlinesByRegion.map(({ key, label }) => ({
     })),
 }));
 
-const title = `Airline carry-on size limits — and the bags that fit | ${SITE_NAME}`;
+const title = `Airline carry-on size limits — and the bags that fit | ${SITE_NAME_DISPLAY}`;
 const description =
   `Published carry-on and personal-item limits for ${airlines.length} airlines, ` +
   `each checked against ${measuredCount} bags with known dimensions. ` +

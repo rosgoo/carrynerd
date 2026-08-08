@@ -14,7 +14,7 @@ import Base from '../../layouts/Base.astro';
 import BagTable from '../../components/BagTable.astro';
 import { hubs, byDensity, COMMON_CARRYON_CM } from '../../lib/hubs.js';
 import { bagHref } from '../../lib/catalog.js';
-import { SITE_NAME } from '../../lib/brand.js';
+import { SITE_NAME, SITE_NAME_DISPLAY } from '../../lib/brand.js';
 import { fmtPrice, fmtVolume, fmtWeight } from '../../lib/format.js';
 
 export function getStaticPaths() {
@@ -61,7 +61,7 @@ const browseHref = (() => {
 
 const siblings = hub.facets.filter((f) => f.slug !== facet.slug);
 
-const title = `${facet.title} — compared on weight, volume and price | ${SITE_NAME}`;
+const title = `${facet.title} — compared on weight, volume and price | ${SITE_NAME_DISPLAY}`;
 const description =
   `${s.count} ${facet.title.toLowerCase()} in the index` +
   (s.medianWeight != null ? `, median ${fmtWeight(s.medianWeight)}` : '') +

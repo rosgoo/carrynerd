@@ -87,6 +87,66 @@ export function bagHref(bag) {
   return `/bags/${bag.brand_slug ?? splitId(bag.id).brand}/${bagSlug(bag)}/`;
 }
 
+/* Where one colourway can be bought.
+ *
+ * A model page merges every storefront product that is the same bag, so the
+ * colourway table is the only place those separate listings still exist. Two
+ * ways to reach one, best destination first:
+ *
+ * 1. Its own listing, when the brand publishes a product per fabric. Those
+ *    URLs are in `merged_urls`, and the only safe match is a colour that names
+ *    exactly one of them — "Black" sits inside both .../ripstop-black and
+ *    .../x-pac-black, and a wrong guess sends the reader to a different bag.
+ *    Ambiguity therefore falls through rather than picking a winner.
+ * 2. The Shopify variant query string, which is not a distinct page but does
+ *    land on the right swatch. Every Shopify record here carries variant ids;
+ *    the other platforms in the feed layer have no equivalent we can trust.
+ *
+ * Anything else gets no link. The model's page is already one click away on
+ * the buy button, and a link that lands on the wrong colour is worse than
+ * plain text.
+ */
+
+/** Lowercased alphanumerics only, parentheticals dropped: "X-Pac Black (VX21)"
+ *  and "x-pac-black" have to compare equal, and the code in the brackets is a
+ *  fabric spec that never appears in a URL.
+ *  @param {string | null | undefined} s */
+const alnum = (s) => String(s ?? '').toLowerCase().replace(/\([^)]*\)/g, '').replace(/[^a-z0-9]+/g, '');
+
+/** The product handle: the last path segment, normalised.
+ *  @param {string} url */
+function urlHandle(url) {
+  try {
+    const parts = new URL(url).pathname.split('/').filter(Boolean);
+    return alnum(parts[parts.length - 1]);
+  } catch {
+    return '';
+  }
+}
+
+/** One entry per variant, positionally, null where we cannot place it.
+ *  @param {Bag} bag
+ *  @returns {(string | null)[]} */
+export function variantUrls(bag) {
+  const variants = bag.variants ?? [];
+  if (!variants.length) return [];
+
+  const listings = [...new Set([bag.url, ...(bag.merged_urls ?? [])].filter(Boolean))]
+    .map((url) => ({ url, handle: urlHandle(url) }));
+  const deepLink = String(bag.source ?? '').startsWith('shopify:') ? bag.url : null;
+
+  return variants.map((v) => {
+    const key = alnum(v.color || v.title);
+    // Two-character colour names ("XS", and the odd bare initial) match too
+    // much of a handle to be evidence of anything.
+    if (listings.length > 1 && key.length >= 3) {
+      const hits = listings.filter((l) => l.handle.includes(key));
+      if (hits.length === 1) return hits[0].url;
+    }
+    return deepLink && v.variant_id ? `${deepLink}?variant=${v.variant_id}` : null;
+  });
+}
+
 /* Is this model's page worth arriving on from a search result?
  *
  * The catalogue is wide before it is deep. The feed layer reaches thousands of

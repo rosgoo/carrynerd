@@ -20,7 +20,7 @@ import {
 } from '../../lib/hubs.js';
 import { bagHref } from '../../lib/catalog.js';
 import { airlines } from '../../lib/carryon.js';
-import { SITE_NAME } from '../../lib/brand.js';
+import { SITE_NAME, SITE_NAME_DISPLAY } from '../../lib/brand.js';
 import { fmtPrice, fmtVolume, fmtWeight, pricePerLitre } from '../../lib/format.js';
 
 export function getStaticPaths() {
@@ -70,7 +70,7 @@ const makers = [
 
 const others = hubs.filter((h) => h.key !== hub.key);
 
-const title = `${hub.title} — compared on volume, weight and dimensions | ${SITE_NAME}`;
+const title = `${hub.title} — compared on volume, weight and dimensions | ${SITE_NAME_DISPLAY}`;
 const description =
   `${s.count} ${hub.counted} from ${s.brands} brands, normalised so volume, ` +
   `weight and dimensions can be compared` +

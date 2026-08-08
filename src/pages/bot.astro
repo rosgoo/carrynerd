@@ -1,12 +1,12 @@
 ---
 import Base from '../layouts/Base.astro';
 import { meta, brands } from '../lib/catalog.js';
-import { SITE_NAME, CONTACT } from '../lib/brand.js';
+import { SITE_NAME, SITE_NAME_DISPLAY, CONTACT } from '../lib/brand.js';
 
 /* Every request the crawler makes carries this page's URL in its User-Agent.
    That promise is only worth anything if the page exists and a store operator
    who lands here gets a straight answer and a way to reach a human. */
-const title = `About the ${SITE_NAME} crawler`;
+const title = `About the ${SITE_NAME_DISPLAY} crawler`;
 const description =
   `What the ${SITE_NAME} crawler fetches, how often, and how to block it.`;
 ---
@@ -24,10 +24,10 @@ const description =
     <section>
       <h2>What it is</h2>
       <p class="note">
-        {SITE_NAME} is a spec index for bags. It reads published product data from
-        brand storefronts and normalises it so that a volume, a weight and a
-        set of dimensions can be compared across brands that all describe them
-        differently. It currently covers {meta.bag_count ?? 0} models across
+        {SITE_NAME} is a spec index for bags. It reads published product data
+        from brand storefronts and normalises it so a volume, a weight and a
+        set of dimensions compare across brands that all describe them
+        differently. It covers {meta.bag_count ?? 0} models across
         {' '}{brands.length} brands.
       </p>
     </section>
@@ -36,16 +36,16 @@ const description =
       <h2>What it requests</h2>
       <table class="spectable">
         <tbody>
-          <tr><th scope="row">/robots.txt</th><td>Checked before anything else. If it disallows the path, we skip the store entirely and record why.</td></tr>
-          <tr><th scope="row">/products.json</th><td>The storefront feed Shopify publishes by default. Roughly one request per brand, nightly.</td></tr>
+          <tr><th scope="row">/robots.txt</th><td>Checked first. If it disallows the path, we skip the store and record why.</td></tr>
+          <tr><th scope="row">/products.json</th><td>The feed Shopify publishes by default. About one request per brand, nightly.</td></tr>
           <tr><th scope="row">/collections.json</th><td>Occasionally, to read how you categorise your own products rather than guessing from titles.</td></tr>
-          <tr><th scope="row">Product pages</th><td>Once per product, for dimensions your feed does not expose. Cached, so a page is not re-read until the product changes.</td></tr>
+          <tr><th scope="row">Product pages</th><td>Once per product, for dimensions the feed does not expose. Cached until the product changes.</td></tr>
         </tbody>
       </table>
       <p class="note">
-        Only endpoints published for anyone. No login, no accounts, no CAPTCHA
-        solving, and no proxy rotation to get around a block. Requests are
-        paced, identify themselves, and honour <code>Retry-After</code>.
+        Public endpoints only — no logins, no CAPTCHA solving, no proxy
+        rotation around a block. Requests are paced, identify themselves, and
+        honour <code>Retry-After</code>.
       </p>
     </section>
 
@@ -54,29 +54,19 @@ const description =
       <p class="note">
         Facts only — dimensions, weight, price, materials, stock. Marketing
         copy is not reproduced, and images are referenced at your own URLs
-        rather than rehosted, so they keep serving from your CDN and stop
-        working the moment you remove them. Every model page links back to the
-        product on your site.
+        rather than rehosted, so they serve from your CDN and stop working the
+        moment you remove them. Every model page links back to your product.
       </p>
     </section>
 
     <section>
       <h2>How to block it</h2>
       <p class="note">
-        <code>robots.txt</code> is honoured, so a <code>Disallow</code> for
+        <code>robots.txt</code> is honoured: a <code>Disallow</code> for
         <code>/products.json</code> against <code>User-agent: *</code> is
-        enough and takes effect on the next run. If you would rather just tell
-        us, write to the address below and we will remove your store and the
-        data taken from it.
-      </p>
-    </section>
-
-    <section>
-      <h2>Contact</h2>
-      <p class="note">
-        A real person reads this: <a href={`mailto:${CONTACT.crawler}`}>{CONTACT.crawler}</a>.
-        Include your domain and we will confirm what we hold and what we have
-        removed.
+        enough, and takes effect on the next run. Or write to
+        {' '}<a href={`mailto:${CONTACT.crawler}`}>{CONTACT.crawler}</a> with
+        your domain and we will remove your store and the data taken from it.
       </p>
     </section>
   </div>

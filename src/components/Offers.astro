@@ -21,11 +21,6 @@ interface Props {
 
 const { bag } = Astro.props;
 
-// Distinct purchase URLs we actually hold. `merged_urls` is real and often
-// more than one: a brand that publishes a separate storefront product per
-// fabric leaves several genuine buy pages for one model.
-const urls = [...new Set([bag.url, ...(bag.merged_urls ?? [])].filter(Boolean))];
-
 const host = (u: string) => {
   try {
     return new URL(u).hostname.replace(/^www\./, '');
@@ -34,11 +29,28 @@ const host = (u: string) => {
   }
 };
 
-const offers = urls.map((url, i) => ({
+/* One row per *seller*, not per URL.
+ *
+ * `merged_urls` is often several, but they are the same shop: a brand that
+ * publishes a separate storefront product per fabric leaves eight genuine buy
+ * pages for one model, all at its own domain. Listing them here printed eight
+ * rows of the same seller with a price on the first and a dash on the rest,
+ * which reads as a broken comparison table rather than as one shop. The extra
+ * listings are not lost — they are what the colourway rows link to, which is
+ * the question they actually answer.
+ *
+ * bag.url leads, so the canonical listing is the one that represents its host
+ * and carries the tracked price. */
+const bySeller = new Map<string, string>();
+for (const url of [bag.url, ...(bag.merged_urls ?? [])].filter(Boolean)) {
+  const h = host(url);
+  if (!bySeller.has(h)) bySeller.set(h, url);
+}
+
+const offers = [...bySeller].map(([host, url], i) => ({
   url,
-  host: host(url),
-  // Only the canonical listing can be tied to the tracked price; the extra
-  // fabric/colourway listings share a model but not necessarily a price.
+  host,
+  // Only the seller we fetch from can be tied to the tracked price.
   price: i === 0 ? fmtPriceRange(bag.price_min, bag.price_max, bag.currency) : null,
   primary: i === 0,
 }));
@@ -56,16 +68,13 @@ const offers = urls.map((url, i) => ({
           <td>
             {offer.host}
             {offer.primary && <i class="prov">brand direct · price tracked here</i>}
-            {!offer.primary && <i class="prov">same model, separate listing</i>}
           </td>
           <td class={offer.price ? '' : 'nil'}>{offer.price ?? '—'}</td>
           <td class={offer.primary && bag.in_stock ? 'instock' : 'nil'}>
             {offer.primary ? (bag.in_stock ? 'in stock' : 'out') : '—'}
           </td>
           <td>
-            {/* Price is attached only to the canonical listing, for the same
-                reason the table only prints one: the extra fabric/colourway
-                listings share a model but not a confirmed price, and a click
+            {/* Price is attached only to the seller we fetch from: a click
                 should not report a number the reader was never shown. The
                 seller domain is read off the href by the tracker itself, so
                 every row is attributed to wherever it actually goes. */}
@@ -80,14 +89,4 @@ const offers = urls.map((url, i) => ({
       ))}
     </tbody>
   </table>
-
-  <p class="note">
-    {offers.length === 1
-      ? 'One seller tracked — the brand’s own store.'
-      : `${offers.length} listings tracked, all at the brand’s own store.`}
-    {' '}Retailer prices (REI, Huckberry, Backcountry and the like) are not here
-    yet: they need licensed affiliate datafeeds, which is also what will make
-    the comparison worth trusting. Until then this page shows the one price we
-    fetched ourselves rather than guessing at others.
-  </p>
 </section>

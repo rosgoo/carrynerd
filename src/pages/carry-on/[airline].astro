@@ -25,7 +25,7 @@ import {
 import { hubByCategory } from '../../lib/hubs.js';
 import { bagHref } from '../../lib/catalog.js';
 import { catLabel } from '../../lib/labels.js';
-import { SITE_NAME } from '../../lib/brand.js';
+import { SITE_NAME, SITE_NAME_DISPLAY } from '../../lib/brand.js';
 import { fmtVolume, fmtDims, fmtLinear } from '../../lib/format.js';
 import type { Bag } from '../../lib/types.d.ts';
 
@@ -82,7 +82,7 @@ const others = airlinesByRegion.map(({ key, label }) => ({
   list: airlines.filter((a) => a.region === key && a.name !== airline.name),
 }));
 
-const title = `${airline.name} carry-on size — and the bags that fit | ${SITE_NAME}`;
+const title = `${airline.name} carry-on size — and the bags that fit | ${SITE_NAME_DISPLAY}`;
 const description =
   `The carry-on limit published by ${airline.name} is ${limit ?? 'not stated by size'}. ` +
   `${fits.length} of ${measuredCount} bags in this index with known dimensions ` +

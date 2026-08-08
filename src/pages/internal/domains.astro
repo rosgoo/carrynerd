@@ -1,6 +1,6 @@
 ---
 import Base from '../../layouts/Base.astro';
-import { SITE_NAME } from '../../lib/brand.js';
+import { SITE_NAME_DISPLAY } from '../../lib/brand.js';
 import { guard } from '../../lib/dash.ts';
 
 // Same gate as the rest of /internal/. The page is inert without its dev-only
@@ -28,7 +28,7 @@ if (denied) return denied;
  */
 ---
 <Base
-  title={`Domain review — internal — ${SITE_NAME}`}
+  title={`Domain review — internal — ${SITE_NAME_DISPLAY}`}
   description="Internal review list for unresolved brand domains."
   noindex={true}
 >
