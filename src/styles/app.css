@@ -886,6 +886,27 @@ td.nil, .nil { color: var(--ink-mute); }
   .browsehead .hbtns { display: none; }
   .rail { width: 100%; }
   .rail .hbtns { display: flex; }
+
+  /* Six controls do not fit beside the wordmark, and .hbtns does not shrink —
+     before this it simply ran off the right edge. A row of its own, wrapping
+     within itself, is what holds all six at 320px. The browse header is exempt
+     because its controls have already left for the filter panel above. */
+  header:not(.browsehead) .hbtns {
+    flex: 0 0 100%; flex-wrap: wrap;
+    border-top: 1px solid var(--line);
+  }
+
+  /* Anchored to the header rather than to the button: at this width the panel
+     is wider than the distance from Categories to the right edge, so hanging
+     it off that edge would put its left half off-screen. Dropping .hmenu out
+     of the positioned chain hands it to the sticky header, which is full
+     width and already the right shape for it. */
+  .hmenu { position: static; }
+  .hmenupanel {
+    left: 0; right: 0; width: auto; max-width: none;
+    max-height: calc(100vh - var(--head) - 16px);
+    border-left: none; border-right: none;
+  }
 }
 
 @media (max-width: 560px) {
