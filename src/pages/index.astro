@@ -1,8 +1,9 @@
 ---
 import Base from '../layouts/Base.astro';
-import { bags, meta, bagHref, byLabel } from '../lib/catalog.js';
+import { bags, meta, bagHref, byLabel, brands } from '../lib/catalog.js';
 import { catLabel } from '../lib/labels.js';
 import { fmtPrice } from '../lib/format.js';
+import { hubs } from '../lib/hubs.js';
 import BrowseHead from '../components/BrowseHead.astro';
 import BrowseShell from '../components/BrowseShell.astro';
 import SaleStrip from '../components/SaleStrip.astro';
@@ -14,13 +15,42 @@ const description =
   'brands on volume, weight, dimensions and price. Specs normalised from public ' +
   'product feeds, with every value showing where it came from.';
 
-// Server-rendered fallback. The island replaces #results on load, but a
-// crawler that runs no JavaScript still sees a link to every model page, and
-// the sitemap agrees with it. Same content either way — the grid is a nicer
-// presentation of this list, not different data.
-const fallback = [...bags].sort(
-  (a, b) => byLabel(a.brand, b.brand) || byLabel(a.name, b.name),
-);
+/* The no-JavaScript fallback, and the two things that were wrong with it.
+ *
+ * It used to be every bag in the catalogue — one row per model, 8,043 of them,
+ * 1,121,864 bytes, which was 98.3% of this page. Everything else here fits in
+ * 19 KB. The reasoning was that a crawler running no JavaScript should still
+ * reach every model page from the front door.
+ *
+ * What that missed is who pays. This list is not hidden by any stylesheet and
+ * the island's first paint is gated on `await fetch('/api/browse')`, so every
+ * real visitor downloaded it, built ~40,000 DOM nodes out of it, *saw* an
+ * alphabetical list starting at 3F UL Gear, and then watched it be replaced by
+ * the grid a network round trip later. The fallback was for crawlers and the
+ * cost was paid by people, in main-thread time and in a visible swap.
+ *
+ * So: <noscript>, which browsers with scripting enabled skip rather than parse
+ * into the DOM, and a sample rather than the catalogue. The one-hop link to
+ * every model goes away and nothing is orphaned by it — every one of the 8,043
+ * is linked from its brand page, all 150 brands are linked from /brands/, and
+ * /brands/ is in the footer of every page. Two hops instead of one, for a
+ * client that is not a person.
+ *
+ * Grouped by category rather than capped alphabetically, because a flat list
+ * truncated at N is a stub ending mid-alphabet for no stated reason, where
+ * this is a sample of each shelf with the way to the rest of it attached.
+ */
+const FALLBACK_PER_HUB = 12;
+
+const fallbackGroups = hubs.map((hub) => ({
+  title: hub.title,
+  href: hub.href,
+  plural: hub.plural,
+  total: hub.total,
+  bags: [...hub.bags]
+    .sort((a, b) => byLabel(a.brand, b.brand) || byLabel(a.name, b.name))
+    .slice(0, FALLBACK_PER_HUB),
+})).filter((group) => group.bags.length);
 
 // A few brands sell from storefronts that quote something other than dollars,
 // and nothing here converts them — a rate would be a number we invented, and
@@ -48,16 +78,40 @@ const otherCurrencies = [
   <SaleStrip bags={bags} />
 
   <BrowseShell otherCurrencies={otherCurrencies}>
-    <ul class="nojs-index">
-      {fallback.map((bag) => (
-        <li>
-          <a href={bagHref(bag)}>
-            <b>{bag.brand}</b> {bag.name}
-            <em>{catLabel(bag.category)}{bag.volume_l ? ` · ${bag.volume_l} L` : ''} · {fmtPrice(bag.price_min, bag.currency)}</em>
-          </a>
-        </li>
-      ))}
-    </ul>
+    {/* Inside #results, which browse.js overwrites wholesale on load — so for
+        anyone running scripts this is inert markup the parser skips and the
+        island discards, and the grid is reached without it ever existing. */}
+    <noscript>
+      <div class="nojs">
+        <p class="note">
+          The filters and the comparison grid need JavaScript. Below is a
+          sample of each category; every model in the index is listed on its
+          brand's page.
+        </p>
+        {fallbackGroups.map((group) => (
+          <section>
+            <h2><a href={group.href}>{group.title}</a></h2>
+            <ul class="nojs-index">
+              {group.bags.map((bag) => (
+                <li>
+                  <a href={bagHref(bag)}>
+                    <b>{bag.brand}</b> {bag.name}
+                    <em>{catLabel(bag.category)}{bag.volume_l ? ` · ${bag.volume_l} L` : ''} · {fmtPrice(bag.price_min, bag.currency)}</em>
+                  </a>
+                </li>
+              ))}
+            </ul>
+            <p class="note">
+              <a href={group.href}>All {group.total} {group.plural} →</a>
+            </p>
+          </section>
+        ))}
+        <p class="note">
+          Or browse <a href="/brands/">all {brands.length} brands</a>, where
+          every one of the {meta.bag_count ?? bags.length} models is listed.
+        </p>
+      </div>
+    </noscript>
   </BrowseShell>
 
   <script>
