@@ -35,6 +35,15 @@ SITE_URL = os.environ.get("SITE_URL", "https://carrynerd.com").rstrip("/")
 ALERT_FROM = os.environ.get("ALERT_FROM", "carrynerd <alerts@carrynerd.com>")
 RESEND_ENDPOINT = "https://api.resend.com/emails"
 
+# Cloudflare fronts api.resend.com and blocks urllib's default
+# `Python-urllib/3.x` signature outright — 403 with Cloudflare error 1010,
+# before Resend sees the request at all. Any ordinary UA passes. Found by a
+# hand-run send failing 403 while the identical request with this header
+# returned 200, which matters more than it looks: send() raises HTTPError,
+# main() catches it per-subscriber and continues, so every alert would have
+# failed while the nightly stayed green.
+UA = "carrynerd/0.1 (price alerts)"
+
 # One alert per subscription per bag per day. A brand that restages a sale
 # across forty SKUs overnight should produce one email, not forty.
 DEDUPE_HOURS = 24
@@ -143,6 +152,7 @@ def send(to, subject, text, html, unsub_url, api_key):
     req = urllib.request.Request(RESEND_ENDPOINT, data=payload, headers={
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
+        "User-Agent": UA,
     })
     with urllib.request.urlopen(req, timeout=30) as r:
         body = r.read()

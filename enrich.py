@@ -91,6 +91,40 @@ def enrichable(bag):
     return (bag.get("source") or "shopify").startswith(ENRICHABLE_SOURCES)
 
 
+# Weight sources that a figure read off the product page supersedes.
+#
+# Enrichment fills gaps and does not overwrite feed data — except where the
+# feed's own field is known to be answering a different question, and these
+# are the three ways that happens.
+#
+# The shipping fields are the box, not the bag. Shopify's `grams` reports
+# Aer's 35L Travel Pack at 4536 g, exactly 10 lb, against a real 1.77 kg, and
+# normalize.py says of Magento's bare `weight` that it is "the same thing plus
+# a box".
+#
+# The bare sweeps over prose are the parsers that cannot tell the bag from
+# what is written next to it. LiteAF's packs sat at 133 g — the smallest of
+# four hip-belt options listed above a "Weights & Measurements" heading that
+# gave 31.8 oz — and Bonfus at 109 g, which was its shell fabric in ounces per
+# square yard. Both parsers are fixed now; the point of this list is that the
+# fix can reach the products it already got wrong.
+#
+# Which is also why `product-page` supersedes itself. Without it, a re-parse
+# can never correct an answer this step gave on an earlier run: the cache held
+# ULA's Dragonfly at 743 g while the catalogue kept the 1814 g — exactly 4 lb
+# — that an older parser had put there, and nothing would ever have moved it.
+#
+# Everything absent from this list is a *labelled* figure: pages:label,
+# pages:pairs, pages:table, description:labelled, magento:r_weight,
+# bellroy-api:net_weight_g. That is the product speaking about itself, and it
+# outranks anything swept off a page, including ours.
+SUPERSEDED_WEIGHT_SOURCES = frozenset({
+    "shopify:grams", "magento:weight",
+    "description", "campsaver:description",
+    "product-page",
+})
+
+
 def interleave(items, key):
     """Round-robin the items across their key groups, preserving order within
     each group. [a1 a2 a3 b1 c1] -> [a1 b1 c1 a2 a3]."""
@@ -649,16 +683,17 @@ def main():
                   + ", ".join(f"{k} [{v}]" for k, v in cooled_out.items()),
                   flush=True)
 
-    # Merge. Enrichment fills gaps and does not overwrite feed data, with one
-    # exception: Shopify's `grams` is a shipping field, and plenty of stores
-    # put the packed box weight in it (Aer's 35L Travel Pack reports 4536 g —
-    # exactly 10 lb — against a real 1.77 kg). A weight stated on the product
-    # page is the spec; grams is packaging. So the page wins.
+    # Merge. Enrichment fills gaps and does not overwrite feed data, except for
+    # the weight sources that are answering a different question — a shipping
+    # box, a fabric, an accessory. A weight stated on the product page is the
+    # spec; see SUPERSEDED_WEIGHT_SOURCES for which figures it beats and, more
+    # to the point, which labelled ones it does not.
     filled = weight_fixed = feat_gained = 0
     for bag in bags:
         extra = cache.get(bag["id"]) or {}
 
-        if (extra.get("weight_g") and bag.get("weight_source") == "shopify:grams"
+        if (extra.get("weight_g")
+                and bag.get("weight_source") in SUPERSEDED_WEIGHT_SOURCES
                 and extra["weight_g"] != bag.get("weight_g")):
             bag["weight_g"] = extra["weight_g"]
             bag["weight_source"] = extra.get("weight_source", "product-page")
