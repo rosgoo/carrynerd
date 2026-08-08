@@ -174,9 +174,10 @@ create table if not exists events (
   -- view to the click it produced.
   brand      text,
   bag_id     text,
-  -- Which surface: 'product_page', 'offers_table' or 'browse_overlay'. Clicks
-  -- arrive from all three, views from only two, so the rate is only comparable
-  -- within a surface — see the note in scripts/analytics.js.
+  -- Which surface: 'product_page', 'offers_table', 'variant_row' or
+  -- 'browse_overlay'. Clicks arrive from all four, views from only two, so the
+  -- rate is only comparable within a surface — see the note in
+  -- scripts/analytics.js.
   placement  text,
   -- Destination host for a buy_click, null for a view. Today this is always
   -- the brand's own store; it stops being redundant the day retailer offers
@@ -195,6 +196,49 @@ create index if not exists events_rate
 create index if not exists events_bag
   on events (bag_id, name);
 
+-- Brand requests.
+--
+-- The one thing a reader can tell us that the crawl cannot work out for itself:
+-- which maker is missing. Written by /api/request-brand from three buttons —
+-- the Brand filter, the top of /brands/, and the footer — and read back on
+-- /internal/requests/, which is the whole point of storing it rather than
+-- mailing it: a brand asked for once is an anecdote, and a brand asked for
+-- forty times is the next thing to crawl. That count only exists if the
+-- requests land in a table.
+create table if not exists brand_requests (
+  -- What they typed. Deliberately not slugified and not matched against the
+  -- catalog: they are naming a brand we do not have, so there is nothing to
+  -- match it against, and mangling it would lose the spelling that identifies
+  -- it. Reconciling "Tom Bihn" with "tombihn" is the reviewer's job.
+  id         bigint generated always as identity primary key,
+  name       text        not null,
+  -- Where it sells, if they knew. Usually the fastest route from a request to
+  -- a crawl, since fetch.py needs a storefront and not a name.
+  url        text,
+  -- Optional, and not a subscription. It exists so a request can be answered,
+  -- and it goes through none of the double opt-in machinery above because it
+  -- is not a mailing list: see the note in src/pages/api/request-brand.ts.
+  email      text,
+  -- sha256 of the UTC date and the requester's IP — see requesterHash() in the
+  -- endpoint. Two jobs, both of which need to tell requesters apart and
+  -- neither of which needs to know who they are: the daily cap, and the dedupe
+  -- index below. Because the date is inside the digest, the value stops
+  -- matching the same person at UTC midnight, which is what keeps this from
+  -- being a durable identifier for anybody.
+  ip_hash    text        not null,
+  created_at timestamptz not null default now()
+);
+
+-- One row per requester per brand per day, and ip_hash first so the same index
+-- also answers "how many has this requester filed today", which is the daily
+-- cap. Asking twice is not two votes; two *people* asking is the signal.
+create unique index if not exists brand_requests_once
+  on brand_requests (ip_hash, lower(btrim(name)));
+
+-- The queue, newest first.
+create index if not exists brand_requests_recent
+  on brand_requests (created_at desc);
+
 -- Belt and braces against the hosted layer. Supabase fronts the public schema
 -- with a REST API whose anon key is designed to be handed to browsers, and
 -- subscriptions is the one table that must never be readable that way. Row
@@ -202,9 +246,10 @@ create index if not exists events_bag
 -- own connection is the table owner, which RLS does not bind, so nothing in
 -- alerts/ or src/ changes behaviour. On plain Postgres this is a no-op with
 -- the same shape: deny roles that were never granted anything anyway.
-alter table subscriptions enable row level security;
-alter table sent_alerts   enable row level security;
-alter table events        enable row level security;
-alter table email_sends   enable row level security;
-alter table email_events  enable row level security;
-alter table suppressions  enable row level security;
+alter table subscriptions   enable row level security;
+alter table sent_alerts     enable row level security;
+alter table events          enable row level security;
+alter table email_sends     enable row level security;
+alter table email_events    enable row level security;
+alter table suppressions    enable row level security;
+alter table brand_requests  enable row level security;

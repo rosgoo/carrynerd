@@ -1,0 +1,70 @@
+---
+/* "Request a brand" — one dialog, opened from three places.
+ *
+ * The three buttons are far apart (the Brand filter in the browse rail, the
+ * top of /brands/, and the site footer) and two of them sit on pages that
+ * mount no island at all. Rather than three forms, this renders the form once
+ * from the layout, and anything anywhere on the site with `data-request-brand`
+ * opens it — including the button browse.js injects into the filter rail at
+ * runtime, since the listener is delegated from the document.
+ *
+ * Posts to /api/request-brand. Nothing here is a subscription: the address is
+ * optional and answers this one request, which is why there is no double
+ * opt-in and no unsubscribe link — see the note in the endpoint.
+ */
+---
+<dialog class="reqdlg" id="reqbrand" aria-labelledby="reqbrand-title">
+  <form class="reqform" data-request-brand-form>
+    <header>
+      <h2 id="reqbrand-title">Request a brand</h2>
+      <button class="btn ghost" type="button" data-request-brand-close>Close ✕</button>
+    </header>
+
+    <p class="reqnote">
+      Which maker is missing? The index grows from public product feeds, so a
+      link to where they sell is the fastest route from this box to a crawl —
+      but the name on its own is enough.
+    </p>
+
+    <label class="reqfield">
+      <span>Brand</span>
+      <input type="text" name="name" maxlength="80" required autocomplete="off"
+             spellcheck="false" placeholder="e.g. Tom Bihn" />
+    </label>
+
+    <label class="reqfield">
+      <span>Where they sell <em>optional</em></span>
+      <input type="url" name="url" maxlength="200" autocomplete="off"
+             spellcheck="false" placeholder="tombihn.com" />
+    </label>
+
+    <label class="reqfield">
+      <span>Your email <em>optional</em></span>
+      <input type="email" name="email" maxlength="254" autocomplete="email"
+             placeholder="you@example.com" />
+    </label>
+
+    <p class="reqnote foot">
+      An address here is used once, to tell you if the brand lands. It joins no
+      list and gets no other mail — a price watch is the thing that does, and
+      that is a separate box on any bag's page.
+    </p>
+
+    {/* Not a field. Hidden from the layout and from the accessibility tree, so
+        only a form-filling script ever sees it; the endpoint drops anything
+        that arrives with it set. Named "company" because that is what those
+        scripts look for — "honeypot" is not. */}
+    <input class="reqtrap" type="text" name="company" tabindex="-1"
+           autocomplete="off" aria-hidden="true" />
+
+    <div class="reqactions">
+      <button class="btn" type="submit">Send request</button>
+    </div>
+
+    <p class="reqmsg" role="status" aria-live="polite" hidden></p>
+  </form>
+</dialog>
+
+<script>
+  import '../scripts/request-brand.js';
+</script>

@@ -1,10 +1,10 @@
 ---
 import Base from '../../layouts/Base.astro';
 import { brands, meta } from '../../lib/catalog.js';
-import { SITE_NAME } from '../../lib/brand.js';
+import { SITE_NAME_DISPLAY } from '../../lib/brand.js';
 import { fmtPrice } from '../../lib/format.js';
 
-const title = `Brands — ${SITE_NAME}`;
+const title = `Brands — ${SITE_NAME_DISPLAY}`;
 const description =
   `Every brand in the index: ${brands.length} makers, ` +
   `${meta.bag_count ?? 0} models, ${meta.sku_count ?? 0} SKUs.`;
@@ -18,6 +18,14 @@ const description =
     <p class="note">
       {brands.length} brands with at least one model in the index. Coverage
       grows as more storefronts are resolved and crawled.
+    </p>
+    {/* Above the list rather than under it. This is the page someone lands on
+        to check whether their maker is here, and the ones who find out it is
+        not have no reason to reach the bottom of an alphabet of everyone
+        else. Ships hidden and is revealed by request-brand.js. */}
+    <p class="reqrow">
+      <button class="btn" type="button" data-request-brand hidden>Request a brand</button>
+      <span>Missing one? Tell us which — the most-asked-for get crawled first.</span>
     </p>
     <ul class="related brandlist">
       {brands.map((brand) => {

@@ -2,6 +2,7 @@
 import '../styles/app.css';
 import Logo from '../components/Logo.astro';
 import Analytics from '../components/Analytics.astro';
+import RequestBrand from '../components/RequestBrand.astro';
 import { SITE_NAME_DISPLAY } from '../lib/brand.js';
 import { hubs } from '../lib/hubs.js';
 
@@ -122,10 +123,17 @@ const robots = noindex ? `noindex,${nofollow ? 'nofollow' : 'follow'}` : null;
   <nav class="footrow" aria-label="Site">
     <a href="/carry-on/">Carry-on sizes</a>
     <a href="/brands/">Brands</a>
+    {/* In the layout because the answer to "you don't have my brand" has to be
+        reachable from wherever a reader worked that out, and on a model page
+        or a category hub the footer is the only site-wide furniture there is.
+        Ships hidden; request-brand.js reveals it — see the note there. */}
+    <button class="footbtn" type="button" data-request-brand hidden>Request a brand</button>
     <a href="/privacy/">Privacy</a>
     <a href="/bot/">About the crawler</a>
   </nav>
 </footer>
+
+<RequestBrand />
 
 <script>
   // Theme and units are the two behaviours every page shares. Both are one

@@ -1,0 +1,234 @@
+---
+/* Brand requests — the queue behind the "Request a brand" buttons.
+ *
+ * The reason those buttons write to a table instead of opening a mail client.
+ * One person asking for a maker is an anecdote; the same maker asked for
+ * thirty times is the next thing to point fetch.py at, and that ordering only
+ * exists if the requests land somewhere countable. This page is that count.
+ *
+ * Grouped by the name case-folded and trimmed, because that is the key the
+ * dedupe index uses — two people spelling it "Tom Bihn" and "tom bihn" are
+ * asking for one brand, and the spellings are printed underneath so a genuine
+ * disagreement about the name is visible rather than merged away.
+ *
+ * Behind the password, like /internal/referrals/: what readers want and we do
+ * not have is a map of the index's gaps, which is commercial rather than
+ * merely untidy.
+ */
+import Base from '../../layouts/Base.astro';
+import { sql } from '../../lib/db.ts';
+import { guard } from '../../lib/dash.ts';
+import { brands } from '../../lib/catalog.js';
+import { SITE_NAME_DISPLAY } from '../../lib/brand.js';
+
+export const prerender = false;
+
+const denied = await guard(Astro);
+if (denied) return denied;
+
+type Row = {
+  name: string;
+  requests: number;
+  spellings: string[];
+  urls: string[] | null;
+  emails: string[] | null;
+  // postgres.js hands timestamptz back as a Date; typed loosely so the same
+  // stamp() works if it is ever read from somewhere that returns the string.
+  first_at: string | Date;
+  last_at: string | Date;
+};
+
+let error: string | null = null;
+let rows: Row[] = [];
+let total = 0;
+
+try {
+  const db = sql();
+  rows = (await db`
+    select min(name)                                        as name,
+           count(*)::int                                    as requests,
+           array_agg(distinct name)                         as spellings,
+           array_agg(distinct url)   filter (where url is not null)   as urls,
+           array_agg(distinct email) filter (where email is not null) as emails,
+           min(created_at)                                  as first_at,
+           max(created_at)                                  as last_at
+      from brand_requests
+     group by lower(btrim(name))
+     order by requests desc, last_at desc
+     limit 300
+  `) as unknown as Row[];
+  total = rows.reduce((n, r) => n + r.requests, 0);
+} catch (err) {
+  error = err instanceof Error ? err.message : String(err);
+}
+
+/* Someone asking for a brand the index already carries is a different problem
+ * from a gap: they looked, did not find it, and asked. That is a naming or a
+ * findability failure — the brand filed under a name they did not think of —
+ * and it should not sit in a queue of things to go and crawl.
+ *
+ * Matched on letters and digits alone, because the request is typed freehand:
+ * "Peak Design", "peak-design" and "PeakDesign" are one brand, and anything
+ * stricter would file all three as gaps. */
+const key = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
+const HELD = new Map(brands.map((b) => [key(b.name), b] as const));
+for (const b of brands) HELD.set(key(b.slug), b);
+
+const held = (name: string) => HELD.get(key(name)) ?? null;
+
+const stamp = (v: string | Date | null) =>
+  v ? new Date(v).toISOString().slice(0, 10) : '—';
+
+const gaps = rows.filter((r) => !held(r.name));
+const known = rows.filter((r) => held(r.name));
+---
+<Base
+  title={`Brand requests — internal — ${SITE_NAME_DISPLAY}`}
+  description="Internal queue of brands readers have asked for."
+  noindex={true}
+>
+  <div class="page">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/internal/">Internal</a> <span>/</span> <b>Brand requests</b>
+      <span>·</span> <a href="/internal/referrals/">Referrals</a>
+      <span>·</span> <a href="/internal/domains/">Domains</a>
+    </nav>
+
+    <h1>Brand requests</h1>
+
+    {error && (
+      <section>
+        <p class="note">
+          <b>No data source.</b> The query failed with: <code>{error}</code>
+          <br /><br />
+          If this is a fresh deployment, <code>DATABASE_URL</code> is probably
+          unset, or the <code>brand_requests</code> block of
+          {' '}<code>alerts/schema.sql</code> has not been applied yet. Apply it
+          with <code>psql "$DATABASE_URL" -f alerts/schema.sql</code>; the file
+          is idempotent. Until then <code>/api/request-brand</code> is answering
+          every request with a 500 and the reader is being told so.
+        </p>
+      </section>
+    )}
+
+    {!error && rows.length === 0 && (
+      <section>
+        <p class="note">
+          Connected, and nobody has asked for anything yet. Expected until a
+          deployment carrying the buttons has had real traffic — the three
+          openers are on the Brand filter, the top of <a href="/brands/">/brands/</a>
+          {' '}and in the footer of every page.
+        </p>
+      </section>
+    )}
+
+    {!error && rows.length > 0 && (
+      <Fragment>
+        <p class="note">
+          <b>{total}</b> requests across <b>{rows.length}</b> distinct names.
+          {' '}<b>{gaps.length}</b> are brands the index does not carry — that
+          list is the queue, in the order readers put it in. The other
+          {' '}<b>{known.length}</b> name brands already in the catalog, which is
+          a findability problem rather than a coverage one.
+        </p>
+
+        <section>
+          <h2>Not in the index</h2>
+          {gaps.length === 0 ? (
+            <p class="note">
+              Nothing outstanding. Every name asked for is already carried.
+            </p>
+          ) : (
+            <table class="spectable brandtable">
+              <thead>
+                <tr>
+                  <th>Brand</th><th>Asks</th><th>Where they sell</th>
+                  <th>Reply to</th><th>First</th><th>Last</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gaps.map((r) => (
+                  <tr>
+                    <td>
+                      {r.name}
+                      {r.spellings.length > 1 && (
+                        <span class="nil" title="other spellings received">
+                          {' '}· {r.spellings.filter((s) => s !== r.name).join(' · ')}
+                        </span>
+                      )}
+                    </td>
+                    <td>{r.requests}</td>
+                    <td class="mono">
+                      {(r.urls ?? []).length
+                        ? (r.urls ?? []).map((u, i) => (
+                            <Fragment>
+                              {i > 0 && <span class="nil"> · </span>}
+                              <a href={u} rel="nofollow noopener">{u.replace(/^https?:\/\//, '')}</a>
+                            </Fragment>
+                          ))
+                        : <span class="nil">—</span>}
+                    </td>
+                    <td class="mono">
+                      {(r.emails ?? []).length
+                        ? (r.emails ?? []).join(' · ')
+                        : <span class="nil">—</span>}
+                    </td>
+                    <td class="mono">{stamp(r.first_at)}</td>
+                    <td class="mono">{stamp(r.last_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <p class="note foot">
+            A storefront is what <code>fetch.py</code> actually needs; a name on
+            its own still has to go through <code>resolve_domains.py</code>
+            {' '}first. Addresses here were given so the request could be
+            answered — they are on no list, so any reply is a reply and not a
+            mailing.
+          </p>
+        </section>
+
+        {known.length > 0 && (
+          <section>
+            <h2>Already carried</h2>
+            <p class="note">
+              These were asked for and are in the index under the name shown.
+              Somebody searched the Brand filter and did not find them, which
+              usually means the catalog files the brand under a different
+              spelling from the one people say out loud.
+            </p>
+            <table class="spectable brandtable">
+              <thead>
+                <tr><th>Asked for</th><th>Asks</th><th>In the index as</th><th>Last</th></tr>
+              </thead>
+              <tbody>
+                {known.map((r) => {
+                  const brand = held(r.name)!;
+                  return (
+                    <tr>
+                      <td>{r.name}</td>
+                      <td>{r.requests}</td>
+                      <td>
+                        <a href={`/brands/${brand.slug}/`}>{brand.name}</a>
+                        {' '}<span class="nil">({brand.bags.length} models)</span>
+                      </td>
+                      <td class="mono">{stamp(r.last_at)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </section>
+        )}
+      </Fragment>
+    )}
+  </div>
+</Base>
+
+<style>
+  code { font-family: var(--mono); font-size: .92em; color: var(--ink-dim); }
+  /* The URL and address columns are lists, not figures — let them wrap rather
+     than pushing the dates off the right edge. */
+  .brandtable .mono { white-space: normal; overflow-wrap: anywhere; }
+</style>
