@@ -57,6 +57,85 @@ const COVERAGE_ROWS = [
 const indexable = indexablePaths.size;
 const withDims = coverage.dims_cm?.have ?? 0;
 
+/* Where each spec value actually came from.
+ *
+ * Every extracted field carries a `*_source` sibling naming the rule that
+ * produced it, so a wrong number is auditable rather than mysterious. Grouped
+ * here into the three kinds of work behind a figure, because that split is the
+ * whole reason this is not a five-line script: a number the brand published as
+ * a field, a number sitting in the brand's own prose that had to be parsed out
+ * of it, and a number that appeared on no feed anywhere and had to be read off
+ * a product page one request at a time.
+ *
+ * Keyed on the family prefix rather than the full rule name — there are ~38 of
+ * those and they are an implementation detail, where the three families are
+ * the thing worth showing. `other` catches any family added later so a new
+ * rule shows up as uncounted rather than silently vanishing from the total.
+ */
+const PROVENANCE = [
+  {
+    label: 'Published as a field',
+    families: ['shopify', 'magento', 'bellroy-api'],
+    why: "Returned as structured data by the brand's own storefront API. Nothing to interpret.",
+  },
+  {
+    label: "Parsed from the brand's own text",
+    families: ['title', 'description', 'variant-option', 'campsaver'],
+    why: 'Stated, but in prose — a title reading “Travel Pack 45L”, a spec line in a description, a variant option called “21L”.',
+  },
+  {
+    label: 'Read off the product page',
+    families: ['product-page', 'pages'],
+    why: 'On no feed at all. Fetched a page at a time and read out of the rendered spec block or the schema.org data behind it.',
+  },
+] as const;
+
+const provenance = (() => {
+  const counted = new Map(PROVENANCE.map((row) => [row.label, 0]));
+  let other = 0;
+  for (const bag of bags) {
+    for (const field of ['dims_source', 'volume_source', 'weight_source'] as const) {
+      const source = bag[field];
+      if (!source) continue;
+      const family = String(source).split(':')[0];
+      const row = PROVENANCE.find((r) => (r.families as readonly string[]).includes(family));
+      if (row) counted.set(row.label, (counted.get(row.label) ?? 0) + 1);
+      else other += 1;
+    }
+  }
+  const rows = PROVENANCE.map((row) => ({ ...row, count: counted.get(row.label) ?? 0 }));
+  const total = rows.reduce((n, row) => n + row.count, 0) + other;
+  return { rows, other, total };
+})();
+
+/* How the category was decided, which is a precedence question and therefore
+   one where the honest thing to publish is how often each level actually
+   fires rather than only the order they are tried in. */
+const catSources = (() => {
+  const by = new Map<string, number>();
+  for (const bag of bags) {
+    const source = bag.category_source;
+    if (source) by.set(source, (by.get(source) ?? 0) + 1);
+  }
+  const of = (...keys: string[]) =>
+    keys.reduce((n, key) => n + (by.get(key) ?? 0), 0);
+  return {
+    title: of('title'),
+    shelf: of('collection', 'shelf', 'magento-shelf', 'bellroy-shelf'),
+    tag: of('tag'),
+  };
+})();
+
+/* Currency is the one field with a bucket meaning "nothing said otherwise",
+   and it is large enough that leaving it out of a page about provenance would
+   be the omission the rest of the page argues against.
+   Counted twice on purpose, because the two numbers answer different
+   questions and the smaller one alone would undersell it: currency is resolved
+   once per *store*, so meta counts brands, and the number of models carrying
+   the result is an order of magnitude larger. */
+const assumedBrands = meta.currency_sources?.assumed ?? 0;
+const assumedModels = bags.filter((bag) => bag.currency_source === 'assumed').length;
+
 /* The ledger's first observation, to the day.
    Month and year alone would read as "since August 2026" — which, written in
    August 2026, claims a history of days in the grammar of one measured in
@@ -170,6 +249,86 @@ const jsonLd = {
     </section>
 
     <section>
+      <h2>How it is built</h2>
+      <p class="note">
+        Five stages, run in order, every night. Each one is idempotent and
+        resumable: a stage that dies half way through costs the time it had
+        spent and nothing else, because the next run picks up from what is
+        already on disk rather than starting again.
+      </p>
+      <table class="spectable">
+        <tbody>
+          <tr>
+            <th scope="row">1. Fetch</th>
+            <td>
+              Reads each brand's public catalogue endpoint — one to three
+              requests for a whole storefront, whether it sells forty products
+              or fourteen hundred. <code>robots.txt</code> is read first and a
+              refusal is recorded rather than worked around. The work is split
+              across parallel workers by dividing the <em>brand list</em>;
+              splitting one brand's requests across workers to get around a
+              rate limit would be evasion, and is deliberately not done.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">2. Normalise</th>
+            <td>
+              The hard stage, and the one the index exists for. Turns
+              {' '}{fmt(meta.sku_count ?? 0)} SKUs described
+              {brands.length} different ways into one schema.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">3. Enrich</th>
+            <td>
+              One request per product page, for the fields no feed exposes —
+              dimensions above all. Reads the rendered spec block and the
+              schema.org data most stores emit for Google Shopping. This is the
+              expensive stage: it is capped per night, interleaved across every
+              brand with work outstanding so no single store sees a burst, and
+              it works through a backlog rather than trying to finish.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">4. Track prices</th>
+            <td>
+              Diffs every SKU against the last known state and appends only
+              what moved. The one output here that cannot be rebuilt: a spec
+              can be re-read at any time, a price you failed to record on the
+              day it changed is gone.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">5. Validate</th>
+            <td>
+              The gate. Runs before anything publishes, and refuses the night
+              if the catalogue moved further than a night's crawl plausibly
+              could.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="note">
+        Every page fetched in stage 3 is kept. That sounds like a storage
+        decision and is really a correctness one: a parser fix has to be able
+        to reach the products it already got wrong, and an incremental crawl by
+        definition skips those — the records that most need re-reading are
+        exactly the ones "only fetch what is missing" excludes. Because the
+        pages are on disk, a corrected rule is re-applied to the whole
+        catalogue at a cost of zero requests, and it runs nightly rather than
+        when someone remembers.
+      </p>
+      <p class="note">
+        A worked example, because it is the kind of error that survives every
+        obvious check: weights arriving as 133&nbsp;g for a serious hiking
+        pack, and 109&nbsp;g for another. Both were real numbers on the page —
+        one was the detachable hip belt, the other the fabric's weight per
+        square metre. Neither is the bag. Guards for that now run over every
+        cached page, which is only possible because the pages were kept.
+      </p>
+    </section>
+
+    <section>
       <h2>What counts as a bag</h2>
       <p class="note">
         A bag brand's catalogue is mostly not bags. Hats, patches, water
@@ -181,13 +340,28 @@ const jsonLd = {
         and were held back rather than guessed at.
       </p>
       <p class="note">
-        What survives is sorted into {hubs.length} categories using the brand's
-        own product type, collections and breadcrumbs before anything is
-        inferred from the title — a maker calling something a sling is better
-        evidence than the word "sling" appearing in a name. Where that produces
-        a wrong answer often enough to matter, the ruling is written down in a
-        file and applied every night, so a correction stays corrected instead
-        of being re-litigated by the next run.
+        What survives is sorted into {hubs.length} categories by three signals
+        in a fixed order of precedence: the product's own <b>title</b> first,
+        then the <b>shelf</b> the store files it on, then its <b>tags</b>. A
+        title is specific and deliberate — "Travel Pack 45L" says exactly what
+        it is. A shelf is deliberate but broad. A tag is neither, and letting
+        tags outrank titles filed one maker's entire camera line as hiking
+        packs, because it tags them for backpacking.
+      </p>
+      <table class="spectable">
+        <tbody>
+          <tr><th scope="row">Decided by title</th><td>{fmt(catSources.title)} models</td></tr>
+          <tr><th scope="row">By the store's shelf</th><td>{fmt(catSources.shelf)} models</td></tr>
+          <tr><th scope="row">By tags</th><td>{fmt(catSources.tag)} models</td></tr>
+        </tbody>
+      </table>
+      <p class="note">
+        Where that order still produces a wrong answer often enough to matter,
+        the ruling is written down in a file and applied every night, so a
+        correction stays corrected instead of being re-litigated by the next
+        run. Exclusion runs before classification and is asked in the other
+        direction: a product filed under a shelf the store itself marks as not
+        a bag is dropped without its title getting a vote.
       </p>
       <p class="note">
         One bag is often several products. The same pack in four colourways is
@@ -231,6 +405,44 @@ const jsonLd = {
     </section>
 
     <section>
+      <h2>Every number knows where it came from</h2>
+      <p class="note">
+        Each extracted value carries a sibling field naming the rule that
+        produced it — there are about forty of them — so a figure that looks
+        wrong can be traced to the thing that decided it instead of being
+        mysterious. That is what makes a correction possible at all: without
+        provenance, fixing one bad weight means re-reading every weight.
+      </p>
+      <p class="note">
+        Grouped by the kind of work behind them, the
+        {' '}{fmt(provenance.total)} volume, weight and dimension figures in
+        the index break down like this. The third row is the one that takes the
+        time.
+      </p>
+      <table class="spectable">
+        <thead>
+          <tr><th scope="col">Came from</th><th scope="col">Values</th><th scope="col">What that means</th></tr>
+        </thead>
+        <tbody>
+          {provenance.rows.map((row) => (
+            <tr>
+              <th scope="row">{row.label}</th>
+              <td>{fmt(row.count)}</td>
+              <td>{row.why}</td>
+            </tr>
+          ))}
+          {provenance.other > 0 && (
+            <tr>
+              <th scope="row">Other</th>
+              <td>{fmt(provenance.other)}</td>
+              <td>A rule added since this table was last grouped.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </section>
+
+    <section>
       <h2>What the numbers mean</h2>
       <table class="spectable">
         <tbody>
@@ -263,7 +475,20 @@ const jsonLd = {
           </tr>
           <tr>
             <th scope="row">Price</th>
-            <td>As listed by the brand, in the currency the brand lists it in. Nothing is converted: an exchange rate would be a number we invented that moves independently of any price.</td>
+            <td>
+              As listed by the brand. Nothing is converted: an exchange rate
+              would be a number we invented that moves independently of any
+              price, so a range spanning currencies would compare figures
+              rather than worth. The currency itself is evidence like anything
+              else — read from the feed where it states one, from the store's
+              configured market, or from the product page's structured offer.
+              Where none of those said anything — {assumedBrands} of the
+              {' '}{brands.length} storefronts, carrying
+              {' '}{fmt(assumedModels)} models — the price falls back to US
+              dollars, and that is an assumption rather than a reading. It is
+              the only field on the site with nothing under it, which is why
+              the nightly gate checks it specifically.
+            </td>
           </tr>
         </tbody>
       </table>
@@ -279,6 +504,55 @@ const jsonLd = {
         continuously, a
         few hundred product pages a night, because they are the field that has
         to be read off a page rather than taken from a feed.
+      </p>
+    </section>
+
+    <section>
+      <h2>What stops a bad night from publishing</h2>
+      <p class="note">
+        The pipeline runs unattended and deploys what it produces. That is fine
+        right up until a change to one parsing rule halves the index — at which
+        point every step succeeds, the site rebuilds, and search engines
+        recrawl a catalogue missing half its bags. Nothing in a green run would
+        say so. So the last stage before publishing is a gate that refuses.
+      </p>
+      <table class="spectable">
+        <tbody>
+          <tr>
+            <th scope="row">Structural</th>
+            <td>
+              Absolute truths about a well-formed catalogue: required fields
+              present, permalinks unique, every value inside physically
+              sane bounds. A bag cannot weigh two grams or be four metres tall.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Regression</th>
+            <td>
+              Tonight compared against the copy currently live. The bag count,
+              each brand's count and the fill rate of every field each have a
+              limit on how far they may fall in one night. A legitimate large
+              change is allowed, but it takes a human raising the limit for
+              that run and saying why.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Plausibility</th>
+            <td>
+              The checks that catch a parse that is wrong rather than absent —
+              a currency that moved for a whole brand, a suspicious cluster of
+              volumes that look computed rather than stated, densities that no
+              real bag has.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="note">
+        A rejected night publishes nothing and keeps yesterday's catalogue
+        live, which is always the better of the two outcomes: stale data is
+        visibly a day old, and wrong data looks exactly like right data. The
+        price ledger is banked before the gate runs regardless, because it is
+        the one record that cannot be reconstructed later.
       </p>
     </section>
 
@@ -313,10 +587,11 @@ const jsonLd = {
       <p class="note">
         If a figure here disagrees with the one on your own product page, the
         product page is right and this is a bug worth reporting. Write to
-        {' '}<a href={`mailto:${CONTACT.crawler}`}>{CONTACT.crawler}</a>. If
-        you operate a store and would rather not be included at all, the same
-        address, and <a href="/bot/">the crawler page</a> explains how to say
-        so in <code>robots.txt</code> instead.
+        {' '}<a href={`mailto:${CONTACT.general}`}>{CONTACT.general}</a>. If
+        you operate a store and would rather not be included at all, write to
+        {' '}<a href={`mailto:${CONTACT.crawler}`}>{CONTACT.crawler}</a>, and
+        {' '}<a href="/bot/">the crawler page</a> explains how to say so in
+        {' '}<code>robots.txt</code> instead.
       </p>
     </section>
 

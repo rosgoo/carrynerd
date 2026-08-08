@@ -73,8 +73,21 @@ export const SITE_DESCRIPTION =
  */
 export const PROFILES = ['https://github.com/rosgoo/carrynerd'];
 
-/** Contact addresses referenced by /bot and /privacy. */
+/* Contact addresses. All of these are doors into one mailbox — the domain runs
+   a catch-all, so adding a name here costs nothing and creates no new inbox to
+   watch. They stay separate anyway because the name sets the reader's
+   expectation: a store operator writing to `crawler` knows the mail will be
+   understood, and `privacy` on a privacy page reads as a data-request channel
+   rather than a general tip line. `general` is the one to reach for when the
+   writer is a reader rather than a brand — /about's corrections used to point
+   at `crawler`, which sent anyone reporting a wrong dimension to an address
+   named after the scraper.
+
+   `alerts` is not listed because nothing renders it: it is the From: on every
+   send and lives in ALERT_FROM / alerts/match.py. It does have to keep
+   receiving, though, since replies to a price alert land there. */
 export const CONTACT = {
+  general: 'hello@carrynerd.com',
   crawler: 'crawler@carrynerd.com',
   privacy: 'privacy@carrynerd.com',
 };
