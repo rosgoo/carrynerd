@@ -3,7 +3,8 @@ import '../styles/app.css';
 import Logo from '../components/Logo.astro';
 import Analytics from '../components/Analytics.astro';
 import RequestBrand from '../components/RequestBrand.astro';
-import { SITE_NAME_DISPLAY } from '../lib/brand.js';
+import { SITE_NAME_DISPLAY, SITE_DESCRIPTION, TAGLINE } from '../lib/brand.js';
+import { siteGraph } from '../lib/schema.js';
 import { hubs } from '../lib/hubs.js';
 
 interface Props {
@@ -17,7 +18,7 @@ interface Props {
 
 const {
   title,
-  description = 'A searchable, comparable index of bags normalised across brands from public product feeds.',
+  description = SITE_DESCRIPTION,
   image = null,
   ogType = 'website',
   noindex = false,
@@ -31,6 +32,43 @@ const {
 
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
 const robots = noindex ? `noindex,${nofollow ? 'nofollow' : 'follow'}` : null;
+
+/* Every page gets a card, which until now only the model pages did.
+ *
+ * `image` is the product photo on a model page and null on all ~200 others —
+ * the homepage, the fourteen hubs and their facets, the brand index and every
+ * brand page, the carry-on tables, /privacy, /bot. Those emitted no og:image
+ * at all, so a link to any of them unfurled as a bare URL: no card, no mark,
+ * nothing to distinguish it from a paste. public/og.png is the fallback, drawn
+ * by scripts/og_image.py.
+ *
+ * Absolute on purpose. og:image is fetched by a machine that never loaded the
+ * page and has no base to resolve against, and a relative path is the single
+ * most common way this tag silently does nothing. A model page's `bag.image`
+ * is already a CDN URL, so only the fallback needs building here.
+ *
+ * The width and height go out only with the fallback, where they are known to
+ * be true. Stating them lets Slack and LinkedIn commit to a large card without
+ * fetching the file first; stating them for a product photo of unknown
+ * proportions would be a guess, and a wrong one crops the bag.
+ */
+const OG_FALLBACK = new URL('/og.png', Astro.site).href;
+const ogImage = image || OG_FALLBACK;
+const ogFallback = ogImage === OG_FALLBACK;
+const ogImageAlt = ogFallback ? `${SITE_NAME_DISPLAY} — ${TAGLINE}` : title;
+
+/* Who this site is, declared once. See lib/schema.js for what the two nodes
+ * are for and why the pair of them is home-page-only.
+ *
+ * In the layout rather than on index.astro because the home page is a browse
+ * shell whose frontmatter is about filters and counts, and this is about the
+ * site — but gated on the path rather than shipped everywhere, which is the
+ * other obvious way to do it. Repeating ~900 bytes of identical markup across
+ * 4,200 pages buys nothing: `@id` already makes every declaration of this
+ * entity the same entity, so the second copy is not a second signal, only
+ * bytes on every page in the catalogue.
+ */
+const isHome = Astro.url.pathname === '/';
 ---
 <!doctype html>
 <html lang="en" data-theme="dark" data-units="cm">
@@ -47,8 +85,18 @@ const robots = noindex ? `noindex,${nofollow ? 'nofollow' : 'follow'}` : null;
 <meta property="og:title" content={title} />
 <meta property="og:description" content={description} />
 <meta property="og:url" content={canonical} />
-{image && <meta property="og:image" content={image} />}
-<meta name="twitter:card" content={image ? 'summary_large_image' : 'summary'} />
+<meta property="og:image" content={ogImage} />
+<meta property="og:image:alt" content={ogImageAlt} />
+{ogFallback && <meta property="og:image:width" content="1200" />}
+{ogFallback && <meta property="og:image:height" content="630" />}
+<meta name="twitter:card" content="summary_large_image" />
+
+{/* is:inline because this is data for a crawler, not code: it has to ship in
+    the document as written rather than be bundled and fetched. Same reasoning
+    as the JSON-LD on the model and hub pages. */}
+{isHome && (
+  <script type="application/ld+json" is:inline set:html={JSON.stringify(siteGraph(Astro.site))} />
+)}
 
 <!-- Restore the saved theme and unit before first paint. Deferring either to
      the island would flash — dark-on-light for anyone who chose the light
@@ -128,6 +176,12 @@ const robots = noindex ? `noindex,${nofollow ? 'nofollow' : 'follow'}` : null;
         or a category hub the footer is the only site-wide furniture there is.
         Ships hidden; request-brand.js reveals it — see the note there. */}
     <button class="footbtn" type="button" data-request-brand hidden>Request a brand</button>
+    {/* First in this row, and above the crawler link rather than beside it:
+        one of these answers "what is this site and can I trust the numbers"
+        and the other answers "why is something fetching my products.json".
+        The second is for store operators and has been mislabelled as the
+        site's about page for as long as it was the only thing called about. */}
+    <a href="/about/">About</a>
     <a href="/privacy/">Privacy</a>
     <a href="/bot/">About the crawler</a>
   </nav>

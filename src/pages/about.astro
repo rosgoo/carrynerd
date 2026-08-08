@@ -1,0 +1,330 @@
+---
+import Base from '../layouts/Base.astro';
+import { meta, brands, bags, indexablePaths, trackingSince } from '../lib/catalog.js';
+import { hubs } from '../lib/hubs.js';
+import { SITE_NAME, SITE_NAME_DISPLAY, CONTACT } from '../lib/brand.js';
+import { organization } from '../lib/schema.js';
+
+/* The page that says what this is.
+ *
+ * Two jobs, and they turn out to be the same job. A search for the name has
+ * nothing to land on: every other page here answers "what is this bag", which
+ * is a question about a product, and none of them answer "what is carrynerd",
+ * which is a question about the site. And the thing that makes an aggregator
+ * worth trusting is its method — how it decides what a bag is, what it does
+ * when a brand publishes nothing, what it refuses to guess. That method is
+ * real, it is enforced in code, and until now it was written down only in
+ * source comments where no reader would ever find it.
+ *
+ * So: one page, the entity and the method together, rather than an "about"
+ * that says nothing and a "methodology" nobody clicks. Every number on it is
+ * read from the manifest the pipeline writes, so it cannot drift from the
+ * catalogue it describes — the failure mode of a hand-written methodology page
+ * is that it slowly stops being true, and nothing here can.
+ */
+
+const title = `About ${SITE_NAME_DISPLAY} — how the index is built`;
+const description =
+  `${SITE_NAME} is a spec index for bags: volume, weight, dimensions and price, `
+  + 'normalised across brands from their own published product data. How it is '
+  + 'built, what it covers, and what it refuses to guess.';
+
+const fmt = (n: number) => n.toLocaleString('en-US');
+
+/* Rejections are published per reason, and the reasons are prefixed by family.
+   Totalling by prefix rather than listing thirteen leaf codes keeps the number
+   honest while staying readable — and the two families mean genuinely
+   different things, which is the distinction worth drawing. */
+const rejected = meta.rejected ?? {};
+const totalFor = (prefix: string) =>
+  Object.entries(rejected)
+    .filter(([reason]) => reason.startsWith(prefix))
+    .reduce((n, [, count]) => n + count, 0);
+
+const notBags = totalFor('not-a-bag');
+const unclassified = totalFor('unclassified');
+
+const coverage = meta.coverage ?? {};
+const COVERAGE_ROWS = [
+  ['Price', 'price_min', 'Every storefront publishes one.'],
+  ['Weight', 'weight_g', 'Usually in the feed, and the field brands are best at.'],
+  ['Volume', 'volume_l', 'Often in the title or a spec block rather than a field of its own.'],
+  ['Dimensions', 'dims_cm', 'The hardest to get, and the one the carry-on tables need. Read off product pages one at a time.'],
+  ['Laptop size', 'laptop_in', 'Only where a brand states it. Never inferred from the bag'
+    + "’s own dimensions — a 40 cm-tall pack does not necessarily take a 16″ laptop."],
+] as const;
+
+const indexable = indexablePaths.size;
+const withDims = coverage.dims_cm?.have ?? 0;
+
+/* The ledger's first observation, to the day.
+   Month and year alone would read as "since August 2026" — which, written in
+   August 2026, claims a history of days in the grammar of one measured in
+   years. The exact date claims nothing: a reader can see how long it is and
+   decide for themselves what that is worth, and the sentence stays true as
+   the answer grows. */
+const since = trackingSince
+  ? new Date(trackingSince).toLocaleDateString('en-US', {
+      day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+    })
+  : null;
+
+const built = meta.generated_at
+  ? new Date(meta.generated_at).toLocaleDateString('en-US', {
+      day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+    })
+  : null;
+
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
+
+/* The Organization again, identically, because this is the page that describes
+ * it — the home page carries it for the site-name feature, and the recommended
+ * home for the entity itself is the page a reader would go to for the same
+ * answer. Same `@id`, so this is one declaration in two places rather than two
+ * organisations that look alike.
+ *
+ * No `dateModified` on the page node, deliberately. This page rebuilds nightly
+ * and its figures move only when the catalogue moves, so stamping every build
+ * with a fresh date would be the same false-freshness claim lib/lastmod.js
+ * exists to avoid. The visible line at the foot says which build the numbers
+ * came from, which is a statement about the data and true.
+ */
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    organization(Astro.site),
+    {
+      '@type': 'AboutPage',
+      '@id': `${canonical}#page`,
+      url: canonical,
+      name: title,
+      description,
+      inLanguage: 'en',
+      isPartOf: { '@id': new URL('/#website', Astro.site).href },
+      about: { '@id': new URL('/#organization', Astro.site).href },
+    },
+    {
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Bags', item: new URL('/', Astro.site).href },
+        { '@type': 'ListItem', position: 2, name: 'About', item: canonical },
+      ],
+    },
+  ],
+};
+---
+<Base title={title} description={description}>
+  <Fragment slot="head">
+    <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
+  </Fragment>
+
+  <div class="page">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/">Bags</a> <span>/</span> <b>About</b>
+    </nav>
+    <h1>About {SITE_NAME_DISPLAY}</h1>
+    <p class="note">
+      {SITE_NAME} is a spec index for bags. It reads what brands publish about
+      their own products and normalises it, so that a volume, a weight and a
+      set of dimensions can be compared across makers who all describe them
+      differently. It currently holds {fmt(meta.bag_count ?? bags.length)}
+      {' '}models from {brands.length} brands, covering
+      {' '}{fmt(meta.sku_count ?? 0)} individual SKUs.
+    </p>
+    <p class="note">
+      It exists because the specification you need in order to choose a bag is
+      almost never in one place. One brand gives litres and no dimensions,
+      the next gives dimensions in inches and no weight, a third puts the
+      laptop size in a paragraph of marketing copy. Comparing three bags means
+      opening nine tabs and doing arithmetic. This does that once, nightly, for
+      every bag it can reach.
+    </p>
+
+    <section>
+      <h2>The name</h2>
+      <p class="note">
+        A carry nerd is what this audience already calls itself — someone who
+        knows the difference between 500D and X-Pac, and who has opinions about
+        where a water bottle pocket belongs. The name is that phrase, not a
+        coinage. The bison is older than the name and stayed.
+      </p>
+    </section>
+
+    <section>
+      <h2>Where the data comes from</h2>
+      <p class="note">
+        Brands' own published product data: {meta.generated_from}. Nothing is
+        bought, licensed or scraped from another comparison site, and no figure
+        anywhere on this site is estimated, interpolated or converted from a
+        different unit than the one the brand stated.
+      </p>
+      <p class="note">
+        The crawler reads public endpoints only, checks
+        {' '}<code>robots.txt</code> first and records why when it is told no,
+        paces its requests and identifies itself with a URL pointing at
+        {' '}<a href="/bot/">a page explaining what it is</a>. Product images
+        are referenced at the brand's own URLs rather than copied, so they
+        serve from the brand's CDN and stop working the moment the brand
+        removes them. Every model page links back to the product it describes.
+      </p>
+    </section>
+
+    <section>
+      <h2>What counts as a bag</h2>
+      <p class="note">
+        A bag brand's catalogue is mostly not bags. Hats, patches, water
+        bottles, gift cards, spare buckles and — genuinely — a knife filed
+        under Camping&nbsp;&amp;&nbsp;Hiking all arrive through the same feed as
+        the backpacks. On the last build, {fmt(notBags)} products were
+        classified as not a bag and left out, and a further
+        {' '}{fmt(unclassified)} could not be classified confidently either way
+        and were held back rather than guessed at.
+      </p>
+      <p class="note">
+        What survives is sorted into {hubs.length} categories using the brand's
+        own product type, collections and breadcrumbs before anything is
+        inferred from the title — a maker calling something a sling is better
+        evidence than the word "sling" appearing in a name. Where that produces
+        a wrong answer often enough to matter, the ruling is written down in a
+        file and applied every night, so a correction stays corrected instead
+        of being re-litigated by the next run.
+      </p>
+      <p class="note">
+        One bag is often several products. The same pack in four colourways is
+        four listings on a storefront and one thing a reader is choosing;
+        the last build merged {fmt(meta.products_merged ?? 0)} products into
+        the models they are colourways of, and collapsed
+        {' '}{fmt(meta.models_collapsed ?? 0)} further duplicate models. The
+        colourway table on a model page is where those separate listings still
+        exist.
+      </p>
+    </section>
+
+    <section>
+      <h2>What is actually known</h2>
+      <p class="note">
+        This is the number most comparison sites do not publish. Coverage is
+        not uniform, it is not close to complete, and pretending otherwise
+        would make every other claim here worth less.
+      </p>
+      <table class="spectable">
+        <thead>
+          <tr><th scope="col">Field</th><th scope="col">Have</th><th scope="col">Why</th></tr>
+        </thead>
+        <tbody>
+          {COVERAGE_ROWS.map(([label, field, why]) => (
+            <tr>
+              <th scope="row">{label}</th>
+              <td>{coverage[field] ? `${coverage[field].pct}%` : '—'}</td>
+              <td>{why}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p class="note">
+        A missing value is shown as a dash, and a dash never means zero. It
+        means the brand did not publish it and we would not invent it. This is
+        the single rule the whole index is built on: a filter for bags under
+        1&nbsp;kg returns bags known to be under 1&nbsp;kg, not bags whose
+        weight is unknown.
+      </p>
+    </section>
+
+    <section>
+      <h2>What the numbers mean</h2>
+      <table class="spectable">
+        <tbody>
+          <tr>
+            <th scope="row">Dimensions</th>
+            <td>
+              As published, converted to centimetres and inches and shown in
+              both. Sorted largest axis first, because brands disagree about
+              which of the three they list first — so the triple is height,
+              width and depth in the usual case and is not a claim about which
+              way up the bag was measured.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Volume</th>
+            <td>The brand's stated capacity. Never computed from dimensions, which would describe a box rather than a bag.</td>
+          </tr>
+          <tr>
+            <th scope="row">Weight</th>
+            <td>The empty bag. Where a brand states a weight for a component or a load rating, that is not this field.</td>
+          </tr>
+          <tr>
+            <th scope="row">Carry-on fit</th>
+            <td>
+              Computed against {' '}<a href="/carry-on/">each airline's published limits</a>,
+              and only for bags with all three dimensions — {fmt(withDims)} of
+              them. A bag with no dimensions abstains rather than being assumed
+              to fit.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Price</th>
+            <td>As listed by the brand, in the currency the brand lists it in. Nothing is converted: an exchange rate would be a number we invented that moves independently of any price.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>How often it updates</h2>
+      <p class="note">
+        Nightly. Every price is re-read and every change is written to a
+        ledger{since && <> that has recorded every move since {since}</>} — one
+        row per actual move, not a daily snapshot — which is what the price
+        history on a model page is drawn from. Dimensions are filled in
+        continuously, a
+        few hundred product pages a night, because they are the field that has
+        to be read off a page rather than taken from a feed.
+      </p>
+    </section>
+
+    <section>
+      <h2>What is held back</h2>
+      <p class="note">
+        {fmt(indexable)} of the {fmt(bags.length)} model pages are offered to
+        search engines. The rest are published, linked and identical to look
+        at, but marked not to be indexed until they carry either a set of
+        dimensions or a volume and a weight together. A page showing a name, a
+        price and a column of dashes is not worth arriving on from a search
+        result, and saying so is cheaper than letting someone find out by
+        clicking. Pages cross that line as the data arrives.
+      </p>
+    </section>
+
+    <section>
+      <h2>What this is not</h2>
+      <p class="note">
+        Not a shop — nothing is sold here and there is no stock, no basket and
+        no checkout. Not a review site: there are no ratings, no scores and no
+        star counts anywhere in the index, because we have not tested these
+        bags and a rating we did not earn is worse than none. Not a
+        rewriter of marketing copy — the index holds facts, and the brand's
+        description of its own bag stays on the brand's page, where the buy
+        button also goes.
+      </p>
+    </section>
+
+    <section>
+      <h2>Corrections</h2>
+      <p class="note">
+        If a figure here disagrees with the one on your own product page, the
+        product page is right and this is a bug worth reporting. Write to
+        {' '}<a href={`mailto:${CONTACT.crawler}`}>{CONTACT.crawler}</a>. If
+        you operate a store and would rather not be included at all, the same
+        address, and <a href="/bot/">the crawler page</a> explains how to say
+        so in <code>robots.txt</code> instead.
+      </p>
+    </section>
+
+    {built && (
+      <p class="note foot">
+        Figures on this page are read from the catalogue itself and describe
+        the build of {built}.
+      </p>
+    )}
+  </div>
+</Base>

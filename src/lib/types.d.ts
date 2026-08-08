@@ -136,10 +136,17 @@ export interface CatalogMeta {
   models_collapsed?: number;
   currencies?: Record<string, number>;
   currency_sources?: Record<string, number>;
-  coverage?: Record<string, number>;
+  /** Per-field fill rate across the whole catalog, keyed by field name — the
+   *  numbers /about publishes and api/browse recomputes per scope. Both halves
+   *  are written: `pct` is what a reader is shown, `have` is what makes it
+   *  checkable against `bag_count`. */
+  coverage?: Record<string, { have: number; pct: number }>;
   enriched?: number;
   features_scanned?: number;
-  rejected?: Record<string, unknown>;
+  /** Reason -> count, for products the pipeline declined to index. Reasons are
+   *  prefixed by family (`not-a-bag:*`, `unclassified:*`), which is what lets
+   *  /about total them by kind without listing every leaf. */
+  rejected?: Record<string, number>;
   enrich_gaps?: Record<string, unknown>;
   image_bg_sampled?: number;
   /** Absent until the pipeline has run since the override files appeared. */

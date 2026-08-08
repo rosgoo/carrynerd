@@ -46,6 +46,33 @@ export const SITE_NAME_DISPLAY = 'CARRYNERD';
    category the name already says. */
 export const TAGLINE = 'backpack spec index';
 
+/* The one-line answer to "what is this", in the layout's default <meta
+   description>, in the Organization schema and on /about. One string because
+   the three have to agree: a search engine reconciling an entity across a site
+   treats a description that varies page to page as weaker evidence than one
+   that does not, and this is the sentence it is reconciling. */
+export const SITE_DESCRIPTION =
+  'A searchable, comparable index of bags normalised across brands from public product feeds.';
+
+/* Other pages that are demonstrably this same entity, for schema's `sameAs`.
+ *
+ * This is the list that answers "is carrynerd a thing, or just a domain" —
+ * `sameAs` is how an entity gets corroborated somewhere other than its own
+ * site, and a brand-name search result leans on that corroboration more than
+ * on anything the site says about itself.
+ *
+ * The bar for an entry is deliberately high: the page has to name this project
+ * and link back here, so the relationship is checkable in both directions. A
+ * `sameAs` pointing at a profile that does not exist, or that never mentions
+ * the site, is not a neutral omission — it is a claim that does not survive
+ * being followed, on the one node whose whole job is to be trusted.
+ *
+ * The repository qualifies: it is public, it carries the same one-line
+ * description as SITE_DESCRIPTION, and its homepage field points here. Social
+ * handles belong here too as they are claimed, not before.
+ */
+export const PROFILES = ['https://github.com/rosgoo/carrynerd'];
+
 /** Contact addresses referenced by /bot and /privacy. */
 export const CONTACT = {
   crawler: 'crawler@carrynerd.com',
