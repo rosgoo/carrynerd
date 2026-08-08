@@ -101,9 +101,13 @@ export async function send(mail: Mail, record?: SendRecord): Promise<SendResult>
       'content-type': 'application/json',
     },
     body: JSON.stringify({
+      // `||` and not `??`: an env var set to the empty string is present, so
+      // `??` keeps the empty value and Resend 422s the send. Vercel and the
+      // nightly both hand over empty strings for vars left unfilled.
+      //
       // Display name only — the address itself stays lower case, since
       // mailbox names are conventionally lower and some clients fold them.
-      from: process.env.ALERT_FROM ?? 'CARRYNERD <alerts@carrynerd.com>',
+      from: process.env.ALERT_FROM || 'CARRYNERD <alerts@carrynerd.com>',
       to: [mail.to],
       subject: mail.subject,
       html: mail.html,

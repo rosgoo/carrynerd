@@ -31,10 +31,16 @@ import sys
 import urllib.error
 import urllib.request
 
-SITE_URL = os.environ.get("SITE_URL", "https://carrynerd.com").rstrip("/")
+# `or` and not a get() default: both of these arrive from the nightly as
+# `${{ vars.X }}`, and an unset Actions variable is delivered as an empty
+# string, not as an absent key — so a get() default never fires and the value
+# is "". That sent `from: ""` to Resend (422 on every alert, caught per
+# subscriber, nightly still green) and collapsed every link in the mail to a
+# path with no origin.
+SITE_URL = (os.environ.get("SITE_URL") or "https://carrynerd.com").rstrip("/")
 # Display name only — the address itself stays lower case. Must agree with the
 # default in src/lib/email.ts, which sends the confirmation half.
-ALERT_FROM = os.environ.get("ALERT_FROM", "CARRYNERD <alerts@carrynerd.com>")
+ALERT_FROM = os.environ.get("ALERT_FROM") or "CARRYNERD <alerts@carrynerd.com>"
 RESEND_ENDPOINT = "https://api.resend.com/emails"
 
 # Cloudflare fronts api.resend.com and blocks urllib's default

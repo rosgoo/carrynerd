@@ -14,7 +14,9 @@ export default defineConfig({
   // override outlived the naming question it was added for: it now exists so
   // links can stay on the old domain until the new one is attached and out of
   // DNS quarantine — see SITE_URL in .env.template.
-  site: process.env.SITE_URL ?? 'https://carrynerd.com',
+  // `||` and not `??` — `.env` ships SITE_URL empty, and `??` keeps the empty
+  // string, which fails the build with "site: Invalid url".
+  site: process.env.SITE_URL || 'https://carrynerd.com',
   output: 'static',
   adapter: vercel(),
   // Astro distrusts the Host and X-Forwarded-Host headers unless the domain is
