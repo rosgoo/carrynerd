@@ -12,15 +12,14 @@ import { organization } from '../lib/schema.js';
  * is a question about a product, and none of them answer "what is carrynerd",
  * which is a question about the site. And the thing that makes an aggregator
  * worth trusting is its method — how it decides what a bag is, what it does
- * when a brand publishes nothing, what it refuses to guess. That method is
- * real, it is enforced in code, and until now it was written down only in
- * source comments where no reader would ever find it.
+ * when a brand publishes nothing, what it refuses to guess.
  *
  * So: one page, the entity and the method together, rather than an "about"
- * that says nothing and a "methodology" nobody clicks. Every number on it is
+ * that says nothing and a "methodology" nobody clicks. Kept at the altitude a
+ * reader deciding whether to trust the index needs — the claim and the number
+ * behind it, not the reasoning that produced either. Every number on it is
  * read from the manifest the pipeline writes, so it cannot drift from the
- * catalogue it describes — the failure mode of a hand-written methodology page
- * is that it slowly stops being true, and nothing here can.
+ * catalogue it describes.
  */
 
 const title = `About ${SITE_NAME_DISPLAY} — how the index is built`;
@@ -47,11 +46,11 @@ const unclassified = totalFor('unclassified');
 const coverage = meta.coverage ?? {};
 const COVERAGE_ROWS = [
   ['Price', 'price_min', 'Every storefront publishes one.'],
-  ['Weight', 'weight_g', 'Usually in the feed, and the field brands are best at.'],
-  ['Volume', 'volume_l', 'Often in the title or a spec block rather than a field of its own.'],
-  ['Dimensions', 'dims_cm', 'The hardest to get, and the one the carry-on tables need. Read off product pages one at a time.'],
+  ['Weight', 'weight_g', 'Usually in the feed.'],
+  ['Volume', 'volume_l', 'Often in the title rather than a field of its own.'],
+  ['Dimensions', 'dims_cm', 'The hardest to get, and the one the carry-on tables need.'],
   ['Laptop size', 'laptop_in', 'Only where a brand states it. Never inferred from the bag'
-    + "’s own dimensions — a 40 cm-tall pack does not necessarily take a 16″ laptop."],
+    + '’s own dimensions.'],
 ] as const;
 
 const indexable = indexablePaths.size;
@@ -76,17 +75,17 @@ const PROVENANCE = [
   {
     label: 'Published as a field',
     families: ['shopify', 'magento', 'bellroy-api'],
-    why: "Returned as structured data by the brand's own storefront API. Nothing to interpret.",
+    why: "Structured data from the brand's own storefront API. Nothing to interpret.",
   },
   {
     label: "Parsed from the brand's own text",
     families: ['title', 'description', 'variant-option', 'campsaver'],
-    why: 'Stated, but in prose — a title reading “Travel Pack 45L”, a spec line in a description, a variant option called “21L”.',
+    why: 'Stated, but in prose — a title reading “Travel Pack 45L”, a spec line, a variant option called “21L”.',
   },
   {
     label: 'Read off the product page',
     families: ['product-page', 'pages'],
-    why: 'On no feed at all. Fetched a page at a time and read out of the rendered spec block or the schema.org data behind it.',
+    why: 'On no feed at all. Fetched and read a page at a time.',
   },
 ] as const;
 
@@ -203,29 +202,23 @@ const jsonLd = {
     </nav>
     <h1>About {SITE_NAME_DISPLAY}</h1>
     <p class="note">
-      {SITE_NAME} is a spec index for bags. It reads what brands publish about
-      their own products and normalises it, so that a volume, a weight and a
-      set of dimensions can be compared across makers who all describe them
-      differently. It currently holds {fmt(meta.bag_count ?? bags.length)}
-      {' '}models from {brands.length} brands, covering
-      {' '}{fmt(meta.sku_count ?? 0)} individual SKUs.
+      {SITE_NAME} is a spec index for bags — volume, weight, dimensions and
+      price, read from what brands publish about their own products and
+      normalised so they can be compared across makers who all describe them
+      differently. It holds {fmt(meta.bag_count ?? bags.length)} models from {brands.length} brands,
+      covering {fmt(meta.sku_count ?? 0)} individual SKUs.
     </p>
     <p class="note">
-      It exists because the specification you need in order to choose a bag is
-      almost never in one place. One brand gives litres and no dimensions,
-      the next gives dimensions in inches and no weight, a third puts the
-      laptop size in a paragraph of marketing copy. Comparing three bags means
-      opening nine tabs and doing arithmetic. This does that once, nightly, for
-      every bag it can reach.
+      It exists because comparing three bags otherwise means opening nine tabs
+      and doing arithmetic. This does that once, nightly, for every bag it can
+      reach.
     </p>
 
     <section>
       <h2>The name</h2>
       <p class="note">
-        A carry nerd is what this audience already calls itself — someone who
-        knows the difference between 500D and X-Pac, and who has opinions about
-        where a water bottle pocket belongs. The name is that phrase, not a
-        coinage. The bison is older than the name and stayed.
+        A carry nerd is what this audience already calls itself — the name is
+        that phrase, not a coinage. The bison is older than the name and stayed.
       </p>
     </section>
 
@@ -233,120 +226,54 @@ const jsonLd = {
       <h2>Where the data comes from</h2>
       <p class="note">
         Brands' own published product data: {meta.generated_from}. Nothing is
-        bought, licensed or scraped from another comparison site, and no figure
-        anywhere on this site is estimated, interpolated or converted from a
-        different unit than the one the brand stated.
-      </p>
-      <p class="note">
-        The crawler reads public endpoints only, checks
-        {' '}<code>robots.txt</code> first and records why when it is told no,
-        paces its requests and identifies itself with a URL pointing at
-        {' '}<a href="/bot/">a page explaining what it is</a>. Product images
-        are referenced at the brand's own URLs rather than copied, so they
-        serve from the brand's CDN and stop working the moment the brand
-        removes them. Every model page links back to the product it describes.
+        bought, licensed or taken from another comparison site, and no figure
+        here is estimated, interpolated or converted from a unit the brand did
+        not state. The crawler reads public endpoints only, checks <code>robots.txt</code> first,
+        paces its requests and identifies itself with a link to <a href="/bot/">a page explaining what it is</a>.
+        Images are referenced at the brand's own URLs rather than copied, and
+        every model page links back to the product it describes.
       </p>
     </section>
 
     <section>
       <h2>How it is built</h2>
-      <p class="note">
-        Five stages, run in order, every night. Each one is idempotent and
-        resumable: a stage that dies half way through costs the time it had
-        spent and nothing else, because the next run picks up from what is
-        already on disk rather than starting again.
-      </p>
+      <p class="note">Five stages, run in order, every night.</p>
       <table class="spectable">
         <tbody>
           <tr>
             <th scope="row">1. Fetch</th>
-            <td>
-              Reads each brand's public catalogue endpoint — one to three
-              requests for a whole storefront, whether it sells forty products
-              or fourteen hundred. <code>robots.txt</code> is read first and a
-              refusal is recorded rather than worked around. The work is split
-              across parallel workers by dividing the <em>brand list</em>;
-              splitting one brand's requests across workers to get around a
-              rate limit would be evasion, and is deliberately not done.
-            </td>
+            <td>Each brand's public catalogue endpoint — a few requests for a whole storefront.</td>
           </tr>
           <tr>
             <th scope="row">2. Normalise</th>
-            <td>
-              The hard stage, and the one the index exists for. Turns
-              {' '}{fmt(meta.sku_count ?? 0)} SKUs described
-              {brands.length} different ways into one schema.
-            </td>
+            <td>{fmt(meta.sku_count ?? 0)} SKUs, described {brands.length} different ways, into one schema.</td>
           </tr>
           <tr>
             <th scope="row">3. Enrich</th>
-            <td>
-              One request per product page, for the fields no feed exposes —
-              dimensions above all. Reads the rendered spec block and the
-              schema.org data most stores emit for Google Shopping. This is the
-              expensive stage: it is capped per night, interleaved across every
-              brand with work outstanding so no single store sees a burst, and
-              it works through a backlog rather than trying to finish.
-            </td>
+            <td>Product pages read one at a time for the fields no feed exposes — dimensions above all. Capped per night and worked through as a backlog.</td>
           </tr>
           <tr>
             <th scope="row">4. Track prices</th>
-            <td>
-              Diffs every SKU against the last known state and appends only
-              what moved. The one output here that cannot be rebuilt: a spec
-              can be re-read at any time, a price you failed to record on the
-              day it changed is gone.
-            </td>
+            <td>Every SKU diffed against its last known state; only what moved is appended to the ledger.</td>
           </tr>
           <tr>
             <th scope="row">5. Validate</th>
-            <td>
-              The gate. Runs before anything publishes, and refuses the night
-              if the catalogue moved further than a night's crawl plausibly
-              could.
-            </td>
+            <td>The gate. Refuses the night if the catalogue moved further than a night's crawl plausibly could.</td>
           </tr>
         </tbody>
       </table>
-      <p class="note">
-        Every page fetched in stage 3 is kept. That sounds like a storage
-        decision and is really a correctness one: a parser fix has to be able
-        to reach the products it already got wrong, and an incremental crawl by
-        definition skips those — the records that most need re-reading are
-        exactly the ones "only fetch what is missing" excludes. Because the
-        pages are on disk, a corrected rule is re-applied to the whole
-        catalogue at a cost of zero requests, and it runs nightly rather than
-        when someone remembers.
-      </p>
-      <p class="note">
-        A worked example, because it is the kind of error that survives every
-        obvious check: weights arriving as 133&nbsp;g for a serious hiking
-        pack, and 109&nbsp;g for another. Both were real numbers on the page —
-        one was the detachable hip belt, the other the fabric's weight per
-        square metre. Neither is the bag. Guards for that now run over every
-        cached page, which is only possible because the pages were kept.
-      </p>
     </section>
 
     <section>
       <h2>What counts as a bag</h2>
       <p class="note">
-        A bag brand's catalogue is mostly not bags. Hats, patches, water
-        bottles, gift cards, spare buckles and — genuinely — a knife filed
-        under Camping&nbsp;&amp;&nbsp;Hiking all arrive through the same feed as
-        the backpacks. On the last build, {fmt(notBags)} products were
-        classified as not a bag and left out, and a further
-        {' '}{fmt(unclassified)} could not be classified confidently either way
-        and were held back rather than guessed at.
-      </p>
-      <p class="note">
-        What survives is sorted into {hubs.length} categories by three signals
-        in a fixed order of precedence: the product's own <b>title</b> first,
-        then the <b>shelf</b> the store files it on, then its <b>tags</b>. A
-        title is specific and deliberate — "Travel Pack 45L" says exactly what
-        it is. A shelf is deliberate but broad. A tag is neither, and letting
-        tags outrank titles filed one maker's entire camera line as hiking
-        packs, because it tags them for backpacking.
+        A bag brand's catalogue is mostly not bags — hats, patches, water
+        bottles, spare buckles. On the last build {fmt(notBags)} products were
+        classified as not a bag and left out, and {fmt(unclassified)} more could
+        not be classified confidently either way and were held back rather than
+        guessed at. What survives is sorted into {hubs.length} categories by
+        three signals in a fixed order of precedence: the product's own title
+        first, then the shelf the store files it on, then its tags.
       </p>
       <table class="spectable">
         <tbody>
@@ -356,30 +283,17 @@ const jsonLd = {
         </tbody>
       </table>
       <p class="note">
-        Where that order still produces a wrong answer often enough to matter,
-        the ruling is written down in a file and applied every night, so a
-        correction stays corrected instead of being re-litigated by the next
-        run. Exclusion runs before classification and is asked in the other
-        direction: a product filed under a shelf the store itself marks as not
-        a bag is dropped without its title getting a vote.
-      </p>
-      <p class="note">
-        One bag is often several products. The same pack in four colourways is
-        four listings on a storefront and one thing a reader is choosing;
-        the last build merged {fmt(meta.products_merged ?? 0)} products into
-        the models they are colourways of, and collapsed
-        {' '}{fmt(meta.models_collapsed ?? 0)} further duplicate models. The
-        colourway table on a model page is where those separate listings still
-        exist.
+        One bag is often several products. The last build merged {fmt(meta.products_merged ?? 0)} products
+        into the models they are colourways of, and collapsed {fmt(meta.models_collapsed ?? 0)} further
+        duplicate models.
       </p>
     </section>
 
     <section>
       <h2>What is actually known</h2>
       <p class="note">
-        This is the number most comparison sites do not publish. Coverage is
-        not uniform, it is not close to complete, and pretending otherwise
-        would make every other claim here worth less.
+        Coverage is not uniform and not close to complete, and pretending
+        otherwise would make every other claim here worth less.
       </p>
       <table class="spectable">
         <thead>
@@ -396,11 +310,10 @@ const jsonLd = {
         </tbody>
       </table>
       <p class="note">
-        A missing value is shown as a dash, and a dash never means zero. It
-        means the brand did not publish it and we would not invent it. This is
-        the single rule the whole index is built on: a filter for bags under
-        1&nbsp;kg returns bags known to be under 1&nbsp;kg, not bags whose
-        weight is unknown.
+        A missing value is shown as a dash, and a dash never means zero — it
+        means the brand did not publish it and we would not invent it. A filter
+        for bags under 1&nbsp;kg returns bags known to be under 1&nbsp;kg, not
+        bags whose weight is unknown.
       </p>
     </section>
 
@@ -408,16 +321,10 @@ const jsonLd = {
       <h2>Every number knows where it came from</h2>
       <p class="note">
         Each extracted value carries a sibling field naming the rule that
-        produced it — there are about forty of them — so a figure that looks
-        wrong can be traced to the thing that decided it instead of being
-        mysterious. That is what makes a correction possible at all: without
-        provenance, fixing one bad weight means re-reading every weight.
-      </p>
-      <p class="note">
-        Grouped by the kind of work behind them, the
-        {' '}{fmt(provenance.total)} volume, weight and dimension figures in
-        the index break down like this. The third row is the one that takes the
-        time.
+        produced it, so a figure that looks wrong can be traced to the thing
+        that decided it. The {fmt(provenance.total)} volume, weight and
+        dimension figures in the index break down by the kind of work behind
+        them.
       </p>
       <table class="spectable">
         <thead>
@@ -448,13 +355,7 @@ const jsonLd = {
         <tbody>
           <tr>
             <th scope="row">Dimensions</th>
-            <td>
-              As published, converted to centimetres and inches and shown in
-              both. Sorted largest axis first, because brands disagree about
-              which of the three they list first — so the triple is height,
-              width and depth in the usual case and is not a claim about which
-              way up the bag was measured.
-            </td>
+            <td>As published, converted to centimetres and inches and shown in both. Sorted largest axis first, because brands disagree about which of the three they list first.</td>
           </tr>
           <tr>
             <th scope="row">Volume</th>
@@ -462,32 +363,24 @@ const jsonLd = {
           </tr>
           <tr>
             <th scope="row">Weight</th>
-            <td>The empty bag. Where a brand states a weight for a component or a load rating, that is not this field.</td>
+            <td>The empty bag — not a component, not a load rating.</td>
           </tr>
           <tr>
             <th scope="row">Carry-on fit</th>
             <td>
-              Computed against {' '}<a href="/carry-on/">each airline's published limits</a>,
-              and only for bags with all three dimensions — {fmt(withDims)} of
-              them. A bag with no dimensions abstains rather than being assumed
-              to fit.
+              Computed against <a href="/carry-on/">each airline's published limits</a>, and only for
+              the {fmt(withDims)} bags with all three dimensions. A bag with no
+              dimensions abstains rather than being assumed to fit.
             </td>
           </tr>
           <tr>
             <th scope="row">Price</th>
             <td>
-              As listed by the brand. Nothing is converted: an exchange rate
-              would be a number we invented that moves independently of any
-              price, so a range spanning currencies would compare figures
-              rather than worth. The currency itself is evidence like anything
-              else — read from the feed where it states one, from the store's
-              configured market, or from the product page's structured offer.
-              Where none of those said anything — {assumedBrands} of the
-              {' '}{brands.length} storefronts, carrying
-              {' '}{fmt(assumedModels)} models — the price falls back to US
-              dollars, and that is an assumption rather than a reading. It is
-              the only field on the site with nothing under it, which is why
-              the nightly gate checks it specifically.
+              As listed by the brand, never converted. The currency is read from
+              the feed, the store's configured market or the product page's
+              structured offer; where none of those said anything — {assumedBrands} of
+              the {brands.length} storefronts, carrying {fmt(assumedModels)} models —
+              it falls back to US dollars, which is the one assumption on the site.
             </td>
           </tr>
         </tbody>
@@ -501,58 +394,36 @@ const jsonLd = {
         ledger{since && <> that has recorded every move since {since}</>} — one
         row per actual move, not a daily snapshot — which is what the price
         history on a model page is drawn from. Dimensions are filled in
-        continuously, a
-        few hundred product pages a night, because they are the field that has
-        to be read off a page rather than taken from a feed.
+        continuously, a few hundred product pages a night.
       </p>
     </section>
 
     <section>
       <h2>What stops a bad night from publishing</h2>
       <p class="note">
-        The pipeline runs unattended and deploys what it produces. That is fine
-        right up until a change to one parsing rule halves the index — at which
-        point every step succeeds, the site rebuilds, and search engines
-        recrawl a catalogue missing half its bags. Nothing in a green run would
-        say so. So the last stage before publishing is a gate that refuses.
+        The pipeline runs unattended and deploys what it produces, so the last
+        stage before publishing is a gate that can refuse.
       </p>
       <table class="spectable">
         <tbody>
           <tr>
             <th scope="row">Structural</th>
-            <td>
-              Absolute truths about a well-formed catalogue: required fields
-              present, permalinks unique, every value inside physically
-              sane bounds. A bag cannot weigh two grams or be four metres tall.
-            </td>
+            <td>Required fields present, permalinks unique, every value inside physically sane bounds. A bag cannot weigh two grams or be four metres tall.</td>
           </tr>
           <tr>
             <th scope="row">Regression</th>
-            <td>
-              Tonight compared against the copy currently live. The bag count,
-              each brand's count and the fill rate of every field each have a
-              limit on how far they may fall in one night. A legitimate large
-              change is allowed, but it takes a human raising the limit for
-              that run and saying why.
-            </td>
+            <td>Tonight compared against the copy currently live. Bag counts, per-brand counts and every field's fill rate each have a limit on how far they may fall in one night.</td>
           </tr>
           <tr>
             <th scope="row">Plausibility</th>
-            <td>
-              The checks that catch a parse that is wrong rather than absent —
-              a currency that moved for a whole brand, a suspicious cluster of
-              volumes that look computed rather than stated, densities that no
-              real bag has.
-            </td>
+            <td>The checks that catch a parse that is wrong rather than absent — a currency that moved for a whole brand, volumes that look computed rather than stated.</td>
           </tr>
         </tbody>
       </table>
       <p class="note">
-        A rejected night publishes nothing and keeps yesterday's catalogue
-        live, which is always the better of the two outcomes: stale data is
-        visibly a day old, and wrong data looks exactly like right data. The
-        price ledger is banked before the gate runs regardless, because it is
-        the one record that cannot be reconstructed later.
+        A rejected night publishes nothing and keeps yesterday's catalogue live:
+        stale data is visibly a day old, and wrong data looks exactly like right
+        data.
       </p>
     </section>
 
@@ -560,25 +431,21 @@ const jsonLd = {
       <h2>What is held back</h2>
       <p class="note">
         {fmt(indexable)} of the {fmt(bags.length)} model pages are offered to
-        search engines. The rest are published, linked and identical to look
-        at, but marked not to be indexed until they carry either a set of
-        dimensions or a volume and a weight together. A page showing a name, a
-        price and a column of dashes is not worth arriving on from a search
-        result, and saying so is cheaper than letting someone find out by
-        clicking. Pages cross that line as the data arrives.
+        search engines. The rest are published and linked, but marked not to be
+        indexed until they carry either a set of dimensions or a volume and a
+        weight together — a page showing a name, a price and a column of dashes
+        is not worth arriving on from a search result. Pages cross that line as
+        the data arrives.
       </p>
     </section>
 
     <section>
       <h2>What this is not</h2>
       <p class="note">
-        Not a shop — nothing is sold here and there is no stock, no basket and
-        no checkout. Not a review site: there are no ratings, no scores and no
-        star counts anywhere in the index, because we have not tested these
-        bags and a rating we did not earn is worse than none. Not a
-        rewriter of marketing copy — the index holds facts, and the brand's
-        description of its own bag stays on the brand's page, where the buy
-        button also goes.
+        Not a shop — nothing is sold here. Not a review site: no ratings, no
+        scores, no star counts anywhere in the index, because we have not tested
+        these bags. The brand's description of its own bag stays on the brand's
+        page, where the buy button also goes.
       </p>
     </section>
 
@@ -586,12 +453,9 @@ const jsonLd = {
       <h2>Corrections</h2>
       <p class="note">
         If a figure here disagrees with the one on your own product page, the
-        product page is right and this is a bug worth reporting. Write to
-        {' '}<a href={`mailto:${CONTACT.general}`}>{CONTACT.general}</a>. If
-        you operate a store and would rather not be included at all, write to
-        {' '}<a href={`mailto:${CONTACT.crawler}`}>{CONTACT.crawler}</a>, and
-        {' '}<a href="/bot/">the crawler page</a> explains how to say so in
-        {' '}<code>robots.txt</code> instead.
+        product page is right and this is a bug worth reporting. Write to <a href={`mailto:${CONTACT.general}`}>{CONTACT.general}</a>.
+        If you operate a store and would rather not be included at all, write to <a href={`mailto:${CONTACT.crawler}`}>{CONTACT.crawler}</a>,
+        and <a href="/bot/">the crawler page</a> explains how to say so in <code>robots.txt</code> instead.
       </p>
     </section>
 
