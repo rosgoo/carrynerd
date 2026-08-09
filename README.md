@@ -197,7 +197,9 @@ Most of `normalize.py` exists because no two brands describe a bag the same way.
   last one. All three are parsed and converted to centimetres, largest axis
   first, since brands disagree about ordering.
 - **Volume** hides in the title (`Travel Pack 45L`), in a variant option
-  (`21L`), or in prose. Title wins, then option, then description.
+  (`21L`), or in prose. Title wins, then option, then description — except
+  where the options hold several capacities, which is a product line rather
+  than a value to pick from; see model sizes below.
 - **Weight** — Shopify's `grams` is a *shipping* field. Aer reports 4536 g for
   the 35L Travel Pack, which is exactly 10 lb of packed box against a real
   1.77 kg. A weight stated on the product page overrides it.
@@ -206,6 +208,19 @@ Most of `normalize.py` exists because no two brands describe a bag the same way.
   collapses those into one model with thirteen colourways, stripping trailing
   colour words from titles but deliberately *not* fabric names, because a
   Travel Pack in X-Pac really is a different bag from the nylon one.
+- **Model sizes** — the opposite problem. EVERGOODS sell the CIVIC Travel Bag
+  in 20L, 26L and 35L, and Shopify calls that one product with a size axis. One
+  row can only hold one volume, so the first size won and the other two stopped
+  existing — invisible to the volume filter, and a model page that said 20 L
+  about a bag also sold at 35. `split_sizes()` publishes one entry per
+  capacity, carrying only that size's SKUs, prices, stock and weight. It splits
+  only where *every* variant states a capacity: an axis reading S/M/L is a
+  fitting, not a line. Dimensions and laptop fit are read off one page
+  describing every size, so they go to whichever entry the page's own stated
+  volume matches and to none of the others — a `—` beats the 20L's
+  measurements filed under the 35L. The entry inheriting the old permalink
+  keeps it as a 301, and `split_from` is what the price ledger, the enrichment
+  cache and a saved price alert still resolve through.
 
 Every extracted value stores a sibling `*_source` recording where it came from
 (`shopify:grams`, `product-page:labelled`, `title`, …). Fields that could not

@@ -99,6 +99,20 @@ export interface Bag {
   merged_ids?: string[];
   merged_urls?: string[];
 
+  /* Written by split_sizes() in normalize.py, on entries that were one record
+   * until a model sold in several capacities became one entry per capacity.
+   *
+   * `split_from` is the id that record held, and is how the price ledger, the
+   * enrichment cache and a saved price alert all still find this bag. It is
+   * also what makes siblings findable: everything with the same `split_from`
+   * is the same model in another size.
+   *
+   * `legacy_slug` is the permalink that record was published at, and only the
+   * one entry inheriting the old page's identity carries it — see
+   * legacyRedirects below. */
+  split_from?: string;
+  legacy_slug?: string;
+
   /* Written by track_prices.py after the crawl, so absent from a build that
    * has not tracked yet. `price_direction` is the net move over the tracker's
    * drop window (5 days), not the last run: a price that fell and held writes

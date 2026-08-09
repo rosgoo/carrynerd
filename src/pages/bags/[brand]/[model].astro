@@ -28,8 +28,8 @@ interface Props {
 
 const { bag } = Astro.props;
 
-const series = priceSeries(bag.id);
-const changes = priceChanges(bag.id);
+const series = priceSeries(bag);
+const changes = priceChanges(bag);
 
 // Positional: wayUrls[i] belongs to bag.variants[i], and is null where the
 // colourway cannot be placed on a page — see variantUrls in lib/catalog.js.
@@ -41,6 +41,25 @@ const related = [
   ...bags.filter((b) => b.id !== bag.id && b.brand_slug === bag.brand_slug && b.category === bag.category),
   ...bags.filter((b) => b.id !== bag.id && b.brand_slug !== bag.brand_slug && b.category === bag.category),
 ].slice(0, 8);
+
+/* The other capacities this model is sold in.
+ *
+ * A brand selling one bag in 20L, 26L and 35L publishes it as one product with
+ * a size axis, and the index used to publish it the same way — one row, one
+ * volume, the other two sizes nowhere. They are separate entries now, which is
+ * how a buyer thinks of them and how they are reviewed, but it leaves a reader
+ * who typed the model name on whichever size they happened to land on with no
+ * way back to the line.
+ *
+ * So: the siblings, by volume, in the one place on the page a size question
+ * gets asked — beside the volume itself, above the buy button, rather than
+ * eight items down in "Similar" among other people's bags.
+ */
+const siblings = bag.split_from
+  ? bags
+      .filter((b) => b.split_from === bag.split_from && b.id !== bag.id)
+      .sort((a, b) => (a.volume_l ?? 0) - (b.volume_l ?? 0))
+  : [];
 
 const density = gramsPerLitre(bag);
 const perLitre = pricePerLitre(bag);
@@ -206,6 +225,18 @@ const description =
             </div>
           ))}
         </dl>
+
+        {siblings.length > 0 && (
+          <p class="sizes">
+            Also in{' '}
+            {siblings.map((b, i) => (
+              <Fragment>
+                {i > 0 && (i === siblings.length - 1 ? ' and ' : ', ')}
+                <a href={bagHref(b)}>{fmtVolume(b.volume_l)}</a>
+              </Fragment>
+            ))}
+          </p>
+        )}
 
         {/* Above the buy button and deliberately quieter than it: saving is
             for the reader who is still deciding, and the storefront link is

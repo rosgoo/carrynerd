@@ -91,6 +91,50 @@ def enrichable(bag):
     return (bag.get("source") or "shopify").startswith(ENRICHABLE_SOURCES)
 
 
+def page_key(bag):
+    """The cache line for the page this entry was read off.
+
+    Not the entry's own id, because they are not one to one. A model sold in
+    three capacities is three catalogue entries behind one product URL — see
+    split_sizes() in normalize.py — and keying the cache by id would crawl that
+    page three times and store three identical copies of the answer.
+
+    Keying by the pre-split id rather than by the URL keeps every line already
+    in data/enrich-cache.json valid: that id is exactly what the cache was
+    written under before the split existed.
+    """
+    return bag.get("split_from") or bag["id"]
+
+
+def dedupe(items, key):
+    """First occurrence of each key, order preserved."""
+    seen, out = set(), []
+    for item in items:
+        k = key(item)
+        if k not in seen:
+            seen.add(k)
+            out.append(item)
+    return out
+
+
+# What a product page says that is true of every capacity it describes, and
+# what is true of only one.
+#
+# A page for a model sold in three sizes states one set of dimensions, one
+# weight and one laptop figure, and says nothing about which size they belong
+# to. It also states the fabric and the feature list, which are the same bag
+# whichever size you buy.
+#
+# So the second group is applied only to the entry whose volume the page's own
+# stated volume matches, and to no other. Where the page states no volume there
+# is nothing to match on and none of them get it — the dash is the honest
+# answer, and it is a great deal cheaper than the alternative, which is the
+# 20L's measurements sitting in the carry-on tables under the 35L's name.
+SIZED_PAGE_FIELDS = ("dims_cm", "dims_source", "linear_cm", "laptop_in",
+                     "volume_l", "volume_source", "weight_g", "weight_source",
+                     "gtin")
+
+
 # Weight sources that a figure read off the product page supersedes.
 #
 # Enrichment fills gaps and does not overwrite feed data — except where the
@@ -518,13 +562,13 @@ def main():
         # so a parser change can be evaluated against the real corpus in
         # seconds instead of a fresh crawl.
         reparsed = 0
-        for bag in bags:
+        for bag in dedupe(bags, page_key):
             if brands_wanted and bag["brand_slug"] not in brands_wanted:
                 continue
-            html_text = load_page(bag["id"])
+            html_text = load_page(page_key(bag))
             if html_text is None:
                 continue
-            cache[bag["id"]] = parse_product_page(html_text)
+            cache[page_key(bag)] = parse_product_page(html_text)
             reparsed += 1
         with open(CACHE, "w") as f:
             json.dump(cache, f, sort_keys=True, indent=1)
@@ -537,9 +581,15 @@ def main():
     else:
         targets = [b for b in bags
                    if (not brands_wanted or b["brand_slug"] in brands_wanted)
-                   and b["id"] not in cache
+                   and page_key(b) not in cache
                    and enrichable(b)
                    and (b.get("dims_cm") is None or b.get("laptop_in") is None)]
+        # One request per page, not per entry. A model split across three
+        # capacities is three entries pointing at one product page — see
+        # split_sizes() in normalize.py — and asking a store for the same URL
+        # three times a night is exactly the behaviour the pacing here exists
+        # to avoid. First entry wins the crawl; all three read its cache line.
+        targets = dedupe(targets, page_key)
         # Round-robin across brands rather than finishing one store before
         # starting the next. Two reasons, and the first is the one that bit:
         # grouped order means 32 consecutive requests to one store, so a single
@@ -593,7 +643,7 @@ def main():
             parts = urlsplit(bag["url"])
             allowed, _why = robots_allows(parts.netloc, parts.path)
             if not allowed:
-                cache[bag["id"]] = {"_status": "robots-disallowed"}
+                cache[page_key(bag)] = {"_status": "robots-disallowed"}
                 robots_skipped += 1
                 continue
             _, crawl_delay, _ = robots(parts.netloc)
@@ -655,14 +705,14 @@ def main():
                 # in the cache — one rate-limited moment and that bag never got
                 # enriched again.
                 if status in (404, 410, 451):
-                    cache[bag["id"]] = {"_status": status}
+                    cache[page_key(bag)] = {"_status": status}
                 else:
                     transient += 1
             else:
                 text = body.decode("utf-8", "replace")
                 if args.cache_pages:
-                    save_page(bag["id"], text)
-                cache[bag["id"]] = parse_product_page(text)
+                    save_page(page_key(bag), text)
+                cache[page_key(bag)] = parse_product_page(text)
             if i % 10 == 0 or not queue:
                 with open(CACHE, "w") as f:
                     json.dump(cache, f, sort_keys=True, indent=1)
@@ -688,9 +738,17 @@ def main():
     # box, a fabric, an accessory. A weight stated on the product page is the
     # spec; see SUPERSEDED_WEIGHT_SOURCES for which figures it beats and, more
     # to the point, which labelled ones it does not.
-    filled = weight_fixed = feat_gained = 0
+    filled = weight_fixed = feat_gained = withheld = 0
     for bag in bags:
-        extra = cache.get(bag["id"]) or {}
+        extra = cache.get(page_key(bag)) or {}
+
+        # A split entry only takes the page's size-dependent figures when the
+        # page is demonstrably talking about its size.
+        if bag.get("split_from") and extra.get("volume_l") != bag.get("volume_l"):
+            if any(extra.get(f) is not None for f in SIZED_PAGE_FIELDS):
+                withheld += 1
+            extra = {k: v for k, v in extra.items()
+                     if k not in SIZED_PAGE_FIELDS}
 
         if (extra.get("weight_g")
                 and bag.get("weight_source") in SUPERSEDED_WEIGHT_SOURCES
@@ -742,7 +800,7 @@ def main():
     # it, which is a regex problem and much cheaper to fix.
     diag = {}
     for bag in bags:
-        entry = cache.get(bag["id"]) or {}
+        entry = cache.get(page_key(bag)) or {}
         # Gate on the entry genuinely lacking dimensions rather than trusting
         # the recorded reason: a cache written by an older parser can carry a
         # stale `_no_dims` next to dimensions it did in fact find.
@@ -760,6 +818,9 @@ def main():
     print(f"\nfilled dimensions for {filled} bags; "
           f"corrected {weight_fixed} shipping-weight values; "
           f"added features to {feat_gained}")
+    if withheld:
+        print(f"  held back page specs from {withheld} split entries whose "
+              f"size the page does not state")
     print(json.dumps(payload["meta"]["coverage"], indent=2))
     if diag:
         print("\nwhere dimensions are still missing:")

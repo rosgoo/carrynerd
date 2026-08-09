@@ -1068,6 +1068,19 @@ a.brand { text-decoration: none; }
   margin: 3px 0 0; font-family: var(--mono); font-size: 12px; font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+
+/* The other capacities a model is sold in — see `siblings` in
+   pages/bags/[brand]/[model].astro. Directly under the Volume figure and above
+   the buy button, because it answers a question about the number it sits
+   beneath: this bag also comes bigger. */
+.sizes {
+  margin: 0; border-top: 1px solid var(--line); padding: 8px 14px;
+  font-size: 10px; color: var(--ink-mute); text-align: center;
+}
+.sizes a {
+  color: var(--ink-dim); font-family: var(--mono); font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
 .btn.buy {
   margin: 0; border: none; border-top: 1px solid var(--line);
   padding: 11px; text-align: center; text-decoration: none; display: block;

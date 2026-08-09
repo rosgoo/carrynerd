@@ -53,7 +53,7 @@ function bagLastmod(bag) {
   // priceChanges() is newest-first and already filtered to rows carrying a
   // direction, so the first entry is the last real move. A bag's opening
   // observation has no direction and is correctly not a change.
-  return latest([iso(bag.updated_at), iso(priceChanges(bag.id)[0]?.ts)]);
+  return latest([iso(bag.updated_at), iso(priceChanges(bag)[0]?.ts)]);
 }
 
 /* Path -> ISO timestamp, for everything the sitemap filter lets through.

@@ -185,6 +185,39 @@ export const indexablePaths = new Set(
   (payload.bags ?? []).filter(isIndexable).map(bagHref),
 );
 
+/* Where a link to a page that has been split now goes.
+ *
+ * /bags/evergoods/civic-travel-bag/ was a real page for as long as the index
+ * has existed, and it is in Google, in link previews and in whatever anyone
+ * saved. Splitting the model into three capacities takes that URL out of the
+ * build, and a static site answers a path it generates nothing for with a
+ * blank 404 — the failure /404.astro was written for and the one it says a
+ * catalogue earns more of than an ordinary site.
+ *
+ * It resolves to the capacity the old page was actually about, which is the
+ * volume that record published: that is the number the page showed, the specs
+ * Google indexed against it, and the bag anyone who bookmarked it was looking
+ * at. normalize.py marks that entry with `legacy_slug` and marks no other.
+ *
+ * A permanent redirect and not the 404: the page did not stop existing, it
+ * acquired two siblings, and everything the old URL earned should move with it.
+ */
+export const legacyRedirects = (() => {
+  /** @type {Record<string, string>} */
+  const out = {};
+  const live = new Set(bags.map(bagHref));
+  for (const bag of bags) {
+    if (!bag.legacy_slug) continue;
+    const from = `/bags/${bag.brand_slug}/${bag.legacy_slug}/`;
+    // A split whose old name is another model's live permalink is not a
+    // redirect, it is an outage on that model. Nothing in the catalogue does
+    // this today; the guard is here because the names come from brands.
+    if (live.has(from)) continue;
+    out[from] = bagHref(bag);
+  }
+  return out;
+})();
+
 export const brands = (() => {
   /** @type {Map<string, Brand>} */
   const by = new Map();
@@ -227,16 +260,45 @@ const history = (() => {
   return by;
 })();
 
+/* Every ledger row that is this bag's, whatever id it was written under.
+ *
+ * A model sold in three capacities is three entries as of the split — see
+ * split_sizes() in normalize.py — and the months of history behind it were all
+ * written against the one id the record used to have. Reading only the new id
+ * would open three pages with an empty chart on a bag we have tracked since
+ * the day it was indexed.
+ *
+ * Inherited rows are filtered by SKU, which is the only honest way to divide
+ * them: the ledger records a price against a SKU, and a SKU belongs to exactly
+ * one size. Rows written for a colourway the feed gave no SKU cannot be
+ * attributed to a size at all and are left behind rather than shown under one
+ * — a 20L chart with the 35L's prices in it is worse than a short chart.
+ *
+ * @param {Bag} bag
+ * @returns {PriceRow[]}
+ */
+function historyRows(bag) {
+  const own = history.get(bag.id) ?? [];
+  if (!bag.split_from) return own;
+
+  const skus = new Set((bag.variants ?? []).map((v) => v.sku).filter(Boolean));
+  const inherited = (history.get(bag.split_from) ?? []).filter(
+    (row) => row.sku && skus.has(row.sku),
+  );
+  if (!inherited.length) return own;
+  return [...inherited, ...own].sort((a, b) => a.ts.localeCompare(b.ts));
+}
+
 /**
  * The cheapest price seen on each date this bag changed, oldest first.
  * Collapses the per-SKU rows into one series — a reader wants "what did this
  * bag cost", not one line per colourway.
  *
- * @param {string} bagId
+ * @param {Bag} bag
  * @returns {PricePoint[]}
  */
-export function priceSeries(bagId) {
-  const rows = history.get(bagId) ?? [];
+export function priceSeries(bag) {
+  const rows = historyRows(bag);
   /** @type {Map<string, number>} */
   const byDay = new Map();
   for (const row of rows) {
@@ -251,10 +313,10 @@ export function priceSeries(bagId) {
 }
 
 /** Every recorded change for a bag, newest first — the table under the chart.
- *  @param {string} bagId
+ *  @param {Bag} bag
  *  @returns {PriceRow[]} */
-export function priceChanges(bagId) {
-  return (history.get(bagId) ?? [])
+export function priceChanges(bag) {
+  return historyRows(bag)
     .filter((row) => row.direction)
     .sort((a, b) => b.ts.localeCompare(a.ts));
 }

@@ -101,6 +101,33 @@ def variant_key(bag, variant, index, ambiguous=()):
     return f"{bag['id']}::#{index}:{label}"
 
 
+def adopt_split(state, bag, variant, key):
+    """The same SKU's state under the id it was tracked as before the split.
+
+    normalize.py now publishes a model sold in three capacities as three
+    entries, so a variant that has been tracked for months arrives one morning
+    under a new bag id and a key nothing has ever written. Left alone it reads
+    as a first sighting: `first_seen` resets to today and the recorded low —
+    the number behind "lowest we have recorded" — is quietly replaced by
+    whatever the bag costs this morning.
+
+    A SKU is the same SKU whichever entry now holds it, so where one is stated
+    the old row can simply be carried over. Where it is not, the old key is
+    positional within a variant list that no longer exists — `#7:Black` names a
+    slot in the merged record, and nothing can say which size stood in it — so
+    those re-baseline rather than guess. That costs a recorded low on the
+    colourways with no SKU; inventing one would cost the number's meaning.
+
+    Runs on every entry, not just the first night after the split: the state
+    file is rebuilt from whatever is on disk, and a restore from an older copy
+    would otherwise re-orphan everything this fixed.
+    """
+    sku = variant.get("sku")
+    if not sku or key in state or not bag.get("split_from"):
+        return None
+    return state.get(f"{bag['split_from']}::{sku}")
+
+
 def ambiguous_skus(variants):
     """SKUs that appear on more than one variant, and so identify none of them."""
     counts = collections.Counter(v.get("sku") for v in variants if v.get("sku"))
@@ -255,7 +282,7 @@ def main():
                 "available": bool(variant.get("available")),
                 "basis": basis,
             }
-            previous = state.get(key)
+            previous = state.get(key) or adopt_split(state, bag, variant, key)
 
             # A price in a different unit is not a price that moved. Subtracting
             # 259 USD from 2,500 NOK is a category error, and publishing the
@@ -359,7 +386,8 @@ def main():
         prices, lows, changed, direction, prev = [], [], None, None, None
         ambiguous = ambiguous_skus(bag.get("variants") or [])
         for i, variant in enumerate(bag.get("variants") or []):
-            entry = state.get(variant_key(bag, variant, i, ambiguous))
+            key = variant_key(bag, variant, i, ambiguous)
+            entry = state.get(key) or adopt_split(state, bag, variant, key)
             if not entry:
                 continue
             if entry.get("price"):
@@ -401,6 +429,10 @@ def main():
                 # model — deriving a URL from it lands on a page that does not
                 # exist. normalize.py owns this slug; everything else reads it.
                 "slug": bag.get("slug"),
+                # The id this entry answered to before it was split out of a
+                # multi-size record, so a watch saved against the old one still
+                # matches. See matches() in alerts/match.py.
+                "split_from": bag.get("split_from"),
                 "category": bag.get("category"),
                 # Carried so the email can name the price correctly. Prices are
                 # never converted, so a bare "$" on a brand that charges pounds

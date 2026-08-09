@@ -173,6 +173,56 @@ def structural(payload, rep):
         rep.warn("variants",
                  f"{len(no_variants)} bags have no variants — {sample(no_variants)}")
 
+    splits(bags, slugs, rep)
+
+
+def splits(bags, slugs, rep):
+    """The two invariants a size split has to hold, both of them URL-shaped.
+
+    A model sold in several capacities is published as one entry per capacity,
+    and exactly one of them inherits the record's old permalink as a redirect —
+    see split_sizes() in normalize.py and legacyRedirects in lib/catalog.js.
+
+    Neither failure here is visible in a build log. A group with two claimants
+    generates two redirects from one address and whichever route the platform
+    matches first wins, silently and differently per deploy. A redirect whose
+    source is some other model's live permalink is worse: that page is still
+    built, still in the sitemap, and now unreachable — a 301 sitting in front of
+    a page that exists is an outage no 404 check would ever catch.
+    """
+    live = {(brand, slug) for brand, slug in slugs}
+    groups, shadowed = {}, []
+    for bag in bags:
+        if bag.get("split_from"):
+            groups.setdefault(bag["split_from"], []).append(bag)
+        if bag.get("legacy_slug"):
+            key = (bag["brand_slug"], bag["legacy_slug"])
+            if key in live:
+                shadowed.append(f"{key[0]}/{key[1]} -> {bag['id']}")
+
+    claimed = {pid: [b["id"] for b in group if b.get("legacy_slug")]
+               for pid, group in groups.items()}
+    contested = [f"{pid} ({len(ids)})" for pid, ids in claimed.items()
+                 if len(ids) != 1]
+    lonely = [pid for pid, group in groups.items() if len(group) < 2]
+
+    if shadowed:
+        rep.fail("split:shadowed",
+                 f"{len(shadowed)} legacy redirect(s) point away from a "
+                 f"permalink that is still built — {sample(shadowed)}")
+    if contested:
+        rep.fail("split:legacy",
+                 f"{len(contested)} split group(s) do not have exactly one "
+                 f"entry carrying legacy_slug — {sample(contested)}")
+    if lonely:
+        rep.fail("split:orphan",
+                 f"{len(lonely)} split group(s) have a single member, so the "
+                 f"model was split into itself — {sample(lonely)}")
+    if groups and not (shadowed or contested or lonely):
+        rep.note(f"split: {len(groups)} multi-size models across "
+                 f"{sum(len(g) for g in groups.values())} entries, each with "
+                 f"one inherited permalink")
+
 
 def brandmark(rep):
     """The header logo and the favicon have to be the same drawing.

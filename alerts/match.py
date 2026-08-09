@@ -173,9 +173,43 @@ def send(to, subject, text, html, unsub_url, api_key):
         return None
 
 
+def watched_ids(event):
+    """Every bag id a watch could name and still mean this event.
+
+    Two, once a model sold in three capacities became three entries: the id it
+    has now, and the id of the record it was split out of. A reader who asked
+    to be told when the CIVIC Travel Bag drops did so before the 20L, 26L and
+    35L had ids of their own, and that watch has to keep working — silence is
+    the one failure mode a price alert cannot report on itself.
+
+    It fires for any of the sizes, which is what the reader asked for: at the
+    time they asked, that name meant the whole line.
+    """
+    return {event["bag_id"], event.get("split_from")} - {None}
+
+
+def dedupe_key(criteria, event):
+    """What "we already told them about this today" counts as.
+
+    DEDUPE_HOURS exists so a brand restaging a sale across forty SKUs produces
+    one email rather than forty. Splitting a multi-size model into one entry per
+    capacity reopens that on a smaller scale: EVERGOODS discounting the CIVIC
+    Travel Bag now moves three bag ids on the same night, and keying this on the
+    event alone would put three of them in one inbox.
+
+    So a watch naming a bag dedupes on the name the reader gave it, and every
+    other watch dedupes on the line rather than the size. Both come out at one
+    email per subscription per bag per day, which is what the interval has
+    always meant to the person receiving it.
+    """
+    return (criteria.get("bag_id")
+            or event.get("split_from")
+            or event["bag_id"])
+
+
 def wants(criteria, event):
     """Does this subscription's criteria cover this event?"""
-    if criteria.get("bag_id") and criteria["bag_id"] != event["bag_id"]:
+    if criteria.get("bag_id") and criteria["bag_id"] not in watched_ids(event):
         return False
     if (criteria.get("brand_slug")
             and criteria["brand_slug"] != event.get("brand_slug")):
@@ -225,7 +259,9 @@ def main():
     except ImportError:
         sys.exit("psycopg is not installed — pip install -r alerts/requirements.txt")
 
-    bag_ids = sorted({e["bag_id"] for e in drops})
+    # The pre-split ids too, or the query never returns the subscriber whose
+    # watch wants() would have matched.
+    bag_ids = sorted({i for e in drops for i in watched_ids(e)})
     brand_slugs = sorted({e["brand_slug"] for e in drops if e.get("brand_slug")})
 
     sent_count = 0
@@ -247,17 +283,25 @@ def main():
             (bag_ids, brand_slugs),
         ).fetchall()
 
-        already = {
-            (r["subscription_id"], r["bag_id"])
-            for r in conn.execute(
-                """
-                select subscription_id, event->>'bag_id' as bag_id
-                  from sent_alerts
-                 where sent_at > now() - make_interval(hours => %s)
-                """,
-                (DEDUPE_HOURS,),
-            ).fetchall()
-        }
+        # Read back through the same key the send side writes, which is a
+        # property of the subscription as much as of the event — so the
+        # criteria has to come along.
+        criteria_by_sub = {s["id"]: (s["criteria"] or {}) for s in subs}
+        already = set()
+        for r in conn.execute(
+            """
+            select subscription_id,
+                   event->>'bag_id'     as bag_id,
+                   event->>'split_from' as split_from
+              from sent_alerts
+             where sent_at > now() - make_interval(hours => %s)
+            """,
+            (DEDUPE_HOURS,),
+        ).fetchall():
+            criteria = criteria_by_sub.get(r["subscription_id"])
+            if criteria is None:
+                continue        # a subscription none of tonight's drops touch
+            already.add((r["subscription_id"], dedupe_key(criteria, r)))
 
         # Mailboxes that hard-bounced or reported us as spam, whatever the
         # subscriptions table still says. `confirmed_at` records that somebody
@@ -296,9 +340,10 @@ def main():
             # One email per bag, for the steepest drop on that bag.
             by_bag = {}
             for event in candidates:
-                best = by_bag.get(event["bag_id"])
+                key = dedupe_key(criteria, event)
+                best = by_bag.get(key)
                 if best is None or (event.get("delta") or 0) < (best.get("delta") or 0):
-                    by_bag[event["bag_id"]] = event
+                    by_bag[key] = event
 
             for bag_id, event in by_bag.items():
                 if (sub["id"], bag_id) in already:

@@ -2649,6 +2649,165 @@ def merge_models(bags):
     return merged
 
 
+# A capacity written into a product name, with whatever list punctuation is
+# holding it there. A brand selling one product in two sizes titles it every
+# way there is — "Vanish Jet Duffel 38L & 58L", "Dry Bags: 3L, 5L, 10L or 15L",
+# "The Bubble 20L Puffy Work Tote" — and a split has to take the whole
+# enumeration out of the name before writing one size back in, or the 58L entry
+# ends up called "Vanish Jet Duffel 38L & 58L 58L".
+#
+# The separator sits before the number rather than after it because that is
+# where a left-to-right sweep finds it: the first match eats the bare figure,
+# and each one after it arrives with the comma, ampersand or "or" that joined
+# it to the last.
+NAME_VOLUME = re.compile(
+    r"\s*(?:[,&/+]|\bor\b|\band\b)?\s*"
+    r"\b\d{1,3}(?:[.,]\d)?\s*(?:L|lit(?:er|re)s?)\b\.?", re.I)
+
+# What the enumeration leaves behind: a title ending in the colon or dash that
+# used to introduce the list.
+NAME_DANGLE = " -–—|,&/+:;"
+
+
+def strip_volumes_from_name(name):
+    """The model name with every capacity taken out of it."""
+    return re.sub(r"\s{2,}", " ", NAME_VOLUME.sub("", name or "")).strip(NAME_DANGLE).strip()
+
+
+def size_label(volume):
+    """The one way this index writes a capacity: 26L, 2.5L."""
+    return f"{volume:g}L"
+
+
+def split_sizes(bags):
+    """A size axis holding capacities is a product line, not an option.
+
+    EVERGOODS sell the CIVIC Travel Bag in 20L, 26L and 35L. Shopify calls that
+    one product with a size axis, so the catalogue held one row — and a row has
+    one volume, so the first size won and the other two stopped existing. Not
+    just in the Volume column: the volume filter tested that one number, so a
+    reader asking for 30–40L was never shown the 35L; g/L divided the largest
+    variant's weight by the smallest one's volume; and the model page said 20 L
+    with no indication the bag came any other way.
+
+    They are not one bag. They have different weights, different prices,
+    different dimensions and different reviews, and a buyer choosing between
+    them is choosing between products. So each capacity becomes its own entry,
+    carrying only the variants that are actually that size.
+
+    Two rules keep this from splitting things that are not product lines:
+
+    - Every variant must state a capacity. A size axis reading S/M/L, or torso
+      lengths, or one product where half the variants carry a size and half do
+      not, is a fitting rather than a line, and an unattributable variant has no
+      entry to belong to. BAGSMART's two mystery boxes are the whole of what
+      this rejects, and they should be rejected: three of their eight SKUs name
+      no size at all.
+    - Two distinct capacities at least, or there is nothing to split.
+
+    What a child does *not* inherit is as load-bearing as what it does. The
+    feed states weight per variant, so each size gets its own. Dimensions and
+    laptop capacity are read off one page describing every size, and nothing in
+    that page says which size they belong to — so they are dropped here and
+    handed back by enrich.py to whichever entry the page's own stated volume
+    matches, and to no other. Cloning them across three entries would put the
+    20L's measurements in the carry-on tables under the 35L's name, which is
+    worse than the dash it now shows.
+    """
+    out, split = [], 0
+    taken = {b["id"] for b in bags}
+    for bag in bags:
+        variants = bag.get("variants") or []
+        by_volume = {}
+        for v in variants:
+            vol = find_volume(v.get("size") or "")
+            if vol is None:
+                by_volume = None
+                break
+            by_volume.setdefault(vol, []).append(v)
+        if not by_volume or len(by_volume) < 2:
+            out.append(bag)
+            continue
+
+        # The entry that inherits the old record's identity: its permalink, and
+        # its id in the price ledger and the alert watches. That is whichever
+        # size the pre-split rule happened to publish — the volume already on
+        # this record — because that is the page Google indexed and the number
+        # a reader subscribed against. Smallest if the old figure came from the
+        # title and names no size actually sold.
+        legacy_slug = slugify(bag["name"])
+        legacy_vol = (bag.get("volume_l") if bag.get("volume_l") in by_volume
+                      else min(by_volume))
+        stem = strip_volumes_from_name(bag["name"])
+        split += 1
+
+        for vol in sorted(by_volume):
+            kept = by_volume[vol]
+            child = dict(bag)
+            child["name"] = f"{stem} {size_label(vol)}".strip()
+            child["id"] = uniq_id(f"{bag['id']}-{slugify(size_label(vol))}", taken)
+
+            child["variants"] = kept
+            child["variant_count"] = len(kept)
+            child["sizes"] = list(dict.fromkeys(
+                v["size"] for v in kept if v.get("size")))
+            child["colors"] = list(dict.fromkeys(
+                v["color"] for v in kept if v.get("color")))
+            child["color_families"] = sorted(
+                {v["color_family"] for v in kept if v.get("color_family")})
+
+            prices = [v["price"] for v in kept if v.get("price")]
+            child["price_min"] = round(min(prices), 2) if prices else None
+            child["price_max"] = round(max(prices), 2) if prices else None
+            child["in_stock"] = any(v.get("available") for v in kept)
+            child["on_sale"] = any(
+                v.get("compare_at") and v.get("price")
+                and v["compare_at"] > v["price"] for v in kept)
+
+            child["volume_l"] = vol
+            child["volume_source"] = "variant-option"
+            # Per-size, straight from the feed — the one spec that survives the
+            # split intact, and the reason most children stay indexable.
+            grams = [v["grams"] for v in kept if v.get("grams")]
+            child["weight_g"] = max(grams) if grams else None
+            child["weight_source"] = "shopify:grams" if grams else None
+            for field in ("dims_cm", "dims_source", "linear_cm", "laptop_in"):
+                child[field] = None
+
+            # The size's own photography leads; the rest of the gallery follows,
+            # because a product shot of another size is still a shot of this bag
+            # from an angle the variant image does not cover.
+            shots = [v["image"] for v in kept if v.get("image")]
+            child["image"] = shots[0] if shots else bag.get("image")
+            # Reordered, not rebuilt: the gallery entry is the one carrying
+            # width and height, and those are what stop the layout shifting
+            # while it loads.
+            gallery = {im["src"]: im for im in (bag.get("images") or [])
+                       if im.get("src")}
+            child["images"] = list({
+                src: gallery.get(src) or {"src": src, "w": None, "h": None}
+                for src in shots + list(gallery)}.values())
+
+            child["split_from"] = bag["id"]
+            if vol == legacy_vol:
+                # Exactly one entry may claim it — two would generate two
+                # redirects from one address. validate.py gates on that.
+                child["legacy_slug"] = legacy_slug
+            out.append(child)
+
+    return out, split
+
+
+def uniq_id(candidate, taken):
+    """`candidate`, or the first suffixed form of it nobody else holds."""
+    ident, n = candidate, 1
+    while ident in taken:
+        n += 1
+        ident = f"{candidate}-{n}"
+    taken.add(ident)
+    return ident
+
+
 # Keys a storefront states its currency under, across every source we read.
 # WooCommerce says `currency_code`, Magento and Bellroy say `currency`,
 # schema.org says `priceCurrency`. Shopify's /products.json says nothing at
@@ -2966,6 +3125,16 @@ def main():
 
     before = len(bags)
     bags = merge_models(bags)
+    # Counted here rather than off the final length, which the split moves in
+    # the other direction — netting the two would report a merge that did not
+    # happen and hide one that did.
+    merged_away = before - len(bags)
+    # After the merge, because a model whose colourways ship as separate
+    # products only has its whole size axis in one place once they are one
+    # record. Before the collapse, because the collapse keys variants by
+    # colourway and price and would take the size axis apart first — there
+    # would be nothing left to split on.
+    bags, split = split_sizes(bags)
     collapsed = collapse_variants(bags)
     bags.sort(key=lambda b: (b["brand"].lower(), b["name"].lower()))
 
@@ -3000,7 +3169,8 @@ def main():
         "brand_count": len({b["brand_slug"] for b in bags}),
         "sku_count": sum(b["variant_count"] for b in bags),
         "categories": sorted({b["category"] for b in bags}),
-        "products_merged": before - len(bags),
+        "products_merged": merged_away,
+        "models_split": split,
         "models_collapsed": collapsed,
         # Both halves of the currency picture, because either one alone is
         # misleading. The mix says what is actually being published; the
