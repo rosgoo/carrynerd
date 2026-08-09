@@ -175,6 +175,48 @@ NOT_A_BAG = re.compile(
     re.I,
 )
 
+# The rest of the sling problem, which no pattern over a title can reach.
+#
+# The span in centimetres above catches the climbing slings that state one.
+# Plenty state nothing: "Petzl Anneau Open Loop Sling", "Singing Rock 16mm
+# Slings", and worst of all "Black Diamond Padded Gear Sling", which is a
+# bandolier for carrying cams and reads as carry in every word it uses. Seven
+# of them were in the index at $4–$30 beside real crossbody bags, and a title
+# is never going to tell them apart, because the titles genuinely do not say.
+#
+# The shelf does. CampSaver files every one of them under Climb, and files
+# every real sling *pack* it sells — Hazard 4's Evac line, First Tactical's
+# Crosshatch — under Camp & Hike. That is the retailer stating the department,
+# which is the same evidence the NOT_A_BAG_TYPE guard already runs on.
+#
+# Narrow on purpose, in both directions. A climbing shelf is not disqualifying
+# by itself: crag packs, rope bags and haul bags are real carry and hang on
+# exactly that shelf, so this vetoes only `sling` — the one category word in
+# this index that names two unrelated products — and only when the shelf
+# contradicts it. Everything else on the shelf classifies as it always did.
+CLIMBING_SHELF = re.compile(
+    r"\bclimb(?:ing)?\b|\bmountaineering\b|\bbouldering\b|\balpin(?:e|ism)\b", re.I)
+
+
+def shelf_crumbs(crumbs, brand_name):
+    """The breadcrumbs that name a shelf rather than the brand.
+
+    An aggregator prefixes the brand onto every level of the path — Petzl,
+    Climb, Petzl Climb — so the raw crumbs cannot be read as shelving. Dropping
+    the brand's own crumbs is also what keeps a brand *named* for a shelf from
+    being read as one: "Climb On" filed under Camp & Hike is a Camp & Hike
+    product, and joining its crumbs raw would say the opposite.
+    """
+    key = norm_key(brand_name)
+    return [c for c in crumbs or []
+            if not key or not norm_key(c).startswith(key)]
+
+
+def climbing_hardware(category, shelf):
+    """True when the shelf says this `sling` is webbing rather than carry."""
+    return category == "sling" and bool(CLIMBING_SHELF.search(shelf or ""))
+
+
 # Ordered, first match wins, so the specific fabric beats the generic fibre —
 # waxed canvas before canvas, recycled polyester before polyester.
 MATERIALS = [
@@ -1393,6 +1435,8 @@ def build_campsaver(item, brand, hint=None, force=None):
         category, cat_src = classify(title, crumb_text, [])
         if not category:
             return None, "unclassified"
+        if climbing_hardware(category, " ".join(shelf_crumbs(crumbs, brand_name))):
+            return None, "not-a-bag:climbing"
 
     desc = strip_html(ld.get("description") or "")
     dims_cm, dims_src = find_dims_cm(desc)
@@ -1510,6 +1554,8 @@ def build_woocommerce(product, brand, hint=None, force=None):
         category, cat_src = classify(title, cats_text, tags)
         if not category:
             return None, "unclassified"
+        if climbing_hardware(category, cats_text):
+            return None, "not-a-bag:climbing"
 
     desc = strip_html(f"{product.get('description') or ''}\n"
                       f"{product.get('short_description') or ''}")
@@ -1721,6 +1767,8 @@ def build_magento(product, brand, hint=None, force=None):
                     break
         if not category:
             return None, "unclassified"
+        if climbing_hardware(category, shelf):
+            return None, "not-a-bag:climbing"
 
     # Prose attributes only: the feature lists (r_feature1..10), the material
     # breakdown and the buying copy, which is where a Magento brand states the
@@ -2174,6 +2222,9 @@ def build_pages(item, brand, hint=None, force=None):
         if not category:
             return None, ("unclassified:known-bag" if item.get("shelved")
                           else "unclassified")
+        if climbing_hardware(category, " ".join(
+                shelf_crumbs(crumbs, brand.get("name")))):
+            return None, "not-a-bag:climbing"
 
     desc = strip_html(product.get("description") or meta.get("og:description")
                       or meta.get("description") or "")
