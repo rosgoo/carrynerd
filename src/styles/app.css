@@ -262,6 +262,28 @@ header .spacer { flex: 1; }
 }
 .rail .hbtns .hbtn:last-child { border-right: none; }
 
+/* The categories menu travels into the panel with the rest of the nav, and it
+   is the one control in it that opens something. As a dropdown it would be
+   measured against the rail — which at this width is a fixed, full-height
+   drawer — so `top: 100%` would put the panel below the bottom of the screen.
+   In the panel it stops being a dropdown and becomes what everything around it
+   already is: a group that expands in place. A row of its own because the
+   category names are the longest labels here and will not sit two-up beside
+   Grid and Table. */
+.rail .hmenu { flex: 1 0 100%; display: block; position: static; }
+/* Three classes, to outrank the .rail .hbtns .hbtn rule above that gives every
+   button in the panel a divider on its right. This one spans the row. */
+.rail .hbtns .hmenu > summary { border-right: none; }
+.rail .hmenupanel {
+  position: static; width: auto; max-width: none; max-height: none;
+  border: none; border-top: 1px solid var(--line);
+}
+/* As a dropdown the last row needs no rule under it — the panel's own border
+   is there. In flow there is no panel border, and without this the last
+   category sits directly on top of Carry-on with nothing between them. Both
+   cells of that row, so the line does not stop halfway across at two columns. */
+.rail .hmenupanel a:nth-last-child(-n+2) { border-bottom: 1px solid var(--line); }
+
 /* ---------- saved filters, at the top of the rail ----------
    Same hairline construction as a filter group, but it is not one: no
    disclosure triangle, nothing collapses, and it sits above the alphabet

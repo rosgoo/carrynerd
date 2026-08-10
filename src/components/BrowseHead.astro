@@ -10,6 +10,7 @@
  */
 import Logo from './Logo.astro';
 import { SITE_NAME_DISPLAY } from '../lib/brand.js';
+import { hubs } from '../lib/hubs.js';
 
 interface Props {
   /** What to say in the search field. A scoped page searches inside its own
@@ -31,6 +32,20 @@ const {
       room for the wordmark and one control beside it, and the panel is the
       only full-width surface on the page. See mountChrome() in browse.js. */}
   <div class="hbtns" id="hbtns">
+    {/* The same menu the other header carries, in the same place, because the
+        two headers are the same site. Without it the front page — the one page
+        every reader starts on — was the only page in the catalogue with no way
+        up to a category except the sitemap row in the footer, which is why the
+        hubs looked like they only existed once you were already standing on
+        one. Identical markup to Base.astro on purpose: it is a <details>, so it
+        needs no script, and the dismissal handler in the layout finds it here
+        exactly as it finds it there. */}
+    <details class="hmenu">
+      <summary class="hbtn">Categories</summary>
+      <div class="hmenupanel">
+        {hubs.map((hub) => <a href={hub.href}>{hub.title}</a>)}
+      </div>
+    </details>
     <a class="hbtn" href="/carry-on/">Carry-on</a>
     <a class="hbtn" href="/brands/">Brands</a>
     <button class="hbtn" id="viewgrid" aria-pressed="true">Grid</button>
