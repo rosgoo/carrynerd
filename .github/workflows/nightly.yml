@@ -66,6 +66,10 @@ on:
         description: "Brand slugs whose price state to reset — for a currency or parser correction, so the fix does not read as a sale"
         type: string
         default: ""
+      brands_gone:
+        description: "Brand slugs that are meant to have left the catalogue — a retirement, or a classifier fix that took a brand's last row. Any other brand vanishing still fails"
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -542,12 +546,22 @@ jobs:
       # makes once and not a permanent loosening of the gate. A scheduled run
       # gets no inputs and so gets 10 — which is the point: an unattended night
       # can never publish a large coverage regression on its own.
+      #
+      # brands_gone is the same bargain in the shape a vanished brand needs.
+      # There is no tolerance to widen there — the honest one is zero, because a
+      # brand disappearing is nearly always a failed fetch — so the exception is
+      # a list of slugs instead of a number, and everything not on it still
+      # fails. Empty on every scheduled run, so an unattended night can drop a
+      # brand exactly never. It is spent on one run by design: the night after a
+      # removal publishes, the baseline no longer holds those brands and the
+      # flag has nothing to allow.
       - name: Validate
         run: |
           python3 validate.py \
             --baseline data/bags.baseline.json \
             --require-baseline \
-            --max-coverage-drop ${{ inputs.max_coverage_drop || '10' }}
+            --max-coverage-drop ${{ inputs.max_coverage_drop || '10' }} \
+            --allow-brands-gone "${{ inputs.brands_gone }}"
 
       - name: Install alert matcher dependencies
         run: pip install --quiet -r alerts/requirements.txt

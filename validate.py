@@ -27,6 +27,7 @@ Usage:
     python3 validate.py --warn-only     # report, always exit 0
     python3 validate.py --max-drop 0.3  # allow a 30% fall in bag count
     python3 validate.py --max-brand-drop 0.6   # a brand really did shrink
+    python3 validate.py --allow-brands-gone dmm,mammut   # they really did leave
 """
 
 import argparse
@@ -702,6 +703,67 @@ def density(payload, rep):
              + ". " + sample([r for _, rows in worst for r in rows], 4))
 
 
+def brands_gone(payload, prev, rep, allowed):
+    """Which brands fell out of the catalogue — by name, not by count.
+
+    This compared meta.brand_count and printed the two numbers, which is the one
+    thing about a missing brand that does not help: "brand_count fell 150 -> 146"
+    says a disappearance usually means a failed fetch and then leaves working out
+    *which four* to whoever is reading a 4am log. Both sides of the comparison
+    are right here in full, so the check may as well answer the question it
+    raises.
+
+    Naming them is also what makes the check overridable without loosening it. A
+    brand does legitimately leave the index — retired from the roster, or a
+    classifier correction taking its last row with it. The sling veto took the
+    whole of Advanced Base Camp, DMM, Mammut and Singing Rock: four stores whose
+    only entries here were loops of climbing webbing, correctly removed, and
+    nothing about that is a fetch failure. A percentage tolerance is the wrong
+    shape for it, because the honest tolerance is zero and the honest exception
+    is a list — so a deliberate removal is named once, by whoever decided it,
+    and every brand not on that list still fails.
+
+    Comparing sets rather than counts also catches what counting cannot: a brand
+    vanishing on the same night another arrives leaves brand_count unmoved, and
+    that is a failed fetch wearing a roster addition as cover.
+    """
+    def slugs(doc):
+        return {bag.get("brand_slug") for bag in doc.get("bags") or []
+                if bag.get("brand_slug")}
+
+    now, before = slugs(payload), slugs(prev)
+    if not before:
+        return
+
+    gone = sorted(before - now)
+    unexplained = [slug for slug in gone if slug not in allowed]
+    expected = [slug for slug in gone if slug in allowed]
+    # Named on the command line but still in the catalogue. Worth saying because
+    # the flag is a one-off by design: carried into a later run it is a hole in
+    # the gate for a brand nobody is removing any more.
+    unused = sorted(slug for slug in allowed if slug not in gone)
+
+    if unexplained:
+        rep.fail("drop:brand_count",
+                 f"{len(unexplained)} brand(s) left the catalogue: "
+                 f"{sample(unexplained, 8)}. A brand disappearing usually means "
+                 f"a failed fetch, not a real change — check the fetch log for "
+                 f"it before assuming otherwise. If the removal is deliberate, "
+                 f"rerun with --allow-brands-gone "
+                 f"{','.join(unexplained)}")
+    if expected:
+        rep.note(f"brands gone: {sample(expected, 8)} — allowed on this run")
+    if unused:
+        rep.warn("allow:brands-gone",
+                 f"{len(unused)} brand(s) named as removed are still in the "
+                 f"catalogue: {sample(unused, 8)}. Drop them from "
+                 f"--allow-brands-gone; it is meant to be spent on the one run "
+                 f"that does the removing.")
+    if not gone:
+        rep.note(f"brands: all {len(before)} in the published catalogue are "
+                 f"still here")
+
+
 def regression(payload, prev, rep, max_drop, max_coverage_drop):
     meta, pmeta = payload.get("meta") or {}, prev.get("meta") or {}
 
@@ -718,12 +780,6 @@ def regression(payload, prev, rep, max_drop, max_coverage_drop):
                 f"or a stricter classifier — rerun with --max-drop.")
         elif now != before:
             rep.note(f"{field}: {before} -> {now}")
-
-    now_b, before_b = meta.get("brand_count"), pmeta.get("brand_count")
-    if before_b and now_b is not None and now_b < before_b:
-        rep.fail("drop:brand_count",
-                 f"brand_count fell {before_b} -> {now_b}; a brand disappearing "
-                 f"usually means a failed fetch, not a real change")
 
     cov, pcov = meta.get("coverage") or {}, pmeta.get("coverage") or {}
     for field, before in pcov.items():
@@ -752,6 +808,13 @@ def main():
                          "total; a fall past --max-drop warns, past this fails")
     ap.add_argument("--max-coverage-drop", type=float, default=10.0,
                     help="tolerated fall in a coverage percentage, in points")
+    ap.add_argument("--allow-brands-gone", default="",
+                    help="comma-separated brand slugs that are meant to have "
+                         "left the catalogue — a roster retirement, or a "
+                         "classifier fix that took a brand's last row with it. "
+                         "Any other brand disappearing still fails. Named "
+                         "rather than counted, and a one-off: the night after "
+                         "the removal, the baseline no longer has them")
     ap.add_argument("--stale-days", type=int, default=3,
                     help="warn when an active brand has not been refetched in "
                          "this many days (default 3; the nightly refetches "
@@ -805,6 +868,9 @@ def main():
         rep.note("no committed baseline in git — regression checks skipped")
     else:
         regression(payload, prev, rep, args.max_drop, args.max_coverage_drop)
+        brands_gone(payload, prev, rep,
+                    {s.strip() for s in args.allow_brands_gone.split(",")
+                     if s.strip()})
         per_brand(payload, prev, rep, args.max_brand_drop, args.max_drop)
 
     meta = payload.get("meta") or {}

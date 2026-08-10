@@ -81,6 +81,11 @@ the commit deploys. It checks two things:
 - **Regression**, against the last committed `data/bags.json` — which is the
   copy currently live. Bag and SKU counts must not fall more than 25%, no
   brand may vanish, and no coverage percentage may drop more than 10 points.
+  A vanished brand is reported by name and has no tolerance to widen, because
+  the honest one is zero: a brand disappearing is nearly always a failed fetch.
+  When it is not — a retirement, or a classifier fix taking a brand's last row
+  with it — the exception is the list of slugs in `--allow-brands-gone`, spent
+  on the one run that publishes the removal.
 - **Per brand**, because the aggregate is the wrong granularity for the failure
   that actually happens. The catalogue is unevenly distributed — aer has 88
   bags, able-carry has 8 — so a paging bug costing aer 40% of its models moves
