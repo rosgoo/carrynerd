@@ -1,151 +1,31 @@
 ---
 import Base from '../layouts/Base.astro';
-import { meta, brands, bags, indexablePaths, trackingSince } from '../lib/catalog.js';
-import { hubs } from '../lib/hubs.js';
+import { meta, brands, bags } from '../lib/catalog.js';
 import { SITE_NAME, SITE_NAME_DISPLAY, CONTACT } from '../lib/brand.js';
 import { organization } from '../lib/schema.js';
 
 /* The page that says what this is.
  *
- * Two jobs, and they turn out to be the same job. A search for the name has
- * nothing to land on: every other page here answers "what is this bag", which
- * is a question about a product, and none of them answer "what is carrynerd",
- * which is a question about the site. And the thing that makes an aggregator
- * worth trusting is its method — how it decides what a bag is, what it does
- * when a brand publishes nothing, what it refuses to guess.
+ * A search for the name has nothing else to land on: every other page here
+ * answers "what is this bag", which is a question about a product, and none of
+ * them answer "what is carrynerd", which is a question about the site. So this
+ * one does, and stops — what it is, where the data comes from, the shape of
+ * the pipeline, and where to write when a number is wrong.
  *
- * So: one page, the entity and the method together, rather than an "about"
- * that says nothing and a "methodology" nobody clicks. Kept at the altitude a
- * reader deciding whether to trust the index needs — the claim and the number
- * behind it, not the reasoning that produced either. Every number on it is
- * read from the manifest the pipeline writes, so it cannot drift from the
- * catalogue it describes.
+ * Deliberately at that altitude. The method underneath is real and enforced in
+ * code, and publishing all of it turned this into a document nobody finished;
+ * the detail belongs in the repository, not in front of a reader deciding
+ * whether to trust a figure. The counts that remain are read from the manifest
+ * the pipeline writes, so they cannot drift from the catalogue they describe.
  */
 
 const title = `About ${SITE_NAME_DISPLAY} — how the index is built`;
 const description =
   `${SITE_NAME} is a spec index for bags: volume, weight, dimensions and price, `
-  + 'normalised across brands from their own published product data. How it is '
-  + 'built, what it covers, and what it refuses to guess.';
+  + 'normalised across brands from their own published product data. What it is '
+  + 'and how it is built.';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
-
-/* Rejections are published per reason, and the reasons are prefixed by family.
-   Totalling by prefix rather than listing thirteen leaf codes keeps the number
-   honest while staying readable — and the two families mean genuinely
-   different things, which is the distinction worth drawing. */
-const rejected = meta.rejected ?? {};
-const totalFor = (prefix: string) =>
-  Object.entries(rejected)
-    .filter(([reason]) => reason.startsWith(prefix))
-    .reduce((n, [, count]) => n + count, 0);
-
-const notBags = totalFor('not-a-bag');
-const unclassified = totalFor('unclassified');
-
-const coverage = meta.coverage ?? {};
-const COVERAGE_ROWS = [
-  ['Price', 'price_min', 'Every storefront publishes one.'],
-  ['Weight', 'weight_g', 'Usually in the feed.'],
-  ['Volume', 'volume_l', 'Often in the title rather than a field of its own.'],
-  ['Dimensions', 'dims_cm', 'The hardest to get, and the one the carry-on tables need.'],
-  ['Laptop size', 'laptop_in', 'Only where a brand states it. Never inferred from the bag'
-    + '’s own dimensions.'],
-] as const;
-
-const indexable = indexablePaths.size;
-const withDims = coverage.dims_cm?.have ?? 0;
-
-/* Where each spec value actually came from.
- *
- * Every extracted field carries a `*_source` sibling naming the rule that
- * produced it, so a wrong number is auditable rather than mysterious. Grouped
- * here into the three kinds of work behind a figure, because that split is the
- * whole reason this is not a five-line script: a number the brand published as
- * a field, a number sitting in the brand's own prose that had to be parsed out
- * of it, and a number that appeared on no feed anywhere and had to be read off
- * a product page one request at a time.
- *
- * Keyed on the family prefix rather than the full rule name — there are ~38 of
- * those and they are an implementation detail, where the three families are
- * the thing worth showing. `other` catches any family added later so a new
- * rule shows up as uncounted rather than silently vanishing from the total.
- */
-const PROVENANCE = [
-  {
-    label: 'Published as a field',
-    families: ['shopify', 'magento', 'bellroy-api'],
-    why: "Structured data from the brand's own storefront API. Nothing to interpret.",
-  },
-  {
-    label: "Parsed from the brand's own text",
-    families: ['title', 'description', 'variant-option', 'campsaver'],
-    why: 'Stated, but in prose — a title reading “Travel Pack 45L”, a spec line, a variant option called “21L”.',
-  },
-  {
-    label: 'Read off the product page',
-    families: ['product-page', 'pages'],
-    why: 'On no feed at all. Fetched and read a page at a time.',
-  },
-] as const;
-
-const provenance = (() => {
-  const counted = new Map(PROVENANCE.map((row) => [row.label, 0]));
-  let other = 0;
-  for (const bag of bags) {
-    for (const field of ['dims_source', 'volume_source', 'weight_source'] as const) {
-      const source = bag[field];
-      if (!source) continue;
-      const family = String(source).split(':')[0];
-      const row = PROVENANCE.find((r) => (r.families as readonly string[]).includes(family));
-      if (row) counted.set(row.label, (counted.get(row.label) ?? 0) + 1);
-      else other += 1;
-    }
-  }
-  const rows = PROVENANCE.map((row) => ({ ...row, count: counted.get(row.label) ?? 0 }));
-  const total = rows.reduce((n, row) => n + row.count, 0) + other;
-  return { rows, other, total };
-})();
-
-/* How the category was decided, which is a precedence question and therefore
-   one where the honest thing to publish is how often each level actually
-   fires rather than only the order they are tried in. */
-const catSources = (() => {
-  const by = new Map<string, number>();
-  for (const bag of bags) {
-    const source = bag.category_source;
-    if (source) by.set(source, (by.get(source) ?? 0) + 1);
-  }
-  const of = (...keys: string[]) =>
-    keys.reduce((n, key) => n + (by.get(key) ?? 0), 0);
-  return {
-    title: of('title'),
-    shelf: of('collection', 'shelf', 'magento-shelf', 'bellroy-shelf'),
-    tag: of('tag'),
-  };
-})();
-
-/* Currency is the one field with a bucket meaning "nothing said otherwise",
-   and it is large enough that leaving it out of a page about provenance would
-   be the omission the rest of the page argues against.
-   Counted twice on purpose, because the two numbers answer different
-   questions and the smaller one alone would undersell it: currency is resolved
-   once per *store*, so meta counts brands, and the number of models carrying
-   the result is an order of magnitude larger. */
-const assumedBrands = meta.currency_sources?.assumed ?? 0;
-const assumedModels = bags.filter((bag) => bag.currency_source === 'assumed').length;
-
-/* The ledger's first observation, to the day.
-   Month and year alone would read as "since August 2026" — which, written in
-   August 2026, claims a history of days in the grammar of one measured in
-   years. The exact date claims nothing: a reader can see how long it is and
-   decide for themselves what that is worth, and the sentence stays true as
-   the answer grows. */
-const since = trackingSince
-  ? new Date(trackingSince).toLocaleDateString('en-US', {
-      day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
-    })
-  : null;
 
 const built = meta.generated_at
   ? new Date(meta.generated_at).toLocaleDateString('en-US', {
@@ -208,19 +88,6 @@ const jsonLd = {
       differently. It holds {fmt(meta.bag_count ?? bags.length)} models from {brands.length} brands,
       covering {fmt(meta.sku_count ?? 0)} individual SKUs.
     </p>
-    <p class="note">
-      It exists because comparing three bags otherwise means opening nine tabs
-      and doing arithmetic. This does that once, nightly, for every bag it can
-      reach.
-    </p>
-
-    <section>
-      <h2>The name</h2>
-      <p class="note">
-        A carry nerd is what this audience already calls itself — the name is
-        that phrase, not a coinage. The bison is older than the name and stayed.
-      </p>
-    </section>
 
     <section>
       <h2>Where the data comes from</h2>
@@ -236,7 +103,7 @@ const jsonLd = {
     </section>
 
     <section>
-      <h2>How it is built</h2>
+      <h2>How it works</h2>
       <p class="note">Five stages, run in order, every night.</p>
       <table class="spectable">
         <tbody>
@@ -262,191 +129,6 @@ const jsonLd = {
           </tr>
         </tbody>
       </table>
-    </section>
-
-    <section>
-      <h2>What counts as a bag</h2>
-      <p class="note">
-        A bag brand's catalogue is mostly not bags — hats, patches, water
-        bottles, spare buckles. On the last build {fmt(notBags)} products were
-        classified as not a bag and left out, and {fmt(unclassified)} more could
-        not be classified confidently either way and were held back rather than
-        guessed at. What survives is sorted into {hubs.length} categories by
-        three signals in a fixed order of precedence: the product's own title
-        first, then the shelf the store files it on, then its tags.
-      </p>
-      <table class="spectable">
-        <tbody>
-          <tr><th scope="row">Decided by title</th><td>{fmt(catSources.title)} models</td></tr>
-          <tr><th scope="row">By the store's shelf</th><td>{fmt(catSources.shelf)} models</td></tr>
-          <tr><th scope="row">By tags</th><td>{fmt(catSources.tag)} models</td></tr>
-        </tbody>
-      </table>
-      <p class="note">
-        One bag is often several products. The last build merged {fmt(meta.products_merged ?? 0)} products
-        into the models they are colourways of, and collapsed {fmt(meta.models_collapsed ?? 0)} further
-        duplicate models.
-      </p>
-    </section>
-
-    <section>
-      <h2>What is actually known</h2>
-      <p class="note">
-        Coverage is not uniform and not close to complete, and pretending
-        otherwise would make every other claim here worth less.
-      </p>
-      <table class="spectable">
-        <thead>
-          <tr><th scope="col">Field</th><th scope="col">Have</th><th scope="col">Why</th></tr>
-        </thead>
-        <tbody>
-          {COVERAGE_ROWS.map(([label, field, why]) => (
-            <tr>
-              <th scope="row">{label}</th>
-              <td>{coverage[field] ? `${coverage[field].pct}%` : '—'}</td>
-              <td>{why}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p class="note">
-        A missing value is shown as a dash, and a dash never means zero — it
-        means the brand did not publish it and we would not invent it. A filter
-        for bags under 1&nbsp;kg returns bags known to be under 1&nbsp;kg, not
-        bags whose weight is unknown.
-      </p>
-    </section>
-
-    <section>
-      <h2>Every number knows where it came from</h2>
-      <p class="note">
-        Each extracted value carries a sibling field naming the rule that
-        produced it, so a figure that looks wrong can be traced to the thing
-        that decided it. The {fmt(provenance.total)} volume, weight and
-        dimension figures in the index break down by the kind of work behind
-        them.
-      </p>
-      <table class="spectable">
-        <thead>
-          <tr><th scope="col">Came from</th><th scope="col">Values</th><th scope="col">What that means</th></tr>
-        </thead>
-        <tbody>
-          {provenance.rows.map((row) => (
-            <tr>
-              <th scope="row">{row.label}</th>
-              <td>{fmt(row.count)}</td>
-              <td>{row.why}</td>
-            </tr>
-          ))}
-          {provenance.other > 0 && (
-            <tr>
-              <th scope="row">Other</th>
-              <td>{fmt(provenance.other)}</td>
-              <td>A rule added since this table was last grouped.</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </section>
-
-    <section>
-      <h2>What the numbers mean</h2>
-      <table class="spectable">
-        <tbody>
-          <tr>
-            <th scope="row">Dimensions</th>
-            <td>As published, converted to centimetres and inches and shown in both. Sorted largest axis first, because brands disagree about which of the three they list first.</td>
-          </tr>
-          <tr>
-            <th scope="row">Volume</th>
-            <td>The brand's stated capacity. Never computed from dimensions, which would describe a box rather than a bag.</td>
-          </tr>
-          <tr>
-            <th scope="row">Weight</th>
-            <td>The empty bag — not a component, not a load rating.</td>
-          </tr>
-          <tr>
-            <th scope="row">Carry-on fit</th>
-            <td>
-              Computed against <a href="/carry-on/">each airline's published limits</a>, and only for
-              the {fmt(withDims)} bags with all three dimensions. A bag with no
-              dimensions abstains rather than being assumed to fit.
-            </td>
-          </tr>
-          <tr>
-            <th scope="row">Price</th>
-            <td>
-              As listed by the brand, never converted. The currency is read from
-              the feed, the store's configured market or the product page's
-              structured offer; where none of those said anything — {assumedBrands} of
-              the {brands.length} storefronts, carrying {fmt(assumedModels)} models —
-              it falls back to US dollars, which is the one assumption on the site.
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </section>
-
-    <section>
-      <h2>How often it updates</h2>
-      <p class="note">
-        Nightly. Every price is re-read and every change is written to a
-        ledger{since && <> that has recorded every move since {since}</>} — one
-        row per actual move, not a daily snapshot — which is what the price
-        history on a model page is drawn from. Dimensions are filled in
-        continuously, a few hundred product pages a night.
-      </p>
-    </section>
-
-    <section>
-      <h2>What stops a bad night from publishing</h2>
-      <p class="note">
-        The pipeline runs unattended and deploys what it produces, so the last
-        stage before publishing is a gate that can refuse.
-      </p>
-      <table class="spectable">
-        <tbody>
-          <tr>
-            <th scope="row">Structural</th>
-            <td>Required fields present, permalinks unique, every value inside physically sane bounds. A bag cannot weigh two grams or be four metres tall.</td>
-          </tr>
-          <tr>
-            <th scope="row">Regression</th>
-            <td>Tonight compared against the copy currently live. Bag counts, per-brand counts and every field's fill rate each have a limit on how far they may fall in one night.</td>
-          </tr>
-          <tr>
-            <th scope="row">Plausibility</th>
-            <td>The checks that catch a parse that is wrong rather than absent — a currency that moved for a whole brand, volumes that look computed rather than stated.</td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="note">
-        A rejected night publishes nothing and keeps yesterday's catalogue live:
-        stale data is visibly a day old, and wrong data looks exactly like right
-        data.
-      </p>
-    </section>
-
-    <section>
-      <h2>What is held back</h2>
-      <p class="note">
-        {fmt(indexable)} of the {fmt(bags.length)} model pages are offered to
-        search engines. The rest are published and linked, but marked not to be
-        indexed until they carry either a set of dimensions or a volume and a
-        weight together — a page showing a name, a price and a column of dashes
-        is not worth arriving on from a search result. Pages cross that line as
-        the data arrives.
-      </p>
-    </section>
-
-    <section>
-      <h2>What this is not</h2>
-      <p class="note">
-        Not a shop — nothing is sold here. Not a review site: no ratings, no
-        scores, no star counts anywhere in the index, because we have not tested
-        these bags. The brand's description of its own bag stays on the brand's
-        page, where the buy button also goes.
-      </p>
     </section>
 
     <section>
