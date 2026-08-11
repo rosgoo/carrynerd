@@ -10,6 +10,12 @@ export const FEATURE_LABELS = {
   compression: "Compression straps", shoe_compartment: "Shoe compartment",
   water_resistant: "Water resistant", carry_on: "Carry-on claimed",
   lockable_zips: "Lockable zips",
+  // The stronger water claims, which water_resistant on its own cannot tell
+  // apart. "(stated)" because this is the brand's word, not a test result —
+  // the same reason every measurement carries its source.
+  waterproof: "Waterproof (stated)", taped_seams: "Taped / welded seams",
+  waterproof_zips: "Waterproof zips",
+  ykk_zips: "YKK zips", airtag_pocket: "AirTag pocket",
 };
 
 export const CAT_LABELS = {

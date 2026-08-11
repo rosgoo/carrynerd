@@ -61,7 +61,7 @@ const facetSets = () => ({
 // reader and the query builder all walk this list rather than each keeping
 // their own copy of it.
 const RANGE_KEYS = ["volMin", "volMax", "priceMin", "priceMax",
-                    "weightMin", "weightMax", "linearMax"];
+                    "weightMin", "weightMax", "linearMax", "laptopMin"];
 
 let VIEW = "grid";
 const compare = new Set();
@@ -94,7 +94,7 @@ const S = {
   q: "", cats: new Set(), brands: new Set(), feats: new Set(), mats: new Set(),
   colors: new Set(),
   volMin: null, volMax: null, priceMin: null, priceMax: null,
-  weightMin: null, weightMax: null, linearMax: null,
+  weightMin: null, weightMax: null, linearMax: null, laptopMin: null,
   presets: new Set(), stock: false, sale: false, favOnly: false, sort: "brand",
 };
 
@@ -780,6 +780,7 @@ function describeState() {
     span(S.volMin, S.volMax, " L"),
     span(S.weightMin, S.weightMax, " g"),
     S.linearMax != null && `≤${Math.round(S.linearMax)}cm linear`,
+    S.laptopMin != null && `${S.laptopMin}″ laptop`,
     S.presets.has("carryon") && "carry-on",
     S.presets.has("underseat") && "under seat",
     S.stock && "in stock",
@@ -832,8 +833,8 @@ function say(msg) {
 function resetState() {
   Object.assign(S, {
     q: "", volMin: null, volMax: null, priceMin: null, priceMax: null,
-    weightMin: null, weightMax: null, linearMax: null, stock: false,
-    sale: false, favOnly: false, sort: "brand",
+    weightMin: null, weightMax: null, linearMax: null, laptopMin: null,
+    stock: false, sale: false, favOnly: false, sort: "brand",
   });
   [S.cats, S.brands, S.feats, S.mats, S.colors, S.presets].forEach(s => s.clear());
 }
@@ -1346,6 +1347,7 @@ function loadURL() {
   $("#vol-min").value = S.volMin ?? ""; $("#vol-max").value = S.volMax ?? "";
   $("#price-min").value = S.priceMin ?? ""; $("#price-max").value = S.priceMax ?? "";
   $("#weight-min").value = S.weightMin ?? ""; $("#weight-max").value = S.weightMax ?? "";
+  $("#laptop-min").value = S.laptopMin ?? "";
   syncUnits();
   syncSliders();
   $("#f-stock").setAttribute("aria-pressed", S.stock);
@@ -1605,6 +1607,13 @@ function wire() {
   num("#vol-min", "volMin"); num("#vol-max", "volMax");
   num("#price-min", "priceMin"); num("#price-max", "priceMax");
   num("#weight-min", "weightMin"); num("#weight-max", "weightMax");
+
+  // A select, so no debounce: picking a size is one discrete answer, the way
+  // sort is, not a value someone types a digit at a time.
+  $("#laptop-min").addEventListener("change", e => {
+    S.laptopMin = e.target.value === "" ? null : Number(e.target.value);
+    render();
+  });
 
   const askLinear = debounce(render);
   $("#linear-max").addEventListener("input", e => {

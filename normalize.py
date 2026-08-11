@@ -445,8 +445,27 @@ FEATURES = [
     ("compression",      r"\bcompression strap\b"),
     ("shoe_compartment", r"\bshoe (?:compartment|pocket|garage)\b"),
     ("water_resistant",  r"\bwater[- ]?(?:resistant|repellent|proof)\b|\bdwr\b"),
+    # The tiers above that baseline. `water_resistant` stays the broad flag and
+    # keeps its meaning — it is spelled in shared URLs and saved filters, and it
+    # is the honest reading of a page that claims only "water-repellent". But it
+    # fuses four different claims, and a welded-seam roll-top is not a
+    # DWR-coated polyester daypack. These three narrow it without replacing it,
+    # so asking for the stronger claim never hides the weaker one.
+    #
+    # DWR deliberately gets no flag of its own. A bag that says both "DWR" and
+    # "waterproof" would carry it, so the flag could not mean "only DWR" — the
+    # one thing it would be useful for — and a coating is already what
+    # water_resistant on its own implies.
+    ("waterproof",       r"\bwaterproof\b"),
+    ("taped_seams",      r"\b(?:welded|taped|sealed) seams?\b"),
+    ("waterproof_zips",  r"\b(?:aquaguard|waterproof|water[- ]?resistant) zip"),
     ("carry_on",         r"\bcarry[- ]on (?:compliant|approved|size|friendly)\b|\bpersonal item\b"),
     ("lockable_zips",    r"\block(?:able|ing) zip\b|\blockable\b"),
+    # Hardware brand is a quality proxy this audience reads fluently, and it is
+    # the most-stated unexposed signal in the corpus — 368 of 3,443 pages whose
+    # text we have kept name YKK, more than any other unmined pattern.
+    ("ykk_zips",         r"\bykk\b"),
+    ("airtag_pocket",    r"\bair ?tags?\b"),
 ]
 
 

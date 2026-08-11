@@ -131,6 +131,7 @@ type Row = {
   price_min: number | null;
   weight_g: number | null;
   linear_cm: number | null;
+  laptop_in: number | null;
   carryon: boolean;
   underseat: boolean;
   /* A feature list built only from marketing copy cannot be read as "does not
@@ -160,6 +161,7 @@ const ROWS: Row[] = (bags as Bag[]).map((b) => {
   const price_min = num(b.price_min);
   const weight_g = num(b.weight_g);
   const linear_cm = num(b.linear_cm);
+  const laptop_in = num(b.laptop_in);
   return {
     bag: b,
     id: b.id,
@@ -177,7 +179,7 @@ const ROWS: Row[] = (bags as Bag[]).map((b) => {
     colours: new Set<string>(b.color_families ?? []),
     in_stock: Boolean(b.in_stock),
     on_sale: Boolean(b.on_sale),
-    volume_l, price_min, weight_g, linear_cm,
+    volume_l, price_min, weight_g, linear_cm, laptop_in,
     carryon: Boolean(linear_cm && linear_cm <= 115),
     underseat: fitsUnderseat(b),
     featuresUnknown: b.features_source !== 'product-page',
@@ -364,6 +366,11 @@ type Query = {
   priceMin: number | null; priceMax: number | null;
   weightMin: number | null; weightMax: number | null;
   linearMax: number | null;
+  /* Minimum, not maximum, because laptop_in is the largest machine a bag takes:
+   * a reader with a 16" laptop wants everything that fits it or more. Same
+   * reading as the laptop hub pages, which is deliberate — the filter and the
+   * hub must not disagree about what "fits" means. */
+  laptopMin: number | null;
   carryon: boolean;
   underseat: boolean;
   stock: boolean;
@@ -376,7 +383,7 @@ type Query = {
 };
 
 const RANGES = ['volMin', 'volMax', 'priceMin', 'priceMax',
-                'weightMin', 'weightMax', 'linearMax'] as const;
+                'weightMin', 'weightMax', 'linearMax', 'laptopMin'] as const;
 
 const list = (p: URLSearchParams, k: string) =>
   (p.get(k) ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -392,7 +399,7 @@ function parse(p: URLSearchParams, scope: string | null): Query {
     mats: list(p, 'mat'),
     colours: list(p, 'color'),
     volMin: null, volMax: null, priceMin: null, priceMax: null,
-    weightMin: null, weightMax: null, linearMax: null,
+    weightMin: null, weightMax: null, linearMax: null, laptopMin: null,
     carryon: presets.has('carryon'),
     underseat: presets.has('underseat'),
     stock: p.get('stock') === '1',
@@ -450,6 +457,12 @@ function matches(r: Row, q: Query) {
   if (q.weightMin != null && !(r.weight_g! >= q.weightMin)) return false;
   if (q.weightMax != null && !(r.weight_g! <= q.weightMax)) return false;
   if (q.linearMax != null && !(r.linear_cm! <= q.linearMax)) return false;
+  // Spelled with an explicit null test rather than leaning on the comparison
+  // the way the lines above do. A bag with no stated laptop size is an unknown,
+  // not a no, and "fits 16 inches" must not answer with bags nobody has said
+  // that about — which is the same rule the rest of the index runs on.
+  if (q.laptopMin != null
+      && !(r.laptop_in != null && r.laptop_in >= q.laptopMin)) return false;
   if (q.carryon && !r.carryon) return false;
   if (q.underseat && !r.underseat) return false;
   return true;
