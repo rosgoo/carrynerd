@@ -15,7 +15,7 @@ export const FEATURE_LABELS = {
   // the same reason every measurement carries its source.
   waterproof: "Waterproof (stated)", taped_seams: "Taped / welded seams",
   waterproof_zips: "Waterproof zips",
-  ykk_zips: "YKK zips", airtag_pocket: "AirTag pocket",
+  ykk_zips: "YKK zippers", airtag_pocket: "AirTag pocket",
 };
 
 export const CAT_LABELS = {

@@ -533,6 +533,9 @@ def main():
                     help="keep the raw page in data/page-cache for --reparse")
     ap.add_argument("--reparse", action="store_true",
                     help="re-run the parser over cached pages, no network")
+    ap.add_argument("--refresh-missing-pages", action="store_true",
+                    help="re-crawl only the cached entries whose page was "
+                         "never kept, so --reparse can reach them")
     ap.add_argument("--give-up-after", type=int, default=8,
                     help="stop after N consecutive 429/5xx across different "
                          "stores — an IP block, not a blip; continuing "
@@ -542,6 +545,19 @@ def main():
                          "consecutive failures; the rest of the crawl "
                          "carries on without it")
     args = ap.parse_args()
+
+    # --refresh empties the cache rather than reading it, and every write is
+    # open(CACHE, "w") on what this run collected — so the two together find
+    # nothing to refresh and then publish the emptiness. Refused rather than
+    # allowed to no-op, because the no-op is not silent: it overwrites.
+    if args.refresh_missing_pages and args.refresh:
+        ap.error("--refresh-missing-pages reads the cache to find its gaps; "
+                 "--refresh discards the cache. Pick one.")
+    # Re-crawling a page and then not keeping it would rebuild the same gap it
+    # was asked to close, so the flag carries --cache-pages rather than
+    # trusting the caller to remember it.
+    if args.refresh_missing_pages:
+        args.cache_pages = True
 
     if not os.path.exists(BAGS):
         sys.exit("no data/bags.json — run normalize.py first")
@@ -562,11 +578,19 @@ def main():
         # so a parser change can be evaluated against the real corpus in
         # seconds instead of a fresh crawl.
         reparsed = 0
+        unreachable = 0
         for bag in dedupe(bags, page_key):
             if brands_wanted and bag["brand_slug"] not in brands_wanted:
                 continue
             html_text = load_page(page_key(bag))
             if html_text is None:
+                # Cached, but the page behind it was never kept — so this
+                # parser change does not reach it. Counted rather than passed
+                # over in silence: a reparse that says only what it rebuilt
+                # reads as total coverage, and the shortfall took a hand count
+                # to notice. --refresh-missing-pages is what closes it.
+                if page_key(bag) in cache:
+                    unreachable += 1
                 continue
             cache[page_key(bag)] = parse_product_page(html_text)
             reparsed += 1
@@ -575,15 +599,54 @@ def main():
         hit = sum(1 for v in cache.values() if v.get("dims_cm"))
         print(f"reparsed {reparsed} cached pages, 0 requests; "
               f"dims now found for {hit}", flush=True)
+        if unreachable:
+            print(f"  {unreachable} cached entries have no saved page and "
+                  f"were not reached — run --refresh-missing-pages to close "
+                  f"the gap", flush=True)
         if not reparsed:
             print("  nothing in data/page-cache — crawl once with "
                   "--cache-pages first", flush=True)
     else:
-        targets = [b for b in bags
-                   if (not brands_wanted or b["brand_slug"] in brands_wanted)
-                   and page_key(b) not in cache
-                   and enrichable(b)
-                   and (b.get("dims_cm") is None or b.get("laptop_in") is None)]
+        # The gap --reparse cannot see.
+        #
+        # --cache-pages arrived after the crawl had already been running, so
+        # the entries from before it have a parse result and no page behind
+        # them. Every later parser change reaches everything except those, and
+        # reaches them silently: --reparse reports what it rebuilt and never
+        # what it could not open. This re-crawls exactly that set.
+        #
+        # Three deliberate choices about what "exactly" means:
+        #
+        #   in cache          — an entry with no cache line is ordinary
+        #                       backlog and the normal path already has it.
+        #                       This flag closes gaps; it does not race the
+        #                       crawl for the same work.
+        #   no page on disk   — the whole and only test. Not gated on missing
+        #                       dims, because the point is the page rather
+        #                       than the fields: an entry whose dims are
+        #                       already known still owes us its HTML, or the
+        #                       next regex fix skips it too.
+        #   no _status        — 404, 410 and 451 have no page because there is
+        #                       no page. Re-asking is the exact behaviour the
+        #                       status cache exists to prevent.
+        #
+        # Nothing is deleted. Each answer overwrites its own cache line with a
+        # fresh parse and saves the page, so coverage cannot dip while this
+        # runs and the gate sees an ordinary night.
+        if args.refresh_missing_pages:
+            targets = [b for b in bags
+                       if (not brands_wanted or b["brand_slug"] in brands_wanted)
+                       and enrichable(b)
+                       and page_key(b) in cache
+                       and "_status" not in (cache.get(page_key(b)) or {})
+                       and not os.path.exists(page_path(page_key(b)))]
+        else:
+            targets = [b for b in bags
+                       if (not brands_wanted or b["brand_slug"] in brands_wanted)
+                       and page_key(b) not in cache
+                       and enrichable(b)
+                       and (b.get("dims_cm") is None
+                            or b.get("laptop_in") is None)]
         # One request per page, not per entry. A model split across three
         # capacities is three entries pointing at one product page — see
         # split_sizes() in normalize.py — and asking a store for the same URL
@@ -601,9 +664,15 @@ def main():
         if args.limit:
             targets = targets[:args.limit]
 
-        print(f"{len(targets)} products to enrich across "
-              f"{len({b['brand_slug'] for b in targets})} brands "
-              f"({len(cache)} already cached)", flush=True)
+        brands_hit = len({b['brand_slug'] for b in targets})
+        if args.refresh_missing_pages:
+            print(f"{len(targets)} cached entries have no saved page, across "
+                  f"{brands_hit} brands — re-crawling to close the gap "
+                  f"({len(cache)} entries in the cache)", flush=True)
+        else:
+            print(f"{len(targets)} products to enrich across "
+                  f"{brands_hit} brands "
+                  f"({len(cache)} already cached)", flush=True)
 
         pacer = Pacer(args.delay)
         transient = 0

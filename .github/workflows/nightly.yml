@@ -70,6 +70,14 @@ on:
         description: "Brand slugs that are meant to have left the catalogue — a retirement, or a classifier fix that took a brand's last row. Any other brand vanishing still fails"
         type: string
         default: ""
+      # Only reachable from here. data/page-cache lives in this workflow's
+      # Actions cache and nowhere else — not the data repo, not git — so the
+      # set of entries missing a page cannot be computed off a laptop, and
+      # the flag that closes them cannot usefully be run from one.
+      refresh_missing_pages:
+        description: "Spend the night's crawl re-fetching cached entries whose page was never kept, instead of new products"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -507,7 +515,13 @@ jobs:
       # which must not end up in a public repo. The cache steps below are what
       # make it survive between runs without publishing it.
       - name: Enrich new products
-        run: python3 enrich.py --limit 800 --delay ${{ env.ENRICH_DELAY }} --cache-pages
+        # The two modes share the night's budget rather than splitting it: a
+        # refresh run spends the 800 on closing page gaps and fetches no new
+        # products. Deliberate — they compete for the same pacing, and a night
+        # that did half of each would take twice as long to finish either.
+        env:
+          REFRESH_PAGES: ${{ inputs.refresh_missing_pages && '--refresh-missing-pages' || '' }}
+        run: python3 enrich.py --limit 800 --delay ${{ env.ENRICH_DELAY }} --cache-pages $REFRESH_PAGES
 
       # Cached by image URL in data/image-bg.json, which is committed, so a
       # normal night samples only the photos that changed. Runs after enrich
@@ -650,16 +664,25 @@ jobs:
       - name: Fail loudly if the crawl moved nothing
         env:
           ENRICH_BEFORE: ${{ steps.enrich_before.outputs.entries }}
+          REFRESH_PAGES: ${{ inputs.refresh_missing_pages && '1' || '' }}
         run: |
           python3 - <<'PY'
           import json, os, sys
-          from enrich import enrichable
+          from enrich import enrichable, page_key
           before = int(os.environ["ENRICH_BEFORE"])
           cache = (json.load(open("data/enrich-cache.json"))
                    if os.path.exists("data/enrich-cache.json") else {})
           bags = json.load(open("data/bags.json"))["bags"]
+          # page_key, not b["id"]. The cache is keyed by the page an entry was
+          # read off, and the two are deliberately not one to one: a model sold
+          # in three capacities is three entries behind one product URL. Keyed
+          # by id, every split entry counted as queued however many times its
+          # page had been fetched — 177 phantoms against a real 28, and the
+          # error is not cosmetic. The check below fires on backlog being
+          # non-empty, so a phantom backlog turns the night the crawl finally
+          # finishes into the night this starts failing, and every night after.
           backlog = [b for b in bags
-                     if b["id"] not in cache and enrichable(b)
+                     if page_key(b) not in cache and enrichable(b)
                      and (b.get("dims_cm") is None
                           or b.get("laptop_in") is None)]
           grew = len(cache) - before
@@ -669,7 +692,16 @@ jobs:
           if summary:
               with open(summary, "a") as f:
                   f.write(line + "\n")
-          if grew == 0 and backlog:
+          # A refresh run rewrites entries in place rather than adding them, so
+          # its success looks exactly like the failure this guards against:
+          # grew == 0 with work outstanding. Growth is the wrong measure for
+          # that run, and there is no right one here — the pages it closed are
+          # counted in its own log — so the check stands down rather than
+          # reporting a number it cannot read.
+          if os.environ.get("REFRESH_PAGES"):
+              print("refresh run: entries replaced, not added — "
+                    "zero-growth check does not apply")
+          elif grew == 0 and backlog:
               print(f"::error::enrichment contributed nothing tonight with "
                     f"{len(backlog)} products still queued — read the enrich "
                     f"step's log for 429s or challenge markers")
