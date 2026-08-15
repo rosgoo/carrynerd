@@ -496,7 +496,8 @@ def currency(payload, rep, ceiling):
 MIN_BRAND_BAGS = 5
 
 
-def per_brand(payload, prev, rep, fail_drop, warn_drop):
+def per_brand(payload, prev, rep, fail_drop, warn_drop,
+              removed_gone=frozenset()):
     """Has one brand's catalogue collapsed while the totals stayed fine?
 
     The regression checks above are all aggregates, and the aggregate is the
@@ -542,6 +543,13 @@ def per_brand(payload, prev, rep, fail_drop, warn_drop):
     collapsed, shrunk = [], []
     for slug, was in sorted(before.items()):
         if was < MIN_BRAND_BAGS:
+            continue
+        # A brand that existed only inside a removed source falls to zero on the
+        # run that stops reading it, which is the removal working rather than
+        # its catalogue collapsing. brands_gone() already accounts for the same
+        # departure by name; this check would otherwise fail the identical run
+        # for the identical reason, one aggregate down.
+        if slug in removed_gone:
             continue
         remains = now.get(slug, 0)
         if remains >= was:
@@ -703,7 +711,38 @@ def density(payload, rep):
              + ". " + sample([r for _, rows in worst for r in rows], 4))
 
 
-def brands_gone(payload, prev, rep, allowed):
+def removed_orphans(prev):
+    """Brands the previous catalogue held only through a now-removed source.
+
+    Removing a source drops every product it was the sole supplier of, and the
+    brands that had no other supplier go with them. That is the intended
+    outcome of the removal, not the failed fetch this gate exists to catch —
+    but the two are identical from the outside, so without this the one run
+    that does the removing is refused, and refused with a list of brand names
+    long enough that the honest fix and a blanket override look the same.
+
+    Derived from the roster and the published catalogue rather than named in a
+    list, so it stays true for the next retirement without anyone remembering
+    to update it. A brand keeps its place the moment any other source carries
+    it: `all()` over its bags, not `any()`.
+    """
+    try:
+        with open(os.path.join(HERE, "brands.json")) as f:
+            removed = {b["slug"] for b in json.load(f)
+                       if (b.get("platform") or "") == "removed"}
+    except (OSError, json.JSONDecodeError, TypeError, KeyError):
+        return set()
+    if not removed:
+        return set()
+    per = collections.defaultdict(list)
+    for bag in prev.get("bags") or []:
+        per[bag.get("brand_slug")].append(
+            (bag.get("source") or "").split(":", 1)[0])
+    return {slug for slug, sources in per.items()
+            if sources and all(s in removed for s in sources)}
+
+
+def brands_gone(payload, prev, rep, allowed, removed_gone=frozenset()):
     """Which brands fell out of the catalogue — by name, not by count.
 
     This compared meta.brand_count and printed the two numbers, which is the one
@@ -736,8 +775,16 @@ def brands_gone(payload, prev, rep, allowed):
         return
 
     gone = sorted(before - now)
-    unexplained = [slug for slug in gone if slug not in allowed]
-    expected = [slug for slug in gone if slug in allowed]
+    # Two ways a departure is accounted for, kept apart on purpose. `allowed` is
+    # someone saying so on the command line, and is spent on one run. The
+    # retired set is the catalogue explaining itself, and is true for as long as
+    # the source stays retired — so it is never a stale override, and it is not
+    # counted against the `unused` warning below.
+    removed_seen = [slug for slug in gone if slug in removed_gone]
+    unexplained = [slug for slug in gone
+                   if slug not in allowed and slug not in removed_gone]
+    expected = [slug for slug in gone
+                if slug in allowed and slug not in removed_gone]
     # Named on the command line but still in the catalogue. Worth saying because
     # the flag is a one-off by design: carried into a later run it is a hole in
     # the gate for a brand nobody is removing any more.
@@ -751,6 +798,9 @@ def brands_gone(payload, prev, rep, allowed):
                  f"it before assuming otherwise. If the removal is deliberate, "
                  f"rerun with --allow-brands-gone "
                  f"{','.join(unexplained)}")
+    if removed_seen:
+        rep.note(f"{len(removed_seen)} brand(s) left with a removed source: "
+                 f"{sample(removed_seen, 8)} — each existed only inside it")
     if expected:
         rep.note(f"brands gone: {sample(expected, 8)} — allowed on this run")
     if unused:
@@ -870,8 +920,10 @@ def main():
         regression(payload, prev, rep, args.max_drop, args.max_coverage_drop)
         brands_gone(payload, prev, rep,
                     {s.strip() for s in args.allow_brands_gone.split(",")
-                     if s.strip()})
-        per_brand(payload, prev, rep, args.max_brand_drop, args.max_drop)
+                     if s.strip()},
+                    removed_orphans(prev))
+        per_brand(payload, prev, rep, args.max_brand_drop, args.max_drop,
+                  removed_orphans(prev))
 
     meta = payload.get("meta") or {}
     print(f"validating {meta.get('bag_count', '?')} bags, "

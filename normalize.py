@@ -2954,13 +2954,30 @@ def main():
     # instead of waiting for the brand's turn in the crawl. It is the *fallback*
     # — see observed_currency(), which prefers what the source itself says.
     declared = {}
+    # Sources whose cached catalogue is not to be read.
+    #
+    # Distinct from `retired`, and the distinction is the point. `retired` means
+    # stop paying to refetch and keep what we already have — every retirement
+    # note says so in as many words, and camelbak, tatonka and vaude are live in
+    # the index on exactly that basis, frozen but wanted. `removed` is the other
+    # half: stop fetching *and* stop publishing. It exists because CampSaver
+    # needed it and `retired` could not say it — a retailer whose rows are other
+    # brands' products, retired on 2026-08-02 and still being republished a
+    # fortnight later with the prices it had that day. A frozen catalogue of
+    # bags we want is a reasonable trade; a frozen catalogue of a shop's
+    # inventory is a stale price that does not look stale.
+    removed = set()
     try:
         with open(os.path.join(HERE, "brands.json")) as f:
-            declared = {b["slug"]: (b.get("currency") or "").upper()
-                        for b in json.load(f)}
+            roster = json.load(f)
+        declared = {b["slug"]: (b.get("currency") or "").upper()
+                    for b in roster}
+        removed = {b["slug"] for b in roster
+                   if (b.get("platform") or "") == "removed"}
     except (OSError, json.JSONDecodeError, TypeError, KeyError) as e:
         sys.exit(f"brands.json unreadable ({e}) — refusing to normalize, "
                  f"because every price would silently default to USD")
+    removed_dropped = {}
 
     # Currencies enrich.py already read off product pages, folded per brand.
     # Absent on a first run, which is fine: the roster and the gate cover it.
@@ -2998,6 +3015,15 @@ def main():
             print(f"  unreadable {os.path.basename(path)} ({e}) — skipping "
                   f"this brand", file=sys.stderr, flush=True)
             unreadable.append({"file": os.path.basename(path), "error": str(e)})
+            continue
+        if payload.get("slug") in removed:
+            # Before the currency read and everything after it: a removed source
+            # contributes nothing, so there is nothing here to attribute.
+            n = len(payload.get("products") or [])
+            removed_dropped[payload["slug"]] = n
+            print(f"  {payload['slug']} is marked removed in brands.json — "
+                  f"dropping its {n} cached products rather than republishing "
+                  f"them", flush=True)
             continue
         code, source = observed_currency(
             payload, payload["slug"],
@@ -3191,6 +3217,13 @@ def main():
         "products_merged": merged_away,
         "models_split": split,
         "models_collapsed": collapsed,
+        # Sources whose cached catalogue was on disk and deliberately not read,
+        # with what each would have contributed. Recorded rather than merely
+        # logged because the gate reads it: a brand that existed only inside a
+        # removed source is *expected* to leave the catalogue on the run that
+        # stops reading it, and validate.py has no other way to tell that apart
+        # from the failed fetch it is built to catch.
+        "removed_sources": dict(sorted(removed_dropped.items())),
         # Both halves of the currency picture, because either one alone is
         # misleading. The mix says what is actually being published; the
         # provenance says how much of it we know versus assume, and "assumed"

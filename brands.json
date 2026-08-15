@@ -403,8 +403,8 @@
     "slug": "campsaver",
     "name": "CampSaver",
     "domain": "www.campsaver.com",
-    "platform": "retired",
-    "note": "Retired 2026-08-02. A retailer, not a brand: it has yielded 0 models across every run, and the aggregator:direct-source-exists rule exists to reject its products wherever the brand is already sourced directly \u2014 so a successful crawl mostly produces duplicates of catalogues we hold first-hand. It is also soft-blocked behind behavioural bot protection that answers 200 with a forbidden.html, and it was occupying a whole shard to contribute nothing. The adapter stays in fetch.py; only this entry is retired."
+    "platform": "removed",
+    "note": "Retired 2026-08-02. A retailer, not a brand: it has yielded 0 models across every run, and the aggregator:direct-source-exists rule exists to reject its products wherever the brand is already sourced directly \u2014 so a successful crawl mostly produces duplicates of catalogues we hold first-hand. It is also soft-blocked behind behavioural bot protection that answers 200 with a forbidden.html, and it was occupying a whole shard to contribute nothing. The adapter stays in fetch.py; only this entry is retired. Marked `removed` rather than `retired` on 2026-08-15: retiring it stopped the crawl, but normalize.py went on reading the cached catalogue, so 77 products across 31 brands stayed in the index for a fortnight carrying the prices they had the day it was retired \u2014 and a stale price does not look stale. Those 31 are this retailer's shelf rather than the roster's \u2014 medical pouches, knife cases, a fishing rod pack \u2014 and not one of them had a second source to fall back on. `removed` is `retired` plus dropping the cached catalogue; the brands kept on the retired terms (camelbak, tatonka, vaude) are unaffected."
   },
   {
     "slug": "liteaf",

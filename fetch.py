@@ -1699,7 +1699,11 @@ def main():
             #
             # Either way: skip before any request. Nothing below this point
             # touches the network or the pacer, which is the whole saving.
-            declared = platform in ("retired", "todo", "walled", "unreachable")
+            # `removed` sits beside `retired` here because both mean "do not
+            # crawl this"; they differ only in what normalize.py does with the
+            # catalogue already on disk — retired keeps it, removed drops it.
+            declared = platform in ("retired", "removed", "todo", "walled",
+                                    "unreachable")
             print(f"    {'marked' if declared else 'no adapter for'} "
                   f"{platform!r}, skipping", flush=True)
             log[brand["slug"]] = {"slug": brand["slug"], "name": brand["name"],
