@@ -41,6 +41,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(HERE, "data", "enrich-cache.json")
 BAGS = os.path.join(HERE, "data", "bags.json")
 
+# What this run did, for the nightly's health check to read. Not a durable
+# artifact — the same standing as data/price-events.json, and gitignored beside
+# it. It exists because the facts that separate "the crawl broke" from "the
+# crawl is finished" live in this loop and nowhere else: how many pages we
+# actually asked for, how many answered, and whether the global breaker fired.
+# The workflow was inferring all three from the cache growing, which is a proxy
+# that stops working the moment there is nothing left to add.
+RUN = os.path.join(HERE, "data", "enrich-run.json")
+
 # Development page cache. `enrich-cache.json` holds *parsed* results, which
 # means every parser improvement needs a fresh crawl of every product before it
 # applies to anything already seen — a quarter-hour and a few hundred requests
@@ -690,7 +699,19 @@ def main():
         # *different* stores, so a streak really does mean the IP is blocked
         # rather than one store objecting. That is when to stop knocking —
         # each 429 served while blocked is what extends the block.
-        streak = 0
+        # Distinct stores in the current failure run, not failures. The line
+        # above says a streak means different stores, and that was true only
+        # while interleaving kept them different — which holds when the crawl
+        # has many brands of work left and stops holding at the end, when the
+        # queue is down to the two or three shops that refuse us and the same
+        # ones cycle. Counting failures there reaches eight by asking four
+        # stores twice, and reports an IP block on the night the crawl has
+        # nothing left but its known refusers. Counting stores says what the
+        # breaker is actually for: it takes eight *different* shops turning us
+        # away at once to mean the problem is us.
+        streak_stores = set()
+        landed = 0       # pages that answered and parsed
+        aborted = False  # the global breaker fired: IP-wide block
         cooling = {}     # brand -> epoch seconds it may be tried again
         next_ok = {}     # brand -> earliest epoch its Crawl-delay permits
         strikes = {}     # brand -> consecutive transient failures
@@ -739,26 +760,28 @@ def main():
                 else:
                     cooling[slug] = time.time() + 30
                 strikes[slug] = strikes.get(slug, 0) + 1
-                streak += 1
+                streak_stores.add(slug)
                 if strikes[slug] >= args.cool_off:
                     cooled_out[slug] = status
                     print(f"  dropping {slug}: {strikes[slug]} consecutive "
                           f"failures (status {status})", flush=True)
-                if streak >= args.give_up_after:
+                if len(streak_stores) >= args.give_up_after:
+                    aborted = True
                     with open(CACHE, "w") as f:
                         json.dump(cache, f, sort_keys=True, indent=1)
-                    print(f"\n  ABORTING: {streak} consecutive transient "
-                          f"failures across different stores (last status "
-                          f"{status}) at product {i}. That is an IP-wide "
-                          f"block, not one store objecting — knocking harder "
-                          f"makes it last longer. {len(cache)} products are "
-                          f"cached; rerun later to resume.", flush=True)
+                    print(f"\n  ABORTING: {len(streak_stores)} different "
+                          f"stores turned us away without a success between "
+                          f"them (last status {status}) at product {i}. That "
+                          f"is an IP-wide block, not one store objecting — "
+                          f"knocking harder makes it last longer. "
+                          f"{len(cache)} products are cached; rerun later to "
+                          f"resume.", flush=True)
                     break
                 # Not lost: try it again on the deferred pass once the store's
                 # cooldown has elapsed.
                 deferred.append(bag)
             else:
-                streak = 0
+                streak_stores.clear()
                 strikes[slug] = 0
             if not queue and deferred:
                 # Second pass over everything a cooling store owed us. Only
@@ -782,6 +805,7 @@ def main():
                 if args.cache_pages:
                     save_page(page_key(bag), text)
                 cache[page_key(bag)] = parse_product_page(text)
+                landed += 1
             if i % 10 == 0 or not queue:
                 with open(CACHE, "w") as f:
                     json.dump(cache, f, sort_keys=True, indent=1)
@@ -801,6 +825,18 @@ def main():
             print("  stores dropped this run (throttling us, try later): "
                   + ", ".join(f"{k} [{v}]" for k, v in cooled_out.items()),
                   flush=True)
+
+        # `attempted` is i: the requests actually issued, after robots and the
+        # per-store cooldowns have taken their share out of the target list.
+        # That is the number the health check needs — a night with nothing to
+        # ask for and a night that asked and got nothing are the two cases it
+        # has to tell apart, and only this end of the pipe can see which.
+        with open(RUN, "w") as f:
+            json.dump({"attempted": i, "landed": landed,
+                       "transient": transient, "aborted": aborted,
+                       "dropped": sorted(cooled_out),
+                       "mode": ("refresh" if args.refresh_missing_pages
+                                else "crawl")}, f, indent=1)
 
     # Merge. Enrichment fills gaps and does not overwrite feed data, except for
     # the weight sources that are answering a different question — a shipping

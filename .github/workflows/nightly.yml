@@ -661,10 +661,15 @@ jobs:
       # is purely a signal. Zero growth with zero backlog is the crawl being
       # finished, not a failure; robots-disallowed pages are cached entries,
       # so a store that refuses us still counts as the backlog shrinking.
-      - name: Fail loudly if the crawl moved nothing
+      # Renamed from "Fail loudly if the crawl moved nothing": movement is no
+      # longer what it checks, and a step whose name describes an older rule
+      # than its body is how the old rule gets restored by someone reading the
+      # summary. A refresh run needs no special case here either — it replaces
+      # entries rather than adding them, which used to look identical to
+      # failure and now simply is not what is being asked.
+      - name: Fail loudly if the crawl was blocked
         env:
           ENRICH_BEFORE: ${{ steps.enrich_before.outputs.entries }}
-          REFRESH_PAGES: ${{ inputs.refresh_missing_pages && '1' || '' }}
         run: |
           python3 - <<'PY'
           import json, os, sys
@@ -692,19 +697,37 @@ jobs:
           if summary:
               with open(summary, "a") as f:
                   f.write(line + "\n")
-          # A refresh run rewrites entries in place rather than adding them, so
-          # its success looks exactly like the failure this guards against:
-          # grew == 0 with work outstanding. Growth is the wrong measure for
-          # that run, and there is no right one here — the pages it closed are
-          # counted in its own log — so the check stands down rather than
-          # reporting a number it cannot read.
-          if os.environ.get("REFRESH_PAGES"):
-              print("refresh run: entries replaced, not added — "
-                    "zero-growth check does not apply")
-          elif grew == 0 and backlog:
-              print(f"::error::enrichment contributed nothing tonight with "
-                    f"{len(backlog)} products still queued — read the enrich "
-                    f"step's log for 429s or challenge markers")
+          # What went wrong, asked of the run rather than inferred from it.
+          #
+          # This used to fail on `grew == 0 and backlog`, which is a proxy for
+          # "the crawl broke" and stops being one as soon as the crawl is
+          # finished: the last 28 products sit behind two stores that refuse us
+          # at the connection level, and a connection failure is classed as
+          # transient, so it is never cached and never leaves the backlog. That
+          # backlog cannot shrink, by construction. Growth reaches zero on the
+          # first night with no new products, and the proxy then reports a
+          # broken crawl every night for as long as those two stores exist.
+          #
+          # The honest signal is the global breaker. enrich.py already draws the
+          # distinction the old check could not — its own comment: "one store is
+          # angry" and "our IP is blocked" need opposite responses. A store
+          # dropping out is the first; eight consecutive failures across
+          # different stores is the second, and only the second is worth a red
+          # build, because only the second gets worse if we keep knocking.
+          #
+          # A run that asked for nothing is not a failure either — it is the
+          # crawl having caught up, which is the outcome the whole week was for.
+          run = (json.load(open("data/enrich-run.json"))
+                 if os.path.exists("data/enrich-run.json") else {})
+          print(f"crawl: {run.get('attempted', 0)} asked, "
+                f"{run.get('landed', 0)} answered"
+                + (f", dropped {', '.join(run['dropped'])}"
+                   if run.get("dropped") else ""))
+          if run.get("aborted"):
+              print("::error::the crawl aborted on consecutive failures across "
+                    "different stores — that is an IP-wide block, not one shop "
+                    "objecting. Read the enrich step's log and leave the crawl "
+                    "alone until it clears; knocking harder extends it")
               sys.exit(1)
           PY
 

@@ -30,6 +30,9 @@ data/*.out
 # This run's price drops, handed to the alert matcher. Not a durable artifact —
 # price-history.jsonl is the ledger.
 data/price-events.json
+# This run's crawl facts, handed to the nightly's health check. Same standing:
+# what one run did, not a record of anything.
+data/enrich-run.json
 __pycache__/
 *.pyc
 .DS_Store
