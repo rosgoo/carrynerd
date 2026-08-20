@@ -246,6 +246,16 @@ for that. So:
   reading.)
 - **Brand pages** at `/brands/<brand>/`, and a sitemap, so every model page has
   a crawl path that does not depend on running JavaScript.
+- **Airline carry-on pages** at `/carry-on/` and `/carry-on/<airline>/`, joining
+  the limits in `data/airlines.json` to the index: what fits each carrier, and
+  what clears most of the others but fails this one. Fit sorts the bag's
+  dimensions and the airline's limit largest-axis-first, so orientation does not
+  matter, and abstains on any bag that does not state three axes.
+- **A sale page** at `/sale/` — the same island with `on_sale` settled by the
+  path and the deepest discount first. The discount is per colourway, taken
+  from the listing's own compare-at price; the deepest one is what the card
+  badges and what the sort ranks, and the page says out loud that a compare-at
+  is the seller's claim rather than something observed.
 - **The browse UI is a client-side island** with faceted filtering, grid/table
   views, six-way comparison and a detail drawer — but the filtering itself runs
   on the server, at `GET /api/browse`. The island holds the state, serialises it
@@ -262,6 +272,15 @@ for that. So:
   every answer.
 - The homepage server-renders a plain list of every model underneath the
   island, so a crawler with no JS still finds all of them.
+
+Carry-on compliance is in the rail as well as on those pages: one row per
+tracked carrier under "Airline — carry-on fit" (every-of — two ticked means a
+bag that clears both), and a computed **Carry-on compliant** in the feature
+list, which is the only entry there that was measured rather than read off a
+product page — it means the bag clears every carrier in `data/airlines.json`,
+as against "Carry-on claimed" beside it, which is the brand's own word for it.
+Both report how many bags they had to set aside for want of three stated axes
+rather than quietly returning a shorter list.
 
 All filter state syncs to the URL, so any view is a shareable link. Press `/`
 to search, `Esc` to close panels.
@@ -409,5 +428,6 @@ brands that have no affiliate programme.
   crawl rather than a download — but nothing in the code counts requests across
   time. Rate limiting and BotID are configured in the Vercel dashboard, not
   here, and until they are set up the cap is the only thing standing in the way.
-- No airline carry-on matrix yet. The `linear_cm` field and the two size
-  presets are the groundwork for it.
+- The airline table is hand-curated and reviewed quarterly (`checked` on every
+  row is the audit trail). Carriers change these without notice, so a page can
+  be right on the day it was reviewed and wrong the week after.

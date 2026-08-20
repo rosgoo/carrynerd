@@ -53,6 +53,19 @@ export const airlineHref = (airline) => `/carry-on/${airlineSlug(airline)}/`;
   }
 }
 
+/** Does this carrier publish a carry-on size rule we can compare against?
+ *  Two ways to publish one — three axes, or a linear total — and a carrier
+ *  doing neither can neither pass nor fail a bag. */
+export const publishesCarryOn = (airline) =>
+  Boolean(airline.carry_on_cm || airline.carry_on_linear_cm != null);
+
+/* The carriers a bag can actually be checked against, and therefore the
+ * denominator in every "fits N of M" on the site. All 34 of them today; the
+ * filter is here because data/airlines.json is allowed to hold a carrier whose
+ * policy states a weight cap and no size, and one of those must not quietly
+ * make every bag in the index non-compliant. */
+export const carryOnAirlines = airlines.filter(publishesCarryOn);
+
 /** Airlines grouped for display, in the region order REGION_LABELS declares. */
 export const airlinesByRegion = Object.entries(REGION_LABELS).map(
   ([key, label]) => ({ key, label, airlines: airlines.filter((a) => a.region === key) }),

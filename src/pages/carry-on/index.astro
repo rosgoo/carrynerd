@@ -11,7 +11,8 @@
 import Base from '../../layouts/Base.astro';
 import Measure from '../../components/Measure.astro';
 import {
-  airlines, airlinesUpdated, airlinesByRegion, airlineHref, fmtLimit,
+  airlines, airlinesUpdated, airlinesByRegion, airlineHref, airlineSlug,
+  fmtLimit,
 } from '../../lib/carryon.js';
 import {
   measured, fittingCarryOn, fittingPersonal, carryOnAirlineCount,
@@ -156,7 +157,13 @@ const breadcrumbs = {
         Counts are the models in each category that clear
         {' '}<Measure value={fmtLinear(COMMON_CARRYON_CM)} /> linear — the total
         most carriers converge on, and a reasonable first cut before you check
-        the airline you are actually flying.
+        the airline you are actually flying. To check one properly, every
+        carrier in the tables above is also a filter in the browse rail, under
+        “Airline — carry-on fit”: tick the ones on your itinerary and a bag has
+        to clear all of them.
+        {' '}<a href={`/?airline=${airlineSlug(strictest.airline)}`}>
+          Start with {strictest.airline.name}, the strictest of them →
+        </a>
       </p>
     </section>
 

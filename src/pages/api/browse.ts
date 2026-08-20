@@ -24,7 +24,10 @@
  */
 
 import type { APIRoute } from 'astro';
-import { bags, meta, byLabel } from '../../lib/catalog.js';
+import { bags, meta, byLabel, saleDiscount } from '../../lib/catalog.js';
+import { carryOnAirlines, airlineFit, airlineSlug } from '../../lib/carryon.js';
+import type { Bag as CatalogBag } from '../../lib/types.d.ts';
+import { FIT_FEATURE } from '../../lib/labels.js';
 
 export const prerender = false;
 
@@ -96,9 +99,14 @@ const pick = (obj: Bag, keys: readonly string[]) => {
   return out;
 };
 
-const project = (b: Bag) => ({
-  ...pick(b, CARD_FIELDS),
-  variants: (b.variants ?? []).map((v: Bag) => pick(v, VARIANT_FIELDS)),
+/* Takes the row rather than the record, for one field: `discount` is computed
+ * here and is not in bags.json. The card draws it instead of the bare "Sale"
+ * flag it used to draw, which is the difference between a badge that says a
+ * price moved and one that says how far. */
+const project = (r: Row) => ({
+  ...pick(r.bag, CARD_FIELDS),
+  ...(r.discount != null ? { discount: r.discount } : {}),
+  variants: (r.bag.variants ?? []).map((v: Bag) => pick(v, VARIANT_FIELDS)),
 });
 
 /* ---------- the filterable projection ---------- */
@@ -127,6 +135,11 @@ type Row = {
   colours: Set<string>;
   in_stock: boolean;
   on_sale: boolean;
+  /* How far the deepest colourway is below its compare-at price — see
+   * saleDiscount() in lib/catalog.js. null for anything not on sale, and also
+   * for the handful whose source sets the flag off a compare-at with no price
+   * beside it. */
+  discount: number | null;
   volume_l: number | null;
   price_min: number | null;
   weight_g: number | null;
@@ -134,6 +147,13 @@ type Row = {
   laptop_in: number | null;
   carryon: boolean;
   underseat: boolean;
+  /* The carriers whose published carry-on limit this bag clears, by slug.
+   * Empty — and shared — for a bag stating fewer than three axes, which is
+   * abstention rather than failure; see noDims below. */
+  airlines: ReadonlySet<string>;
+  /* Stated fewer than three axes, so no gauge can be run on it at all. The
+   * counterpart to featuresUnknown, for the filters that measure. */
+  noDims: boolean;
   /* A feature list built only from marketing copy cannot be read as "does not
    * have one" — see the caveat the count line prints. */
   featuresUnknown: boolean;
@@ -147,6 +167,36 @@ type Row = {
 
 const num = (v: unknown): number | null =>
   typeof v === 'number' && Number.isFinite(v) ? v : null;
+
+/* The carrier list, with each slug computed once rather than 8,000 times.
+ *
+ * lib/carryon.js answers "does this bag fit this airline" one bag at a time,
+ * which is what a model page needs, and lib/carryon-index.js builds the
+ * airline→bags direction at build time for the airline pages. This is the
+ * third orientation and the one a filter wants: bag→airlines, so a request
+ * naming two carriers costs two hash lookups per bag instead of two geometry
+ * comparisons. Like the haystack, it depends only on the deploy and is
+ * therefore paid for on the cold start and never again. */
+const CARRIERS = carryOnAirlines.map((airline) => ({
+  airline,
+  slug: airlineSlug(airline),
+  name: airline.name,
+}));
+
+/* One empty set, shared by the ~6,000 bags that state fewer than three axes.
+ * airlineFit() abstains on those and so does this: an unmeasured bag is not a
+ * bag that fails, which is why an airline filter reports how many it could not
+ * judge rather than quietly returning a shorter list. */
+const NO_FIT: ReadonlySet<string> = new Set();
+
+function carriersFitting(b: Bag): ReadonlySet<string> {
+  if (!b.dims_cm || b.dims_cm.length < 3) return NO_FIT;
+  const out = new Set<string>();
+  for (const c of CARRIERS) {
+    if (airlineFit(b, c.airline).carryOn) out.add(c.slug);
+  }
+  return out;
+}
 
 /* Sorted descending and read as height/width/depth: an underseat allowance is
  * about the shape of the bag, not about which axis the brand called which. */
@@ -162,6 +212,19 @@ const ROWS: Row[] = (bags as Bag[]).map((b) => {
   const weight_g = num(b.weight_g);
   const linear_cm = num(b.linear_cm);
   const laptop_in = num(b.laptop_in);
+  const fitting = carriersFitting(b);
+  /* The one feature nothing extracted: it is measured, here, against the
+   * airline table — see FIT_FEATURE in lib/labels.js. Injected into the
+   * feature set rather than given a control of its own so that the rail lists
+   * it, counts it, searches it and files it in a saved filter with no new
+   * machinery, and so that the reader meets it beside "Carry-on claimed",
+   * which is the same sentence from the brand instead of from the numbers.
+   *
+   * Every tracked carrier, not most of them. A bag that clears 33 of 34 is a
+   * bag with a specific airline problem, and the airline group above the
+   * Features group is where that question gets answered. */
+  const features = new Set<string>(b.features ?? []);
+  if (fitting.size === CARRIERS.length) features.add(FIT_FEATURE);
   return {
     bag: b,
     id: b.id,
@@ -174,14 +237,20 @@ const ROWS: Row[] = (bags as Bag[]).map((b) => {
       .join(' ').toLowerCase(),
     category: b.category,
     brand_slug: b.brand_slug,
-    features: new Set<string>(b.features ?? []),
+    features,
     materials: new Set<string>(b.materials ?? []),
     colours: new Set<string>(b.color_families ?? []),
     in_stock: Boolean(b.in_stock),
     on_sale: Boolean(b.on_sale),
+    // The cast is the one on `bags` above, run backwards: the filters work
+    // through a loose record and the helper is typed against the catalogue's
+    // own shape, and it is the same object either way.
+    discount: b.on_sale ? saleDiscount(b as CatalogBag) : null,
     volume_l, price_min, weight_g, linear_cm, laptop_in,
     carryon: Boolean(linear_cm && linear_cm <= 115),
     underseat: fitsUnderseat(b),
+    airlines: fitting,
+    noDims: fitting === NO_FIT,
     featuresUnknown: b.features_source !== 'product-page',
     noColour: !(b.color_families ?? []).length,
     variant_count: b.variant_count ?? 0,
@@ -210,6 +279,15 @@ const SORTS: Record<string, (a: Row, b: Row) => number> = {
   'weight-asc': (a, b) => nullsLast(a.weight_g, b.weight_g, 1),
   gpl: (a, b) => nullsLast(a.gpl, b.gpl, 1),
   ppl: (a, b) => nullsLast(a.ppl, b.ppl, 1),
+  /* Deepest cut first, and the default order of /sale/ — see the scope section
+   * below. Everything not on sale has a null discount and sorts last, which is
+   * what makes this a sane thing to offer on the front page too rather than a
+   * control that only means something on one route. The tail is the whole
+   * catalogue with nothing to say, so it falls back to the order the catalogue
+   * is read in rather than to the order normalize.py happened to write. */
+  discount: (a, b) =>
+    nullsLast(a.discount, b.discount, -1) ||
+    byLabel(a.brand, b.brand) || byLabel(a.name, b.name),
 };
 
 /* The catalogue pre-sorted eight ways, once, so a request never sorts anything.
@@ -239,6 +317,22 @@ const tally = (rows: Row[], of: (r: Row) => Iterable<string>) => {
 const facetsOf = (rows: Row[]) => ({
   categories: tally(rows, (r) => (r.category ? [r.category] : [])),
   features: tally(rows, (r) => r.features),
+  /* Slug, name, count — the same shape as brands, and for the same reason: the
+   * rail prints the carrier's name and would otherwise have to reconstruct it
+   * from the slug.
+   *
+   * Filed alphabetically rather than by count. Thirty-four carriers is a list
+   * you scan for the one you are flying on Thursday, and ordering it by how
+   * generous each one is would bury Ryanair — the carrier most worth checking
+   * — at the bottom. Counted the same way every other facet is: over the rows
+   * the page is about, so a brand page's rail says how many of that brand's
+   * bags clear each limit. */
+  airlines: (() => {
+    const counted = new Map(tally(rows, (r) => r.airlines));
+    return CARRIERS.filter((c) => counted.has(c.slug))
+      .sort((a, b) => byLabel(a.name, b.name))
+      .map((c) => [c.slug, c.name, counted.get(c.slug)!] as const);
+  })(),
   materials: tally(rows, (r) => r.materials),
   colors: tally(rows, (r) => r.colours),
   /* Slug, display name, count — the rail prints the name and files by it, and
@@ -311,9 +405,16 @@ const STATS = {
  * empties the grid when pressed, and a price track spanning four thousand
  * dollars of other people's luggage.
  *
+ * /sale/ is the second one, and the reason this is a kind rather than a brand
+ * slug: it is the same instrument with `on_sale` already settled, and its rail
+ * has to count against the bags actually on sale for exactly the same reason.
+ * Both spell out as an ordinary filter when you leave the page — `brand=` and
+ * `sale=1` — which is what the "compare against everything" link in the rail
+ * does with them.
+ *
  * Everything a scope needs is fixed for the life of a deploy, so it is built on
- * first sight and kept. Bounded by the number of brands, and only the brands
- * anyone actually opens are ever built. */
+ * first sight and kept. Bounded by the number of brands plus one, and only the
+ * scopes anyone actually opens are ever built. */
 type Boot = {
   facets: ReturnType<typeof facetsOf>;
   bounds: ReturnType<typeof boundsOf>;
@@ -321,47 +422,60 @@ type Boot = {
   stats: Record<string, number | null>;
 };
 
+/** What a page is: the parameter as written, and the test it stands for. */
+type Scope = { key: string; test: (r: Row) => boolean };
+
 const SCOPES = new Map<string, Boot>();
 
-function scoped(slug: string): Boot {
-  let hit = SCOPES.get(slug);
+function scoped(scope: Scope): Boot {
+  let hit = SCOPES.get(scope.key);
   if (!hit) {
-    const rows = ROWS.filter((r) => r.brand_slug === slug);
+    const rows = ROWS.filter(scope.test);
     hit = {
       facets: facetsOf(rows),
       bounds: boundsOf(rows),
       coverage: coverageOf(rows),
       stats: statsOf(rows),
     };
-    SCOPES.set(slug, hit);
+    SCOPES.set(scope.key, hit);
   }
   return hit;
 }
 
-/** `brand:<slug>`, or nothing. An unreadable scope is refused rather than
- *  ignored: dropping it would answer with the whole catalogue on a page whose
- *  heading promises one brand, which is the one wrong answer available. */
+/** `brand:<slug>` or `sale`, or nothing. An unreadable scope is refused rather
+ *  than ignored: dropping it would answer with the whole catalogue on a page
+ *  whose heading promises one brand, which is the one wrong answer available. */
 function readScope(raw: string | null) {
-  if (!raw) return { ok: true as const, slug: null };
+  if (!raw) return { ok: true as const, scope: null };
+  if (raw === 'sale') {
+    return { ok: true as const, scope: { key: raw, test: (r: Row) => r.on_sale } };
+  }
   const at = raw.indexOf(':');
   const kind = at < 0 ? raw : raw.slice(0, at);
   const value = at < 0 ? '' : raw.slice(at + 1);
-  if (kind !== 'brand' || !value) return { ok: false as const, slug: null };
-  return { ok: true as const, slug: value };
+  if (kind !== 'brand' || !value) return { ok: false as const, scope: null };
+  return {
+    ok: true as const,
+    scope: { key: raw, test: (r: Row) => r.brand_slug === value },
+  };
 }
 
 /* ---------- the query ---------- */
 
 type Query = {
   terms: string[];
-  /* The page's own brand, from `scope` — not a filter the reader set and not
-   * one they can clear. See the scope section above. */
-  scope: string | null;
+  /* What the page is, from `scope` — not a filter the reader set and not one
+   * they can clear. See the scope section above. */
+  scope: Scope | null;
   cats: Set<string>;
   brands: Set<string>;
   feats: string[];
   mats: string[];
   colours: string[];
+  /* Carriers by slug, every-of: two of them means a bag that clears both.
+   * Any-of would answer "fits at least one airline", which is a question
+   * nobody packs for. */
+  airlines: string[];
   volMin: number | null; volMax: number | null;
   priceMin: number | null; priceMax: number | null;
   weightMin: number | null; weightMax: number | null;
@@ -388,7 +502,7 @@ const RANGES = ['volMin', 'volMax', 'priceMin', 'priceMax',
 const list = (p: URLSearchParams, k: string) =>
   (p.get(k) ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 
-function parse(p: URLSearchParams, scope: string | null): Query {
+function parse(p: URLSearchParams, scope: Scope | null): Query {
   const presets = new Set(list(p, 'preset'));
   const q: Query = {
     terms: (p.get('q') ?? '').toLowerCase().split(/\s+/).filter(Boolean),
@@ -398,6 +512,7 @@ function parse(p: URLSearchParams, scope: string | null): Query {
     feats: list(p, 'feat'),
     mats: list(p, 'mat'),
     colours: list(p, 'color'),
+    airlines: list(p, 'airline'),
     volMin: null, volMax: null, priceMin: null, priceMax: null,
     weightMin: null, weightMax: null, linearMax: null, laptopMin: null,
     carryon: presets.has('carryon'),
@@ -426,6 +541,7 @@ function parse(p: URLSearchParams, scope: string | null): Query {
 const isFiltered = (q: Query) =>
   q.terms.length > 0 || q.cats.size > 0 || q.brands.size > 0 ||
   q.feats.length > 0 || q.mats.length > 0 || q.colours.length > 0 ||
+  q.airlines.length > 0 ||
   RANGES.some((k) => q[k] != null) ||
   q.carryon || q.underseat || q.stock || q.sale || q.favOnly;
 
@@ -434,11 +550,11 @@ const isFiltered = (q: Query) =>
  * every comparison: a bag with no measured volume cannot be asserted to sit
  * inside a volume window, and reading it as zero would be an assertion. */
 function matches(r: Row, q: Query) {
-  // First, and before the filters, because it is not one: a scoped request is
-  // asking about one brand's shelf and everything below is asking about that
-  // shelf. It is also the most selective test here by a wide margin.
-  if (q.scope && r.brand_slug !== q.scope) return false;
-  // Then the cheapest of the filters, and the one most likely to reject:
+  // The scope is deliberately not tested here — it is not a filter, and the
+  // loop below applies it first so that a bag belonging to another page cannot
+  // be counted as one this page's filters excluded. See the caveat counters.
+  //
+  // The cheapest of the filters first, and the one most likely to reject:
   // "favourites only" is at most sixty bags out of eight thousand.
   if (q.favOnly && !q.favs.has(r.id)) return false;
   for (const t of q.terms) if (!r.hay.includes(t)) return false;
@@ -448,6 +564,12 @@ function matches(r: Row, q: Query) {
   if (q.mats.length && !q.mats.some((m) => r.materials.has(m))) return false;
   // Any-of, like materials: picking black and green means "comes in either".
   if (q.colours.length && !q.colours.some((c) => r.colours.has(c))) return false;
+  /* Every-of, like features: a bag has to clear every carrier named, because an
+   * itinerary is an and. A bag stating fewer than three axes has an empty set
+   * and fails here — it is not being judged against the gauge and cannot be
+   * offered as clearing it; how many were set aside that way is counted below
+   * and printed above the grid. */
+  if (q.airlines.length && !q.airlines.every((a) => r.airlines.has(a))) return false;
   if (q.stock && !r.in_stock) return false;
   if (q.sale && !r.on_sale) return false;
   if (q.volMin != null && !(r.volume_l! >= q.volMin)) return false;
@@ -480,10 +602,10 @@ export const GET: APIRoute = ({ url }) => {
 
   const scope = readScope(p.get('scope'));
   if (!scope.ok) {
-    return json({ error: 'scope must be brand:<slug>' }, 400);
+    return json({ error: 'scope must be brand:<slug> or sale' }, 400);
   }
 
-  const q = parse(p, scope.slug);
+  const q = parse(p, scope.scope);
   const order = ORDERS[p.get('sort') ?? 'brand'] ?? ORDERS.brand!;
 
   const from = page * per;
@@ -501,15 +623,30 @@ export const GET: APIRoute = ({ url }) => {
    * alphabetical place forty cards down. `total` still counts it, because the
    * count line above the grid answers "how many bags match", and a favourite
    * matches; `paged` is what the client's scroll arithmetic runs on. */
-  const wantFeature = q.feats.length > 0 || q.mats.length > 0;
+  /* Three filters exclude bags for want of a value rather than for having the
+   * wrong one, and they do not share an unknown. A bag whose features were
+   * never read off a product page cannot be said to lack a laptop sleeve; a bag
+   * stating fewer than three axes cannot be said to fail a gauge. So the
+   * measured filters — the airlines, and the derived carry-on feature that is
+   * not an extracted one — count against the dimension caveat, and the stated
+   * features count against theirs. */
+  const statedFeats = q.feats.filter((f) => f !== FIT_FEATURE);
+  const wantFeature = statedFeats.length > 0 || q.mats.length > 0;
   const wantColour = q.colours.length > 0;
+  const wantDims = q.airlines.length > 0 || statedFeats.length !== q.feats.length;
   const wantFavs = q.favs.size > 0;
   const brandSet = new Set<string>();
   const pageRows: Row[] = [];
   const favRows: Row[] = [];
-  let total = 0, paged = 0, skus = 0, noFeature = 0, noColour = 0;
+  let total = 0, paged = 0, skus = 0, noFeature = 0, noColour = 0, noDims = 0;
 
   for (const r of order) {
+    /* Before anything is counted, because a scope is what the page *is*: on
+     * /sale/ the eight thousand bags that are not discounted were never
+     * candidates, and counting them among the ones a filter set aside made the
+     * caveat below read "excluded 6,016" on a page holding 1,184 bags. It is
+     * also the most selective test here by a wide margin. */
+    if (q.scope && !q.scope.test(r)) continue;
     if (matches(r, q)) {
       total++;
       brandSet.add(r.brand_slug);
@@ -528,6 +665,7 @@ export const GET: APIRoute = ({ url }) => {
       // value for, rather than silently returning a shorter list.
       if (wantFeature && r.featuresUnknown) noFeature++;
       if (wantColour && r.noColour) noColour++;
+      if (wantDims && r.noDims) noDims++;
     }
   }
 
@@ -539,9 +677,9 @@ export const GET: APIRoute = ({ url }) => {
     paged,
     page,
     per,
-    bags: pageRows.map((r) => project(r.bag)),
-    ...(page === 0 && wantFavs ? { favs: favRows.map((r) => project(r.bag)) } : {}),
-    counts: { brands: brandSet.size, skus, noFeature, noColour },
+    bags: pageRows.map(project),
+    ...(page === 0 && wantFavs ? { favs: favRows.map(project) } : {}),
+    counts: { brands: brandSet.size, skus, noFeature, noColour, noDims },
     // Three integers, on every response rather than only at boot: the count
     // line reads "N of 8,079 bags" on every render, and a client that had to
     // remember the denominator from a request several filters ago is a client

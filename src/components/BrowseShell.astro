@@ -3,36 +3,68 @@
  *
  * Everything below the header that browse.js draws into or reads out of. It was
  * the front page's markup and it is now shared, because a brand page is the
- * same instrument pointed at one shelf — see the `brand` prop. Keeping one copy
- * is what stops the two drifting into a rail that has a control on one page and
- * not the other, which the island would find out about at runtime.
+ * same instrument pointed at one shelf and /sale/ is the same instrument
+ * pointed at everything discounted — see the `brand` and `sale` props. Keeping
+ * one copy is what stops them drifting into a rail that has a control on one
+ * page and not the others, which the island would find out about at runtime.
  *
  * The default slot goes inside #results and is the answer for a reader with no
  * JavaScript: the island replaces it on load. It is not a placeholder — it is
  * the page's only working fallback, and render() hands it back if the first
  * request fails.
  */
+import { airlines, carryOnAirlines } from '../lib/carryon.js';
+
 interface Props {
   /** The brand this page is about, if it is about one. Present, the rail loses
    *  its Brand group — the path already answered that question — and the island
    *  scopes every request and every count to the brand. */
   brand?: { slug: string; name: string } | null;
+  /** True on /sale/, which is the same instrument with `on_sale` settled by the
+   *  path. The rail loses its On sale check for the same reason a brand page
+   *  loses its Brand group: it is the page, not a filter on it. */
+  sale?: boolean;
   /** Currencies other than USD in whatever the page is showing. The price
    *  slider compares figures across them without converting, which is worth
    *  saying under the slider rather than leaving a reader to spot a £. */
   otherCurrencies?: string[];
+  /** The order the page opens on, when brand A–Z is the wrong answer for it.
+   *  A default and not a lock — see DEFAULT_SORT in scripts/browse.js. */
+  sort?: string;
 }
 
-const { brand = null, otherCurrencies = [] } = Astro.props;
+const { brand = null, sale = false, otherCurrencies = [], sort = 'brand' } =
+  Astro.props;
 
 /* Two spellings of the same fact, both read by browse.js. `lock` is what rides
  * on the request — and what tells the server to count the rail against this
- * brand's shelf rather than the catalogue. `unlock` is the same thing as an
- * ordinary filter, for the link out. */
-const lock = brand ? `scope=brand:${brand.slug}` : null;
-const unlock = brand ? new URLSearchParams({ brand: brand.slug }).toString() : null;
+ * page's shelf rather than the catalogue. `unlock` is the same thing as an
+ * ordinary filter, for the link out.
+ *
+ * One page is at most one of these: a scope is what the path already settled,
+ * and no route settles two. */
+const scope = brand
+  ? {
+      lock: `scope=brand:${brand.slug}`,
+      unlock: new URLSearchParams({ brand: brand.slug }).toString(),
+      label: 'Brand',
+      value: brand.name,
+      out: 'Compare against other brands →',
+    }
+  : sale
+    ? {
+        lock: 'scope=sale',
+        unlock: 'sale=1',
+        label: 'Availability',
+        value: 'On sale',
+        out: 'Compare against everything →',
+      }
+    : null;
+
+const lock = scope?.lock ?? null;
+const unlock = scope?.unlock ?? null;
 ---
-<div class="shell" id="shell" data-lock={lock} data-unlock={unlock}>
+<div class="shell" id="shell" data-lock={lock} data-unlock={unlock} data-sort={sort}>
   {/* Alphabetical by heading. The old order was the order the facets were
       built in, which meant the one people reach for first — Brand — sat
       ninth, below three collapsed groups. Nothing here ranks above anything
@@ -76,25 +108,47 @@ const unlock = brand ? new URLSearchParams({ brand: brand.slug }).toString() : n
       </button>
     </section>
 
-    {/* Where the Brand group would be, saying what is standing in for it.
-        A locked filter that says nothing is a filter a reader spends a while
-        looking for, and the link is the honest answer to why they were looking:
-        the same filters, on the whole catalogue, with this brand merely ticked.
-        browse.js keeps its href in step with the rail — see syncURL(). */}
-    {brand && (
+    {/* Where the group the path settled would be, saying what is standing in
+        for it. A locked filter that says nothing is a filter a reader spends a
+        while looking for, and the link is the honest answer to why they were
+        looking: the same filters, on the whole catalogue, with this one merely
+        ticked. browse.js keeps its href in step with the rail — see syncURL(). */}
+    {scope && (
       <section class="flock">
-        <em class="lbl">Brand</em>
-        <b>{brand.name}</b>
-        <a id="unscope" href={`/?${unlock}`}>Compare against other brands →</a>
+        <em class="lbl">{scope.label}</em>
+        <b>{scope.value}</b>
+        <a id="unscope" href={`/?${unlock}`}>{scope.out}</a>
       </section>
     )}
+
+    {/* First in the alphabet, and the only group in the rail that is a
+        measurement rather than a field: every carrier's published limit,
+        checked against the bag's stated dimensions. Closed by default — 34
+        rows open would push every other control below the fold — and it grows
+        its own search box at that length, the same way Brand does. */}
+    <details class="fgroup">
+      <summary>Airline — carry-on fit</summary>
+      <div class="fbody">
+        <div class="checks" id="f-airline"></div>
+        <p class="note" style="padding:10px 0 0;border:none">
+          Bag and limit are both sorted largest-axis-first before comparing, so
+          orientation does not matter. Tick more than one and a bag has to
+          clear all of them. Only bags stating all three axes can be checked;
+          the rest are neither passed nor failed, and the line above the
+          results says how many that left out. Soft bags compress and a
+          near-miss may go in anyway — we do not estimate that.
+          {' '}<a href="/carry-on/">All {airlines.length} carriers side by side</a>.
+        </p>
+      </div>
+    </details>
 
     <details class="fgroup" open>
       <summary>Availability</summary>
       <div class="fbody">
         <div class="checks">
           <button class="check" id="f-stock" aria-pressed="false"><i></i>In stock only</button>
-          <button class="check" id="f-sale" aria-pressed="false"><i></i>On sale</button>
+          {/* Absent on /sale/, where it is the page rather than a filter on it. */}
+          {!sale && <button class="check" id="f-sale" aria-pressed="false"><i></i>On sale</button>}
         </div>
       </div>
     </details>
@@ -118,7 +172,17 @@ const unlock = brand ? new URLSearchParams({ brand: brand.slug }).toString() : n
 
     <details class="fgroup">
       <summary>Features</summary>
-      <div class="fbody"><div class="checks" id="f-feat"></div></div>
+      <div class="fbody">
+        <div class="checks" id="f-feat"></div>
+        <p class="note" style="padding:10px 0 0;border:none">
+          Read off product pages, with one exception: <b>Carry-on compliant</b>
+          {' '}is measured, not claimed — the bag's stated dimensions clear the
+          published carry-on limit at every one of the {carryOnAirlines.length}
+          {' '}carriers tracked above. <b>Carry-on claimed</b> beside it is the
+          brand's own word for it, which is a different thing and often a
+          different set of bags.
+        </p>
+      </div>
     </details>
 
     <details class="fgroup">
@@ -245,19 +309,25 @@ const unlock = brand ? new URLSearchParams({ brand: brand.slug }).toString() : n
       <div class="count" id="count">loading…</div>
       <button class="tbtn" id="clear">Clear</button>
       <div class="spacer"></div>
+      {/* `selected` rather than a value set from script: the page can open on
+          an order of its own — /sale/ does — and the select has to say so
+          before the island's first answer lands. */}
       <select id="sort">
         {/* Same value either way — the server sorts by brand then model, and
             within one brand that is the model. Only the label changes, because
             "Brand A–Z" on a page with one brand on it reads as a control that
             does nothing. */}
-        <option value="brand">{brand ? 'Sort · Model A–Z' : 'Sort · Brand A–Z'}</option>
-        <option value="price-asc">Price ↑</option>
-        <option value="price-desc">Price ↓</option>
-        <option value="vol-asc">Volume ↑</option>
-        <option value="vol-desc">Volume ↓</option>
-        <option value="weight-asc">Weight ↑</option>
-        <option value="gpl">Grams per litre ↑</option>
-        <option value="ppl">Price per litre ↑</option>
+        <option value="brand" selected={sort === 'brand'}>{brand ? 'Sort · Model A–Z' : 'Sort · Brand A–Z'}</option>
+        <option value="price-asc" selected={sort === 'price-asc'}>Price ↑</option>
+        <option value="price-desc" selected={sort === 'price-desc'}>Price ↓</option>
+        {/* Anything not on sale has no discount to rank and sorts last, so this
+            is a real control on every page rather than only on /sale/. */}
+        <option value="discount" selected={sort === 'discount'}>Discount ↓</option>
+        <option value="vol-asc" selected={sort === 'vol-asc'}>Volume ↑</option>
+        <option value="vol-desc" selected={sort === 'vol-desc'}>Volume ↓</option>
+        <option value="weight-asc" selected={sort === 'weight-asc'}>Weight ↑</option>
+        <option value="gpl" selected={sort === 'gpl'}>Grams per litre ↑</option>
+        <option value="ppl" selected={sort === 'ppl'}>Price per litre ↑</option>
       </select>
     </div>
     <div id="results">

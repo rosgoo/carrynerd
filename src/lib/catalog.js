@@ -147,6 +147,48 @@ export function variantUrls(bag) {
   });
 }
 
+/* How deep the sale goes, as a fraction of the compare-at price.
+ *
+ * `on_sale` is a boolean the feed layer sets when any colourway is listed
+ * below its own compare-at price — see normalize.py — and a boolean is enough
+ * to badge a card but not enough to rank the thousand-odd bags carrying it.
+ * This is the number that ranks them, and it is deliberately the *deepest*
+ * colourway rather than an average or the one behind `price_min`: a reader
+ * sorting by discount is asking which listings have something worth looking at
+ * on them, and the answer is per-colourway on every storefront in the feed.
+ *
+ * A compare-at price is the seller's own claim about what the bag used to
+ * cost, not an observation — this site's price ledger is the stronger evidence
+ * and it is what the model page's chart draws. Nothing here corrects a
+ * compare-at that was never charged; the sale page says so instead.
+ *
+ * Both ends of the cut come back together, because the two places that show a
+ * discount show the price beside it and re-deriving one from the other would
+ * pair a percentage from one colourway with a price from another.
+ *
+ * null when no colourway states both numbers, which is not the same as zero:
+ * some sources set `on_sale` off a bare compare-at field with no price to
+ * divide it by, and those sort last rather than sorting as "no discount".
+ *
+ * @param {Bag} bag
+ * @returns {{ off: number, price: number, was: number } | null}
+ */
+export function deepestCut(bag) {
+  /** @type {{ off: number, price: number, was: number } | null} */
+  let best = null;
+  for (const v of bag.variants ?? []) {
+    if (!v.price || !v.compare_at || v.compare_at <= v.price) continue;
+    const off = 1 - v.price / v.compare_at;
+    if (!best || off > best.off) best = { off, price: v.price, was: v.compare_at };
+  }
+  return best;
+}
+
+/** Just the fraction, which is all the sort in api/browse.ts needs.
+ *  @param {Bag} bag
+ *  @returns {number | null} 0–1, or null when it cannot be computed */
+export const saleDiscount = (bag) => deepestCut(bag)?.off ?? null;
+
 /* Is this model's page worth arriving on from a search result?
  *
  * The catalogue is wide before it is deep. The feed layer reaches thousands of

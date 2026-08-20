@@ -55,6 +55,7 @@ const bagHref = b => {
 // four.
 const facetSets = () => ({
   cat: S.cats, brand: S.brands, feat: S.feats, mat: S.mats, color: S.colors,
+  airline: S.airlines,
 });
 
 // Same reasoning, for the numeric half of the state: the URL writer, the URL
@@ -80,6 +81,10 @@ let STATS = {};
 // name of a saved filter needs it: "Peak Design" rather than "peak-design".
 let BRAND_NAMES = new Map();
 
+// The same, for carriers: "Ryanair" rather than "ryanair", and "Air New
+// Zealand" rather than a slug that reads as three words run together.
+let AIRLINE_NAMES = new Map();
+
 /* The bags this browser has starred, as a Set for the card renderer.
  *
  * lib/store.js owns the list and localStorage owns the storage; this is a copy
@@ -90,12 +95,48 @@ let BRAND_NAMES = new Map();
  * URL like the rest of them. */
 let FAV = new Set();
 
+/* ---------- the page's own filter ---------- */
+
+/* Some pages are a filter before a reader touches one. /brands/able-carry/ runs
+ * this same island with the brand already settled by the path, and /sale/ runs
+ * it with `on_sale` settled the same way; the shell says which in markup — see
+ * components/BrowseShell.astro.
+ *
+ * It is deliberately not folded into S. S is what the reader chose, and what
+ * the reader chose is what goes in the address bar, what a saved filter keeps
+ * and what Clear empties; the brand on a brand page survives all three, because
+ * the path already says it and clearing your way onto the whole catalogue
+ * without moving is not something a page should let you do. So it rides on the
+ * request as `scope`, which is also what tells the server to count the rail
+ * against that brand's shelf rather than against the catalogue.
+ *
+ * `unlock` is the same filter spelled as an ordinary one, for the way out: the
+ * front page with this brand merely ticked, or with On sale merely pressed.
+ *
+ * A page may also arrive with an opinion about the order. /sale/ opens on the
+ * deepest discount, because brand A–Z on a page whose whole premise is a price
+ * cut is a table of contents rather than an answer. It is a default and not a
+ * lock: the sort select still works, and picking anything else leaves the
+ * markup's opinion behind. */
+const shell = document.getElementById("shell");
+const LOCK = new URLSearchParams(shell?.dataset.lock || "");
+const UNLOCK = shell?.dataset.unlock || "";
+/* Which kind of scope, for the two places that print a count of brands: on a
+ * brand page that count is always 1 and both leave it out. Not "is this page
+ * scoped at all" — on /sale/ it is 75 brands and worth printing. */
+const ONE_BRAND = (LOCK.get("scope") || "").startsWith("brand:");
+const DEFAULT_SORT = shell?.dataset.sort || "brand";
+
 const S = {
   q: "", cats: new Set(), brands: new Set(), feats: new Set(), mats: new Set(),
   colors: new Set(),
+  // Carriers whose published carry-on limit a bag has to clear — every one
+  // ticked, not any. See the airline group in components/BrowseShell.astro.
+  airlines: new Set(),
   volMin: null, volMax: null, priceMin: null, priceMax: null,
   weightMin: null, weightMax: null, linearMax: null, laptopMin: null,
-  presets: new Set(), stock: false, sale: false, favOnly: false, sort: "brand",
+  presets: new Set(), stock: false, sale: false, favOnly: false,
+  sort: DEFAULT_SORT,
 };
 
 /* ---------- units ---------- */
@@ -140,27 +181,6 @@ const cur = c => CUR_SYMBOLS[(c || "USD").toUpperCase()] ?? `${(c || "").toUpper
 const fmtPrice  = (n, c) => n == null ? "—" : cur(c) + (Number.isInteger(n) ? n : n.toFixed(2));
 const gpl = b => (b.weight_g && b.volume_l) ? b.weight_g / b.volume_l : null;
 const ppl = b => (b.price_min && b.volume_l) ? b.price_min / b.volume_l : null;
-
-/* ---------- the page's own filter ---------- */
-
-/* Some pages are a filter before a reader touches one. /brands/able-carry/ runs
- * this same island with the brand already settled by the path, and the shell
- * says so in markup — see components/BrowseShell.astro.
- *
- * It is deliberately not folded into S. S is what the reader chose, and what
- * the reader chose is what goes in the address bar, what a saved filter keeps
- * and what Clear empties; the brand on a brand page survives all three, because
- * the path already says it and clearing your way onto the whole catalogue
- * without moving is not something a page should let you do. So it rides on the
- * request as `scope`, which is also what tells the server to count the rail
- * against that brand's shelf rather than against the catalogue.
- *
- * `unlock` is the same filter spelled as an ordinary one, for the way out: the
- * front page with this brand merely ticked. */
-const shell = document.getElementById("shell");
-const LOCK = new URLSearchParams(shell?.dataset.lock || "");
-const UNLOCK = shell?.dataset.unlock || "";
-const SCOPED = LOCK.has("scope");
 
 /* ---------- asking the server ---------- */
 
@@ -257,7 +277,13 @@ function plate(bg) {
  * them from three places would be three chances for them to disagree. */
 function shotBlock(b) {
   const shot = shotFor(b);
-  const sale = b.on_sale ? '<div class="flag sale">Sale</div>' : "";
+  // How far, when the listing states both numbers — "Sale" says a price moved,
+  // "−30%" says whether it is worth opening. The deepest colourway, which is
+  // what /sale/ ranks on; see saleDiscount() in lib/catalog.js. A move that
+  // rounds to nothing keeps the word rather than printing "−0%".
+  const off = b.discount ? Math.round(b.discount * 100) : 0;
+  const sale = b.on_sale
+    ? `<div class="flag sale">${off >= 1 ? `−${off}%` : "Sale"}</div>` : "";
   const oos = !b.in_stock ? '<div class="flag oos">Out</div>' : "";
   return `<div class="shot" data-detail${plate(shot.bg)}>
       ${shot.src ? `<img loading="lazy" decoding="async" src="${
@@ -576,6 +602,11 @@ function countLine({ total, counts, stats }) {
   const unknown = [];
   if (counts.noFeature) unknown.push(`${counts.noFeature} with no feature detection yet`);
   if (counts.noColour) unknown.push(`${counts.noColour} whose colourway names state no colour`);
+  // The airline filters, and the carry-on feature that is measured rather than
+  // read off a page. A bag stating fewer than three axes cannot be held up to a
+  // gauge at all, and saying so is the difference between a shorter list and a
+  // wrong one.
+  if (counts.noDims) unknown.push(`${counts.noDims} that do not state all three dimensions`);
   const caveat = unknown.length
     ? ` · <em class="warnnote">excluded: ${unknown.join(", ")} — unknown, not` +
       ` known to be absent</em>`
@@ -583,7 +614,7 @@ function countLine({ total, counts, stats }) {
 
   // "· 1 brands" is not a finding about a brand page, and the heading above it
   // has already said whose shelf this is.
-  const brands = SCOPED ? "" : ` · ${counts.brands} brands`;
+  const brands = ONE_BRAND ? "" : ` · ${counts.brands} brands`;
   $("#count").innerHTML = `<b>${total}</b> of ${(stats || STATS).bags} bags` +
     `${brands} · ${counts.skus} SKUs` + caveat;
 }
@@ -773,6 +804,7 @@ function describeState() {
     S.colors.size && names(S.colors, c => COLOUR_LABELS[c] || c),
     S.mats.size && [...S.mats].join(", "),
     S.feats.size && names(S.feats, f => FEATURE_LABELS[f] || f),
+    S.airlines.size && `fits ${names(S.airlines, a => AIRLINE_NAMES.get(a) || a)}`,
     // No currency symbol on the price: the catalog quotes a few brands in
     // pounds and euros and never converts, so a "$" here would be a claim the
     // filter itself does not make.
@@ -813,8 +845,9 @@ function renderSaved() {
 
   const save = $("#savefilter");
   if (save) {
-    save.disabled = !current;
-    save.title = current ? "Save these filters" : "Set a filter first";
+    const chosen = chosenParams().toString();
+    save.disabled = !chosen;
+    save.title = chosen ? "Save these filters" : "Set a filter first";
   }
   paintFavCount();
 }
@@ -834,9 +867,10 @@ function resetState() {
   Object.assign(S, {
     q: "", volMin: null, volMax: null, priceMin: null, priceMax: null,
     weightMin: null, weightMax: null, linearMax: null, laptopMin: null,
-    stock: false, sale: false, favOnly: false, sort: "brand",
+    stock: false, sale: false, favOnly: false, sort: DEFAULT_SORT,
   });
-  [S.cats, S.brands, S.feats, S.mats, S.colors, S.presets].forEach(s => s.clear());
+  [S.cats, S.brands, S.feats, S.mats, S.colors, S.airlines, S.presets]
+    .forEach(s => s.clear());
 }
 
 /** Become this query string: the address bar, the controls and the results.
@@ -875,7 +909,7 @@ function mountSaveForm() {
   };
 
   $("#savefilter").addEventListener("click", () => {
-    if (!stateParams().toString()) {
+    if (!chosenParams().toString()) {
       return say("Nothing to save — no filters are set.");
     }
     say("");
@@ -886,6 +920,8 @@ function mountSaveForm() {
 
   form.addEventListener("submit", e => {
     e.preventDefault();
+    // The whole state, including a sort the page defaulted to: what is saved
+    // has to reproduce what is on screen, wherever it is applied from.
     const { ok, reason } = saveFilter(name.value, stateParams().toString());
     if (!ok) {
       return say(reason === "full"
@@ -936,6 +972,21 @@ function buildFacets({ facets, coverage, stats }) {
     .map(([v, n]) => `<button class="check" data-f="mat" data-v="${esc(v)}" aria-pressed="false"><i></i>${
       esc(v)}<b>${n}</b></button>`).join("");
 
+  /* One carrier per row, with the number of bags in this page's scope that
+     clear its published carry-on limit. Every-of, like features: two ticked
+     means a bag that fits both, because an itinerary is an and.
+     The count is over bags stating all three of their dimensions — the rest
+     cannot be measured against a gauge and are neither passed nor failed, which
+     is what the caveat above the grid owns up to when this filter is on. */
+  const airlineBox = $("#f-airline");
+  if (airlineBox) airlineBox.innerHTML = (facets.airlines || [])
+    .map(([slug, name, n]) => `<button class="check" data-f="airline" data-v="${esc(slug)}" aria-pressed="false"><i></i>${
+      esc(name)}<b>${n}</b></button>`).join("");
+
+  // For describeState(), which would otherwise name a saved filter after a
+  // slug — the same reason the brand names are kept below.
+  AIRLINE_NAMES = new Map((facets.airlines || []).map(([slug, name]) => [slug, name]));
+
   // Kept for describeState(), which names a saved filter after what is in it
   // and would otherwise call it "peak-design".
   BRAND_NAMES = new Map(facets.brands.map(([slug, name]) => [slug, name]));
@@ -948,7 +999,7 @@ function buildFacets({ facets, coverage, stats }) {
     .map(([slug, name, n]) => `<button class="check" data-f="brand" data-v="${esc(slug)}" aria-pressed="false"><i></i>${
       esc(name)}<b>${n}</b></button>`).join("");
 
-  ["#f-brand", "#f-color", "#f-feat", "#f-mat"].forEach(mountFacetSearch);
+  ["#f-brand", "#f-color", "#f-feat", "#f-mat", "#f-airline"].forEach(mountFacetSearch);
 
   /* A group that came out empty is hidden rather than left to open onto
    * nothing. It never happens on the whole catalogue — every facet has
@@ -956,7 +1007,8 @@ function buildFacets({ facets, coverage, stats }) {
    * a maker whose colourways name no colour we can read would otherwise get a
    * Colour heading with a blank panel under it. Only the data-driven groups:
    * Availability and the ranges are always worth offering. */
-  for (const sel of ["#f-cat", "#f-color", "#f-feat", "#f-mat", "#f-brand"]) {
+  for (const sel of ["#f-cat", "#f-color", "#f-feat", "#f-mat", "#f-brand",
+                     "#f-airline"]) {
     const group = $(sel)?.closest(".fgroup");
     if (group) group.hidden = !$(sel).children.length;
   }
@@ -968,11 +1020,11 @@ function buildFacets({ facets, coverage, stats }) {
       <div class="covbar"><i style="width:${v.pct}%"></i></div>
       <b>${v.pct}%</b></div>`).join("");
 
-  // Scoped, these are the brand's own three numbers — and the middle one is
-  // then always 1, so it goes.
+  // Scoped, these are the scope's own three numbers — and on a brand page the
+  // middle one is then always 1, so it goes.
   $("#stats").innerHTML =
     `<span><b>${stats.bags ?? "—"}</b> BAGS</span>` +
-    (SCOPED ? "" : `<span><b>${stats.brands ?? "—"}</b> BRANDS</span>`) +
+    (ONE_BRAND ? "" : `<span><b>${stats.brands ?? "—"}</b> BRANDS</span>`) +
     `<span><b>${stats.skus ?? "—"}</b> SKUS</span>`;
 }
 
@@ -1310,7 +1362,23 @@ function stateParams() {
   // gets their own favourites, which is the only thing it could honestly do
   // without a copy of the list riding along in the address bar.
   if (S.favOnly) p.set("favonly", "1");
-  if (S.sort !== "brand") p.set("sort", S.sort);
+  /* Left out only when the reader's order and the page's are both the order
+     /api/browse sorts by when asked for nothing. A page with an opinion of its
+     own therefore spells the sort out on every request — /sale/ shows
+     ?sort=discount from the moment it opens — because the alternative is a URL
+     that means one thing here and another when pasted: omitted, the server
+     would answer in brand order, and a reader who chose Brand A–Z on /sale/
+     would get the discount order back on reload. */
+  if (S.sort !== "brand" || DEFAULT_SORT !== "brand") p.set("sort", S.sort);
+  return p;
+}
+
+/** The same, minus anything the page arrived already saying. Only the saved-
+ *  filter panel wants this: /sale/ carries a sort nobody chose, and "Save
+ *  filter" lighting up on an untouched page would offer to remember it. */
+function chosenParams() {
+  const p = stateParams();
+  if (S.sort === DEFAULT_SORT) p.delete("sort");
   return p;
 }
 
@@ -1341,7 +1409,7 @@ function loadURL() {
   S.stock = p.get("stock") === "1";
   S.sale = p.get("sale") === "1";
   S.favOnly = p.get("favonly") === "1";
-  S.sort = p.get("sort") || "brand";
+  S.sort = p.get("sort") || DEFAULT_SORT;
 
   $("#sort").value = S.sort;
   $("#vol-min").value = S.volMin ?? ""; $("#vol-max").value = S.volMax ?? "";
@@ -1351,7 +1419,9 @@ function loadURL() {
   syncUnits();
   syncSliders();
   $("#f-stock").setAttribute("aria-pressed", S.stock);
-  $("#f-sale").setAttribute("aria-pressed", S.sale);
+  // Absent on /sale/, where On sale is the page rather than a filter on it —
+  // the same way the Brand group is absent on a brand page.
+  $("#f-sale")?.setAttribute("aria-pressed", S.sale);
   $("#f-fav").setAttribute("aria-pressed", S.favOnly);
   paintView(p.get("view") || "grid");
   syncFacetButtons();
@@ -1627,7 +1697,7 @@ function wire() {
   // in both units already and CSS is doing the switching.
   document.addEventListener("unitchange", syncUnits);
 
-  const toggle = (id, key) => $(id).addEventListener("click", e => {
+  const toggle = (id, key) => $(id)?.addEventListener("click", e => {
     S[key] = !S[key];
     e.currentTarget.setAttribute("aria-pressed", S[key]);
     render();

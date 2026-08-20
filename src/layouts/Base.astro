@@ -147,6 +147,9 @@ const isHome = Astro.url.pathname === '/';
           {hubs.map((hub) => <a href={hub.href}>{hub.title}</a>)}
         </div>
       </details>
+      {/* Next to the categories rather than out with the reference pages: it
+          is a shelf like they are, cut by price instead of by shape. */}
+      <a class="hbtn" href="/sale/">Sale</a>
       <a class="hbtn" href="/carry-on/">Carry-on</a>
       <a class="hbtn" href="/brands/">Brands</a>
       <button class="hbtn units" id="units" title="Show lengths in centimetres or inches">
@@ -169,6 +172,7 @@ const isHome = Astro.url.pathname === '/';
     {hubs.map((hub) => <a href={hub.href}>{hub.title}</a>)}
   </nav>
   <nav class="footrow" aria-label="Site">
+    <a href="/sale/">On sale</a>
     <a href="/carry-on/">Carry-on sizes</a>
     <a href="/brands/">Brands</a>
     {/* In the layout because the answer to "you don't have my brand" has to be

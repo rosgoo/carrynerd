@@ -98,21 +98,22 @@ const jsonLd = {
               placeholder={`search ${brand.name} — model, material, feature…`} />
 
   {/* Above the shell, spanning the rail as well as the grid, where the sale
-      strip sits on the front page. Everything in it is what the grid below
-      cannot say: whose shelf this is, how to reach the maker, and how to be
-      told when one of their prices moves. The results are an infinite scroll,
-      so anything left underneath them is somewhere nobody arrives. */}
-  <section class="brandbar">
+      strip sits on the front page — the shared scope bar, which /sale/ wears
+      too. Everything in it is what the grid below cannot say: whose shelf this
+      is, how to reach the maker, and how to be told when one of their prices
+      moves. The results are an infinite scroll, so anything left underneath
+      them is somewhere nobody arrives. */}
+  <section class="scopebar">
     <nav class="crumbs" aria-label="Breadcrumb">
       <a href="/">Bags</a> <span>/</span>
       <a href="/brands/">Brands</a> <span>/</span>
       <b>{brand.name}</b>
     </nav>
 
-    <div class="brandmain">
-      <div class="brandid">
+    <div class="scopemain">
+      <div class="scopeid">
         <h1>{brand.name}</h1>
-        <p class="brandfacts">
+        <p class="scopefacts">
           {brand.bags.length} {brand.bags.length === 1 ? 'model' : 'models'}
           {cats.length > 0 && ` · ${cats.join(', ')}`}
           {prices.length > 0 && ` · ${fmtPrice(Math.min(...prices), cur)}–${fmtPrice(Math.max(...prices), cur)}`}

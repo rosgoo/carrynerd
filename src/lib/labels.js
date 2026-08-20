@@ -2,6 +2,28 @@
    Imported by both the browse island and the server-rendered model pages, so
    the two cannot drift apart. */
 
+/* The one feature key nothing extracted.
+ *
+ * Every other value in FEATURE_LABELS is something normalize.py read off a
+ * product page. This one is computed — a bag whose stated dimensions clear the
+ * published carry-on limit at every carrier in data/airlines.json — and it is
+ * injected into the feature facet by api/browse.ts rather than written into
+ * bags.json, because it is a fact about the airline table as much as about the
+ * bag and it changes when that table is reviewed.
+ *
+ * It lives here, in the module with no imports, so the server that injects it
+ * and the rail that labels it are naming the same string. Defining it in
+ * lib/carryon.js instead would be the natural home right up until labels.js
+ * imported it, which would drag data/airlines.json into the browse bundle for
+ * the sake of one constant.
+ *
+ * Deliberately next to `carry_on`, which is the brand's claim rather than a
+ * measurement, and reads "Carry-on claimed" for exactly that reason. The pair
+ * is the point: one is what the marketing copy says, the other is what the
+ * numbers say.
+ */
+export const FIT_FEATURE = "carry_on_fit";
+
 export const FEATURE_LABELS = {
   laptop_sleeve: "Laptop sleeve", water_bottle: "Bottle pocket",
   clamshell: "Clamshell opening", luggage_passthrough: "Luggage pass-through",
@@ -16,6 +38,7 @@ export const FEATURE_LABELS = {
   waterproof: "Waterproof (stated)", taped_seams: "Taped / welded seams",
   waterproof_zips: "Waterproof zips",
   ykk_zips: "YKK zippers", airtag_pocket: "AirTag pocket",
+  [FIT_FEATURE]: "Carry-on compliant",
 };
 
 export const CAT_LABELS = {

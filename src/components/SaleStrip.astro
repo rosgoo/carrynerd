@@ -32,6 +32,11 @@ interface Props {
 
 const { bags = [], limit = 12 } = Astro.props;
 
+/* Everything carrying a compare-at price, which is a different and much larger
+ * set than the drops below — see the note above on why this strip is not that
+ * list. It is the count on the way out to /sale/, which is that list. */
+const onSale = bags.filter((bag) => bag.on_sale).length;
+
 // A 1% move is a rounding artefact or a currency wobble, not a sale worth
 // putting at the top of the page. 5% is the floor for calling it news.
 const MIN_OFF = 0.05;
@@ -56,11 +61,19 @@ const drops = bags
   .sort((a, b) => b.off - a.off || a.bag.price_min - b.bag.price_min)
   .slice(0, limit);
 ---
+{/* A <details> rather than a section: this band spends the top of the front
+    page on twelve bags nobody asked for, which is right the first time and
+    wearing by the fifth visit. Collapsing it is one element and no script; the
+    script below is only for remembering that you did.
+
+    Open by default, because a reader who has never seen it cannot know what
+    they are opening. */}
 {drops.length > 0 && (
-  <section class="salestrip" aria-labelledby="salestrip-h">
-    <div class="salehead">
-      <h2 id="salestrip-h">Newly on sale</h2>
-    </div>
+  <details class="salestrip" id="salestrip" open>
+    <summary class="salehead">
+      <h2>Newly on sale</h2>
+      <em>{drops.length} of {onSale} models with a price cut moved in the last few days</em>
+    </summary>
 
     <ul class="salerow">
       {drops.map(({ bag, off }) => (
@@ -82,6 +95,33 @@ const drops = bags
           </a>
         </li>
       ))}
+      {/* The way to the rest, as the last tile rather than as a line under the
+          row: the row is what the eye is already travelling along, and a link
+          below it is a link below the fold on a phone. Outside the <summary>
+          on purpose — a link inside one fights the disclosure it sits in. */}
+      <li class="salecard salemore">
+        <a href="/sale/">All {onSale} on sale →</a>
+      </li>
     </ul>
-  </section>
+  </details>
+)}
+
+{/* Remembers whether the band is shut, and nothing else. Inline and next to
+    what it acts on so it runs while the parser is here, before first paint —
+    the same reason the theme and unit script sits in <head>. The key is
+    brand-neutral for the reason the note there gives. Storage refusals are
+    ignored: a browser that cannot remember this is still a browser that can
+    open and shut it. */}
+{drops.length > 0 && (
+  <script is:inline>
+    try {
+      const strip = document.getElementById('salestrip');
+      if (localStorage.getItem('sale-strip') === 'shut') strip.open = false;
+      strip.addEventListener('toggle', () => {
+        try {
+          localStorage.setItem('sale-strip', strip.open ? 'open' : 'shut');
+        } catch {}
+      });
+    } catch {}
+  </script>
 )}

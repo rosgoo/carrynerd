@@ -11,7 +11,7 @@
  */
 
 import { bags, isIndexable } from './catalog.js';
-import { airlines, airlineFit, airlineSlug } from './carryon.js';
+import { airlines, airlineFit, airlineSlug, carryOnAirlines } from './carryon.js';
 
 /* The bags these pages can say anything at all about. Three known axes is the
  * floor: airlineFit() abstains below that, and a page listing bags it has not
@@ -21,9 +21,7 @@ export const measured = bags.filter(
 );
 
 /** Carriers publishing a carry-on rule at all — the denominator in "fits N of M". */
-export const carryOnAirlineCount = airlines.filter(
-  (a) => a.carry_on_cm || a.carry_on_linear_cm != null,
-).length;
+export const carryOnAirlineCount = carryOnAirlines.length;
 
 const matrix = (() => {
   /** @type {Map<string, import('./types.d.ts').Bag[]>} */

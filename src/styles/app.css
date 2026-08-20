@@ -1479,7 +1479,13 @@ a.cbrand:hover { color: var(--accent); text-decoration: underline; text-underlin
    card's hairline-and-panel construction rather than introducing a second
    visual language, but lays out as one horizontally scrolling row: the strip
    is a headline, and a wrapping grid of drops would compete with the results
-   it sits above instead of introducing them. */
+   it sits above instead of introducing them.
+
+   A <details>, so it can be put away. It spends the top of the front page on
+   twelve bags nobody asked for, which is worth the room the first time and
+   less so the fifth; the sign that it opens and shuts is the rail's + and −,
+   in the same place, because one vocabulary for disclosure across the page is
+   the whole reason that one was chosen. */
 .salestrip {
   border-bottom: 1px solid var(--line);
   background: var(--panel);
@@ -1488,11 +1494,26 @@ a.cbrand:hover { color: var(--accent); text-decoration: underline; text-underlin
 .salehead {
   display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
   padding: 11px 16px 0;
+  cursor: pointer; list-style: none; user-select: none;
 }
+.salehead::-webkit-details-marker { display: none; }
 .salehead h2 {
   font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
   color: var(--accent); font-weight: 600;
 }
+/* What is in the band, for whoever has it shut and is deciding whether to open
+   it — a heading alone gives them nothing to decide with. */
+.salehead em {
+  font-size: 10px; font-style: normal; letter-spacing: .03em;
+  color: var(--ink-mute);
+}
+.salehead::after {
+  content: "+"; margin-left: auto; color: var(--ink-mute); font-size: 13px;
+}
+.salestrip[open] > .salehead::after { content: "\2212"; }
+.salehead:hover h2 { text-decoration: underline; text-underline-offset: 3px; }
+/* Shut, the row underneath is gone and its padding with it. */
+.salestrip:not([open]) > .salehead { padding-bottom: 11px; }
 
 .salerow {
   display: flex; gap: 10px; list-style: none; margin: 0;
@@ -1563,61 +1584,74 @@ a.cbrand:hover { color: var(--accent); text-decoration: underline; text-underlin
   border-color: var(--ok); color: var(--ok);
 }
 
+/* The way out to the whole sale, as the last tile in the row rather than as a
+   line under it: the row is what the eye is already travelling along. */
+.salemore > a {
+  align-items: center; justify-content: center; height: 100%;
+  padding: 12px 10px; text-align: center;
+  font-size: 11px; letter-spacing: .04em; color: var(--accent);
+}
+.salemore:hover > a { text-decoration: underline; text-underline-offset: 3px; }
+
 @media (max-width: 560px) {
   .salecard { flex-basis: 132px; }
 }
 
-/* ---------- brand page ----------
-   The strip above a brand's grid, in the same slot and the same panel the sale
-   strip occupies on the front page: it spans the rail as well as the results,
-   because it introduces both. It holds the three things the grid underneath
-   cannot say — whose shelf this is, how to reach the maker, and how to be told
-   when one of these prices moves — and then gets out of the way, because the
-   results are what the page is for and they begin directly below it.
+/* ---------- the scope bar ----------
+   The strip above a scoped grid — a brand's, or everything on sale — in the
+   same slot and the same panel the sale strip occupies on the front page: it
+   spans the rail as well as the results, because it introduces both. It holds
+   what the grid underneath cannot say — whose shelf this is, how to reach the
+   maker, what the numbers under the prices mean — and then gets out of the way,
+   because the results are what the page is for and they begin directly below.
+
+   Named after the scope rather than after the brand page it was built for, now
+   that /sale/ is the second page wearing it. See the scope section in
+   pages/api/browse.ts for what a scope is.
 
    The alert form shares the row rather than sitting under the grid, which on an
    infinite scroll is nowhere. */
-.brandbar { border-bottom: 1px solid var(--line); background: var(--panel); }
-.brandbar .crumbs { border-bottom: 1px solid var(--line); }
+.scopebar { border-bottom: 1px solid var(--line); background: var(--panel); }
+.scopebar .crumbs { border-bottom: 1px solid var(--line); }
 
 /* Centred rather than top-aligned: the two halves are a heading and a form and
    they will never be the same height, so aligning their tops leaves a column of
    nothing under the brand name. The strip is already spending first-screen room
    the grid wants back. */
-.brandmain {
+.scopemain {
   display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
   padding: 13px 16px 15px;
 }
 /* Takes the leftover width and is allowed to be narrow: it is a heading and one
    line of figures, and the form beside it has a floor below which its three
    controls stop fitting on a line. */
-.brandid { flex: 1 1 260px; min-width: 0; }
-.brandid h1 {
+.scopeid { flex: 1 1 260px; min-width: 0; }
+.scopeid h1 {
   font-size: 26px; font-weight: 650; letter-spacing: -.01em;
   margin: 0 0 5px; line-height: 1.15;
 }
-.brandfacts {
+.scopefacts {
   margin: 0; font-size: 11px; line-height: 1.6; color: var(--ink-dim);
   letter-spacing: .03em;
 }
-.brandfacts a { color: var(--accent); text-decoration: none; }
-.brandfacts a:hover { text-decoration: underline; text-underline-offset: 2px; }
+.scopefacts a { color: var(--accent); text-decoration: none; }
+.scopefacts a:hover { text-decoration: underline; text-underline-offset: 2px; }
 
 /* The alert form is boxed here rather than ruled off, the way it is at the foot
    of a model page: on that page it is the last thing after the specs, and here
    it is one of two things sharing a row. Its own padding replaces the rule.
    Wide and quiet — the copy is the same sentence, but a column narrow enough to
    wrap it three times is what made this strip tall. */
-.brandbar .watch {
+.scopebar .watch {
   flex: 1 1 340px; max-width: 560px; border: 1px solid var(--line);
   background: var(--bg); padding: 10px 0 12px;
 }
-.brandbar .watch h3 { padding-top: 0; }
-.brandbar .watch > p { font-size: 10px; padding-bottom: 8px; }
+.scopebar .watch h3 { padding-top: 0; }
+.scopebar .watch > p { font-size: 10px; padding-bottom: 8px; }
 
 @media (max-width: 560px) {
-  .brandid h1 { font-size: 21px; }
-  .brandmain { gap: 14px; padding: 11px 14px 13px; }
+  .scopeid h1 { font-size: 21px; }
+  .scopemain { gap: 14px; padding: 11px 14px 13px; }
 }
 
 /* ---------- category, facet and airline pages ---------- */

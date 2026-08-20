@@ -1,0 +1,178 @@
+---
+/* Everything currently listed below its own compare-at price.
+ *
+ * The front page already had a sale band, and it answers a different question:
+ * "Newly on sale" is the price ledger's news — what moved in the last few days
+ * — and it is twelve bags wide because news is not a list you scroll. This is
+ * the list. `on_sale` is a standing state that a thousand-odd models carry at
+ * any time, most of them permanently, and the strip deliberately refuses to
+ * show it because a clearance aisle at the top of the front page is not what
+ * anyone came for. Given its own route it is worth having: the same instrument
+ * as the front page, with the discount already settled by the path and the
+ * deepest cut first.
+ *
+ * It is a scope rather than a filter — see the scope section in
+ * pages/api/browse.ts. `on_sale` does not appear in the address bar, Clear does
+ * not empty it, and the rail counts against the bags actually on sale, so the
+ * price track spans what is discounted rather than what exists and the category
+ * chips say how many of each are cut rather than how many are held.
+ *
+ * The honest caveat is load-bearing enough to sit above the fold: a compare-at
+ * price is the seller's own claim about what a bag used to cost, and nothing in
+ * the feed can confirm it was ever charged. What can be confirmed is on the
+ * model pages, where the chart is drawn from prices this site recorded itself.
+ */
+import Base from '../layouts/Base.astro';
+import BrowseHead from '../components/BrowseHead.astro';
+import BrowseShell from '../components/BrowseShell.astro';
+import { bags, bagHref, byLabel, deepestCut } from '../lib/catalog.js';
+import { catLabel } from '../lib/labels.js';
+import { fmtPrice } from '../lib/format.js';
+import { SITE_NAME, SITE_NAME_DISPLAY } from '../lib/brand.js';
+
+/* Sorted the way the page opens — see the `sort` prop below — so the fallback
+ * and the island agree about what the top of this page is. Ties fall back to
+ * brand then model, which is what api/browse.ts does with them. */
+const onSale = bags
+  .filter((bag) => bag.on_sale)
+  .map((bag) => ({ bag, cut: deepestCut(bag) }))
+  .sort(
+    (a, b) =>
+      (b.cut?.off ?? -1) - (a.cut?.off ?? -1) ||
+      byLabel(a.bag.brand, b.bag.brand) ||
+      byLabel(a.bag.name, b.bag.name),
+  );
+
+/* Already in descending order, because the list above is. The middle of it is
+ * the number that says what kind of sale this is: a page led by one 97%
+ * clearance with a median of 10% is a different page from one where half the
+ * catalogue is a third off. */
+const offs = onSale
+  .map((row) => row.cut?.off)
+  .filter((off): off is number => off != null);
+const pct = (off: number | undefined) => (off == null ? null : Math.round(off * 100));
+const deepest = pct(offs[0]);
+const median = pct(offs[Math.floor(offs.length / 2)]);
+const brandCount = new Set(onSale.map((row) => row.bag.brand_slug)).size;
+
+const otherCurrencies = [
+  ...new Set(onSale.map((row) => row.bag.currency).filter((c) => c && c !== 'USD')),
+].sort();
+
+/* The crawler's copy, and the answer for anyone with no JavaScript. Capped,
+ * unlike the brand pages: a thousand rows is most of a megabyte of markup on a
+ * page whose whole content changes every night, and nothing is orphaned by the
+ * cap — every model here is listed on its brand's page and in the sitemap. */
+const FALLBACK = 60;
+const fallbackRows = onSale.slice(0, FALLBACK);
+
+const title = `Bags on sale — every discounted model | ${SITE_NAME_DISPLAY}`;
+const description =
+  `All ${onSale.length} bags in the index currently listed below their ` +
+  `compare-at price, from ${brandCount} brands, deepest discount first` +
+  (deepest ? ` — up to ${deepest}% off` : '') +
+  '. Volume, weight and dimensions normalised for comparison.';
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: 'Bags on sale',
+  description,
+  url: new URL('/sale/', Astro.site).href,
+  isPartOf: { '@type': 'WebSite', name: SITE_NAME, url: new URL('/', Astro.site).href },
+  mainEntity: {
+    '@type': 'ItemList',
+    name: 'Discounted bags, deepest cut first',
+    numberOfItems: fallbackRows.length,
+    itemListElement: fallbackRows.map(({ bag }, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: `${bag.brand} ${bag.name}`,
+      url: new URL(bagHref(bag), Astro.site).href,
+    })),
+  },
+};
+
+const breadcrumbs = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Bags', item: new URL('/', Astro.site).href },
+    { '@type': 'ListItem', position: 2, name: 'On sale' },
+  ],
+};
+---
+<Base title={title} description={description} nofollow={false}>
+  <Fragment slot="head">
+    {/* is:inline because this is data for a crawler, not code: it must ship in
+        the document as written rather than be bundled and fetched. */}
+    <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
+    <script type="application/ld+json" is:inline set:html={JSON.stringify(breadcrumbs)} />
+  </Fragment>
+
+  <BrowseHead slot="header"
+              placeholder="search the sale — brand, model, material, feature…" />
+
+  <section class="scopebar">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/">Bags</a> <span>/</span>
+      <b>On sale</b>
+    </nav>
+
+    <div class="scopemain">
+      <div class="scopeid">
+        <h1>On sale</h1>
+        <p class="scopefacts">
+          {onSale.length} models · {brandCount} brands
+          {deepest != null && ` · up to ${deepest}% off`}
+          {median != null && ` · ${median}% off in the middle of the pack`}
+        </p>
+        <p class="scopefacts">
+          Every model whose listing quotes a price below its own compare-at
+          figure, deepest cut first. That figure is the seller's claim about
+          what the bag used to cost and nothing in the feed can confirm it was
+          ever charged — the prices this site recorded itself are on each
+          model's page, under the chart.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <BrowseShell sale sort="discount" otherCurrencies={otherCurrencies}>
+    {/* Inside #results, which browse.js overwrites wholesale on load. The
+        deepest sixty, with both ends of each cut, so the fallback is the same
+        page in outline rather than an alphabetical stub. */}
+    <div class="xscroll">
+      <table class="spectable brandtable">
+        <thead>
+          <tr>
+            <th>Model</th><th>Category</th><th>Off</th><th>Now</th><th>Was</th>
+          </tr>
+        </thead>
+        <tbody>
+          {/* Both prices are the deepest-cut colourway's own pair, not that
+              colourway's percentage against the model's lowest price — see
+              deepestCut() in lib/catalog.js. */}
+          {fallbackRows.map(({ bag, cut }) => (
+            <tr>
+              <td><a href={bagHref(bag)}>{bag.brand} {bag.name}</a></td>
+              <td>{catLabel(bag.category)}</td>
+              <td class={cut ? '' : 'nil'}>{cut ? `−${Math.round(cut.off * 100)}%` : '—'}</td>
+              <td>{fmtPrice(cut ? cut.price : bag.price_min, bag.currency)}</td>
+              <td class={cut ? '' : 'nil'}>{cut ? fmtPrice(cut.was, bag.currency) : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <p class="note">
+      The {fallbackRows.length} deepest of {onSale.length}. The filters and the
+      rest of the list need JavaScript; every model here is also listed on its
+      brand's page.
+    </p>
+  </BrowseShell>
+
+  <script>
+    import '../scripts/browse.js';
+  </script>
+</Base>
