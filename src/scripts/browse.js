@@ -519,6 +519,12 @@ function paintPage(list, fresh, favs) {
   // placeholder state to draw and nothing to patch in behind the reader.
   host.insertAdjacentHTML("beforeend",
     (VIEW === "grid" ? list.map(card) : list.map(row)).join(""));
+  // A photo already in cache can finish before the listener in wire() ever sees
+  // an event for it, and a card whose image never fades in is a card with a
+  // blank plate. Anything already complete is marked here instead.
+  for (const img of host.querySelectorAll(".shot img")) {
+    if (img.complete) img.classList.add("in");
+  }
   if (fresh) {
     observeSentinel();
     fill();
@@ -1596,6 +1602,20 @@ const debounce = (fn, ms = 130) => {
 };
 
 function wire() {
+  /* Fade each photograph in as it arrives — see .grid .shot img in app.css for
+   * why. `load` does not bubble, so this listens in the capture phase on the
+   * container rather than binding a handler per card; there are thousands of
+   * cards in a long scroll and one listener is the whole cost.
+   *
+   * `error` marks the image too. A broken photo has nothing to show either way,
+   * and leaving it at opacity 0 would hide the alt text with it. */
+  const shown = e => {
+    const img = e.target;
+    if (img.tagName === "IMG") img.classList.add("in");
+  };
+  $("#results").addEventListener("load", shown, true);
+  $("#results").addEventListener("error", shown, true);
+
   $("#q").addEventListener("input", debounce(e => {
     S.q = e.target.value.trim();
     render();

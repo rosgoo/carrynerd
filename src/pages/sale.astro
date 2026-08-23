@@ -114,8 +114,7 @@ const breadcrumbs = {
     <script type="application/ld+json" is:inline set:html={JSON.stringify(breadcrumbs)} />
   </Fragment>
 
-  <BrowseHead slot="header"
-              placeholder="search the sale — brand, model, material, feature…" />
+  <BrowseHead slot="header" />
 
   <section class="scopebar">
     <nav class="crumbs" aria-label="Breadcrumb">
@@ -135,7 +134,8 @@ const breadcrumbs = {
     </div>
   </section>
 
-  <BrowseShell sale sort="discount" otherCurrencies={otherCurrencies}>
+  <BrowseShell sale sort="discount" otherCurrencies={otherCurrencies}
+               placeholder="search the sale — brand, model, material, feature…">
     {/* Inside #results, which browse.js overwrites wholesale on load. The
         deepest sixty, with both ends of each cut, so the fallback is the same
         page in outline rather than an alphabetical stub. */}

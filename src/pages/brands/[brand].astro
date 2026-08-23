@@ -94,8 +94,7 @@ const jsonLd = {
     <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
   </Fragment>
 
-  <BrowseHead slot="header"
-              placeholder={`search ${brand.name} — model, material, feature…`} />
+  <BrowseHead slot="header" />
 
   {/* Above the shell, spanning the rail as well as the grid, where the sale
       strip sits on the front page — the shared scope bar, which /sale/ wears
@@ -133,7 +132,8 @@ const jsonLd = {
   </section>
 
   <BrowseShell brand={{ slug: brand.slug, name: brand.name }}
-               otherCurrencies={otherCurrencies}>
+               otherCurrencies={otherCurrencies}
+               placeholder={`search ${brand.name} — model, material, feature…`}>
     {/* The fallback, and the crawler's copy of this page. Six columns of
         figures do not fit a phone at any padding worth having, so the table
         scrolls inside its own box rather than taking the page sideways with

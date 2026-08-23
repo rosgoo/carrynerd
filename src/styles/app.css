@@ -148,9 +148,11 @@ header {
   display: flex; align-items: stretch; gap: 0;
   background: var(--panel); border-bottom: 1px solid var(--line);
 }
-/* The browse header carries the search field, so it is the one that grows to
-   two rows on a phone. Every other page keeps a single --bar row. */
-.browsehead { height: var(--head); }
+/* Both headers are one bar row at every width. The browse header used to grow
+   to two on a phone to fit the search field; the field is in the toolbar now,
+   so --head and --bar are the same number and the sticky things that hang off
+   --head — the rail, the toolbar, the table head — sit that much higher. */
+.browsehead { height: var(--bar); }
 header .spacer { flex: 1; }
 
 .brand {
@@ -169,15 +171,24 @@ header .spacer { flex: 1; }
 }
 .stats b { color: var(--ink); font-weight: 600; }
 
-.searchwrap { flex: 1; display: flex; align-items: center; min-width: 0; position: relative; }
+/* In the toolbar now rather than spanning the header, so it is a field with an
+   edge instead of a full-width slot: it has neighbours on both sides and needs
+   to look like one control among them. It still takes the slack — it is the
+   only thing on the bar with anything to gain from being wider. */
+.searchwrap {
+  flex: 1 1 180px; display: flex; align-items: center; min-width: 0;
+  position: relative;
+}
 .searchwrap::before {
-  content: "/"; position: absolute; left: 16px; color: var(--accent);
-  font-weight: 700; pointer-events: none;
+  content: "/"; position: absolute; left: 8px; color: var(--accent);
+  font-weight: 700; pointer-events: none; font-size: 11px;
 }
 #q {
-  width: 100%; height: 100%; background: transparent; border: none;
-  outline: none; padding: 0 16px 0 30px; font-size: 13px;
+  width: 100%; height: 26px; background: var(--bg);
+  border: 1px solid var(--line-2); outline: none;
+  padding: 0 8px 0 20px; font-size: 11.5px;
 }
+#q:focus { border-color: var(--accent); }
 #q::placeholder { color: var(--ink-mute); }
 
 .hbtns { display: flex; align-items: stretch; flex-shrink: 0; }
@@ -282,6 +293,23 @@ header .spacer { flex: 1; }
   border-left: 1px solid var(--line); color: var(--ink-dim); font-size: 15px;
 }
 .railclose:hover { color: var(--accent); background: var(--raised); }
+
+/* Sort, above the filter groups. Sized like a filter control rather than like
+   the toolbar's toggles, because that is what it sits among now. */
+.railsort {
+  display: flex; align-items: center; gap: 9px;
+  padding: 11px 14px; border-bottom: 1px solid var(--line);
+}
+.railsort label {
+  font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-dim); font-weight: 600;
+}
+.railsort select {
+  flex: 1; min-width: 0; background: var(--bg);
+  border: 1px solid var(--line-2); padding: 5px 8px;
+  font-size: 11px; outline: none; letter-spacing: .04em;
+}
+.railsort select:focus { border-color: var(--accent); }
 
 /* ---------- saved filters, at the top of the rail ----------
    Same hairline construction as a filter group, but it is not one: no
@@ -538,11 +566,6 @@ main { flex: 1; min-width: 0; }
 .count { font-size: 11px; color: var(--ink-dim); letter-spacing: .04em; }
 .count b { color: var(--accent); font-weight: 700; }
 .toolbar .spacer { flex: 1; }
-.toolbar select {
-  background: var(--bg); border: 1px solid var(--line-2); padding: 4px 8px;
-  font-size: 10.5px; outline: none; letter-spacing: .04em;
-}
-.toolbar select:focus { border-color: var(--accent); }
 .tbtn {
   border: 1px solid var(--line-2); padding: 4px 9px;
   font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
@@ -597,11 +620,24 @@ main { flex: 1; min-width: 0; }
      looked at rather than for the whole session after it scrolls away.
 
      `auto` on both axes means the last rendered size is remembered and reused
-     once a card has been seen, so the scrollbar stops lying after the first
-     pass; the fallback figures are a measured card — 232px is the narrowest
-     grid track, ~300px its height at that width. */
+     once a card has been seen, so the fallback below is only ever used for a
+     card that has not been on screen yet — which is exactly the pass a reader
+     scrolling into fresh results is looking at, so being wrong there is worth
+     something.
+
+     It was wrong. A card is its plate plus a fixed 144px of type, and the plate
+     is 4:3, so the height is 0.75 × the grid track + 144. The track is a 1fr
+     between 232px and about 330px, which puts a real card between 318 and 391 —
+     against a fallback that claimed 300. Every row grew by 20 to 90px as it
+     came into view and pushed everything under it down, which is the judder.
+
+     No single number is right, because the track is fluid and the fallback is
+     not. What is below is the middle of the range each breakpoint can produce,
+     so the worst case is tens of pixels rather than a hundred, and the `auto`
+     takes over from there. Uniform card heights would let this be exact; that
+     is a change to how a card looks, not to this. */
   content-visibility: auto;
-  contain-intrinsic-size: auto 232px auto 300px;
+  contain-intrinsic-size: auto 232px auto 336px;
 }
 
 /* Watched by the IntersectionObserver in browse.js, which paints the next
@@ -625,6 +661,25 @@ main { flex: 1; min-width: 0; }
   overflow: hidden; position: relative; cursor: pointer;
 }
 .shot img { padding: 12px; }
+
+/* Card photographs fade in rather than appear.
+ *
+ * The plate reserves its own space, so a photo arriving moves nothing around
+ * it — but the <img> is sized to the picture, not to the plate, so it goes from
+ * nothing to full size in one frame, centred. Scrolling a grid of them reads as
+ * flickering: every plate you pass snaps its contents into place. It is worse
+ * here than it would be otherwise, because content-visibility means a card's
+ * photo does not start loading until the card is nearly in view.
+ *
+ * Only the grid. The model page's shot is server-rendered and in the document
+ * from the start, and fading it in would be an animation on a page load rather
+ * than a repair to one. */
+.grid .shot img { opacity: 0; transition: opacity .18s ease-out; }
+.grid .shot img.in { opacity: 1; }
+/* Anyone who has asked for less motion gets the photo, just not the fade. */
+@media (prefers-reduced-motion: reduce) {
+  .grid .shot img { transition: none; }
+}
 .shot .none { color: var(--shot-ink); font-size: 10px; letter-spacing: .1em; }
 
 /* Brands shoot on white, but not all on the *same* white — an eggshell JPEG
@@ -1000,7 +1055,10 @@ td.nil, .nil { color: var(--ink-mute); }
    the filter panel, which goes full width. See mountChrome() in browse.js; the
    breakpoint there has to agree with this one. */
 @media (max-width: 760px) {
-  :root { --bar: 48px; --head: 96px; }
+  /* --head was 96px here, two bar rows, because the browse header carried the
+     search field on a second one. The field is in the toolbar now and both
+     headers are a single row again. */
+  :root { --bar: 48px; --head: 48px; }
 
   header {
     flex-wrap: wrap; height: auto; min-height: var(--bar);
@@ -1010,13 +1068,6 @@ td.nil, .nil { color: var(--ink-mute); }
   /* Nothing sits next to the wordmark any more, so its divider would be a
      hairline stranded in the middle of an empty row. */
   .brand { margin-right: auto; border-right: none; }
-  .searchwrap {
-    /* Ordered last so it wraps below the row it shares the header with, rather
-       than pushing the nav onto a third row. */
-    order: 9; flex: 0 0 100%; height: var(--bar);
-    border-top: 1px solid var(--line);
-  }
-
   .rail { width: 100%; }
 
   /* The browse header keeps its nav beside the wordmark here, which is what
@@ -1054,25 +1105,29 @@ td.nil, .nil { color: var(--ink-mute); }
      on three of them. Widths are what decides that, and guessing at widths is
      how it went wrong — so the rows are stated rather than left to fall out.
 
-     Every control goes on the first row — Filters, the view, the unit, Clear —
-     because they are all short and all act on the grid. The sort takes the
-     second outright: it is the widest, its label is the only one that would
-     have to be cut to fit beside anything, and full width makes it the easiest
-     thing on the bar to hit with a thumb. The count takes the third, alone.
+     Filters comes first, then the view, the unit and Clear — all short, all
+     acting on the grid. The search field takes the second row whole and the
+     count the third.
 
-     The count is last and it is given a row rather than left to share one,
-     which is the correction: it is a sentence about 300px wide, and a flex row
-     that cannot fit its next item wraps at the item boundary before it will
-     shrink anything, so pairing it with Clear did not squeeze the sentence —
-     it pushed Clear onto a fourth row. Stating both as 100% is what stops the
-     rows depending on how many digits the counts happen to have today. */
+     The count is given a full row rather than left to share one, which is the
+     correction: it is a sentence about 300px wide, and a flex row that cannot
+     fit its next item wraps at the item boundary before it will shrink
+     anything, so pairing it with Clear did not squeeze the sentence — it
+     pushed Clear onto a row of its own anyway. Stating it as 100% is what
+     stops the rows depending on how many digits the counts happen to have
+     today. */
   .toolbar { gap: 8px; padding: 9px 12px; }
   .toolbar .spacer { display: none; }
   #railtoggle { order: 1; }
   .views { order: 2; }
   #units { order: 3; }
   #clear { order: 4; }
-  .toolbar select { order: 5; flex: 1 1 100%; }
+  /* A row to itself. Sharing one with the buttons left it about 120px wide —
+     too narrow to read back what you typed — and pushed Clear onto a row of
+     its own anyway, so the bar was no shorter for it. Full width also makes it
+     the easiest thing here to hit. */
+  .searchwrap { order: 5; flex: 1 1 100%; }
+  #q { height: 30px; }
   .count { order: 6; flex: 1 1 100%; }
 
   /* Anchored to the header rather than to the button: at this width the panel
@@ -1090,6 +1145,9 @@ td.nil, .nil { color: var(--ink-mute); }
 
 @media (max-width: 560px) {
   .grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+  /* Tracks run about 170–200px here, so a card is roughly 0.75 × 180 + 144.
+     See the note on .card — the desktop figure would be 60px too tall. */
+  .card { contain-intrinsic-size: auto 160px auto 280px; }
   .specs { grid-template-columns: repeat(2, 1fr); }
   .spec:nth-child(2) { border-right: none; }
   .spec:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
@@ -1586,8 +1644,10 @@ a.cbrand:hover { color: var(--accent); text-decoration: underline; text-underlin
 
 .salehead {
   display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
-  padding: 11px 16px 0;
+  /* Room on the right for the marker, which is out of the flow — see below. */
+  padding: 11px 38px 0 16px;
   cursor: pointer; list-style: none; user-select: none;
+  position: relative;
 }
 .salehead::-webkit-details-marker { display: none; }
 .salehead h2 {
@@ -1612,8 +1672,20 @@ a.cbrand:hover { color: var(--accent); text-decoration: underline; text-underlin
 }
 .saleall:hover { text-decoration: underline; text-underline-offset: 3px; }
 
+/* The disclosure marker, pinned to the top right rather than left to flow.
+ *
+ * As a flex item it was the last thing on the row, which is fine while the row
+ * is a row. On a phone the heading, the sentence and the link wrap to three
+ * lines and it went with them — a + on the third line, beside the link, level
+ * with nothing. The band was still collapsible and did not look it, which is
+ * the same thing as not being collapsible.
+ *
+ * Out of the flow it is level with the heading at every width, which is where
+ * a disclosure control is looked for. The padding above keeps the text clear
+ * of it. */
 .salehead::after {
-  content: "+"; color: var(--ink-mute); font-size: 13px;
+  content: "+"; color: var(--ink-mute); font-size: 15px; line-height: 1;
+  position: absolute; top: 10px; right: 15px;
 }
 .salestrip[open] > .salehead::after { content: "\2212"; }
 .salehead:hover h2 { text-decoration: underline; text-underline-offset: 3px; }

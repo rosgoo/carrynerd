@@ -31,10 +31,16 @@ interface Props {
   /** The order the page opens on, when brand A–Z is the wrong answer for it.
    *  A default and not a lock — see DEFAULT_SORT in scripts/browse.js. */
   sort?: string;
+  /** What to say in the search field. A scoped page searches inside its own
+   *  shelf, so it says so rather than offering the catalogue. Was a prop of
+   *  BrowseHead until the field moved down here with the other controls. */
+  placeholder?: string;
 }
 
-const { brand = null, sale = false, otherCurrencies = [], sort = 'brand' } =
-  Astro.props;
+const {
+  brand = null, sale = false, otherCurrencies = [], sort = 'brand',
+  placeholder = 'search brand, model, material, feature…',
+} = Astro.props;
 
 /* Two spellings of the same fact, both read by browse.js. `lock` is what rides
  * on the request — and what tells the server to count the rail against this
@@ -76,6 +82,40 @@ const unlock = scope?.unlock ?? null;
     <div class="railhead">
       <b>Filters</b>
       <button class="railclose" id="railclose" aria-label="Close filters">✕</button>
+    </div>
+
+    {/* Sort, at the top of the filters rather than out on the toolbar.
+        It shapes the result set the way every group under it does — the
+        difference is only that it orders rather than removes — and on a phone
+        it was the widest control on a bar that had no room for it, taking a
+        full row of sticky chrome to say "Brand A–Z".
+
+        Above the alphabet of filter groups, not in it, for the same reason
+        the saved panel below is: this is how you arrive at a list, not one of
+        the questions you ask of it.
+
+        `selected` rather than a value set from script: the page can open on an
+        order of its own — /sale/ does — and the select has to say so before
+        the island's first answer lands. */}
+    <div class="railsort">
+      <label for="sort">Sort</label>
+      <select id="sort">
+        {/* Same value either way — the server sorts by brand then model, and
+            within one brand that is the model. Only the label changes, because
+            "Brand A–Z" on a page with one brand on it reads as a control that
+            does nothing. */}
+        <option value="brand" selected={sort === 'brand'}>{brand ? 'Model A–Z' : 'Brand A–Z'}</option>
+        <option value="price-asc" selected={sort === 'price-asc'}>Price ↑</option>
+        <option value="price-desc" selected={sort === 'price-desc'}>Price ↓</option>
+        {/* Anything not on sale has no discount to rank and sorts last, so this
+            is a real control on every page rather than only on /sale/. */}
+        <option value="discount" selected={sort === 'discount'}>Discount ↓</option>
+        <option value="vol-asc" selected={sort === 'vol-asc'}>Volume ↑</option>
+        <option value="vol-desc" selected={sort === 'vol-desc'}>Volume ↓</option>
+        <option value="weight-asc" selected={sort === 'weight-asc'}>Weight ↑</option>
+        <option value="gpl" selected={sort === 'gpl'}>Grams per litre ↑</option>
+        <option value="ppl" selected={sort === 'ppl'}>Price per litre ↑</option>
+      </select>
     </div>
 
     {/* The one part of the rail that is about you rather than about the
@@ -319,6 +359,13 @@ const unlock = scope?.unlock ?? null;
               aria-expanded="false">
         <span class="bars" aria-hidden="true"></span>Filters
       </button>
+      {/* The search field, down from the header. It is the widest thing on the
+          bar and the one that grows, so it sits second — immediately right of
+          Filters, which is the other way into narrowing the same list. */}
+      <div class="searchwrap">
+        <input id="q" type="search" placeholder={placeholder} autocomplete="off"
+               spellcheck="false" />
+      </div>
       <div class="count" id="count">loading…</div>
       <button class="tbtn" id="clear">Clear</button>
       <div class="spacer"></div>
@@ -335,26 +382,6 @@ const unlock = scope?.unlock ?? null;
       <button class="tbtn units" id="units" title="Show lengths in centimetres or inches">
         <span class="u-cm">cm</span><span class="u-in">in</span>
       </button>
-      {/* `selected` rather than a value set from script: the page can open on
-          an order of its own — /sale/ does — and the select has to say so
-          before the island's first answer lands. */}
-      <select id="sort">
-        {/* Same value either way — the server sorts by brand then model, and
-            within one brand that is the model. Only the label changes, because
-            "Brand A–Z" on a page with one brand on it reads as a control that
-            does nothing. */}
-        <option value="brand" selected={sort === 'brand'}>{brand ? 'Sort · Model A–Z' : 'Sort · Brand A–Z'}</option>
-        <option value="price-asc" selected={sort === 'price-asc'}>Price ↑</option>
-        <option value="price-desc" selected={sort === 'price-desc'}>Price ↓</option>
-        {/* Anything not on sale has no discount to rank and sorts last, so this
-            is a real control on every page rather than only on /sale/. */}
-        <option value="discount" selected={sort === 'discount'}>Discount ↓</option>
-        <option value="vol-asc" selected={sort === 'vol-asc'}>Volume ↑</option>
-        <option value="vol-desc" selected={sort === 'vol-desc'}>Volume ↓</option>
-        <option value="weight-asc" selected={sort === 'weight-asc'}>Weight ↑</option>
-        <option value="gpl" selected={sort === 'gpl'}>Grams per litre ↑</option>
-        <option value="ppl" selected={sort === 'ppl'}>Price per litre ↑</option>
-      </select>
     </div>
     <div id="results">
       <slot />
