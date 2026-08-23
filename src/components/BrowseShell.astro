@@ -306,6 +306,19 @@ const unlock = scope?.unlock ?? null;
 
   <main>
     <div class="toolbar">
+      {/* First, and the only accent-filled control on the bar. Below the
+          breakpoint the rail is a drawer, and this is the entire way back to
+          it — every filter on the page is behind this one button, so it is the
+          one thing here that cannot read as another of the small outlined
+          toggles beside it. It used to sit up in the header, which is the one
+          place on the page that is not about the results; it belongs on the
+          bar that carries the sort and the view, because like them it acts on
+          the grid below. Hidden at desk widths, where the rail is simply
+          there. */}
+      <button class="tbtn filters" id="railtoggle" aria-controls="rail"
+              aria-expanded="false">
+        <span class="bars" aria-hidden="true"></span>Filters
+      </button>
       <div class="count" id="count">loading…</div>
       <button class="tbtn" id="clear">Clear</button>
       <div class="spacer"></div>

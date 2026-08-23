@@ -249,17 +249,6 @@ header .spacer { flex: 1; }
   .hmenupanel a:nth-last-child(2) { border-bottom: 1px solid var(--line); }
 }
 
-/* Hamburger. Drawn from borders rather than an SVG or a glyph so it inherits
-   the button's colour, including the inverted colour it takes while open. */
-#railtoggle { display: none; }
-.burger .bars {
-  display: block; position: relative; width: 13px; height: 9px;
-  border-top: 1px solid currentColor; border-bottom: 1px solid currentColor;
-}
-.burger .bars::after {
-  content: ""; position: absolute; left: 0; right: 0; top: 4px;
-  border-top: 1px solid currentColor;
-}
 
 /* ---------- layout ---------- */
 
@@ -293,37 +282,6 @@ header .spacer { flex: 1; }
   border-left: 1px solid var(--line); color: var(--ink-dim); font-size: 15px;
 }
 .railclose:hover { color: var(--accent); background: var(--raised); }
-
-/* The header nav, relocated into the panel below the mobile breakpoint. See
-   mountChrome() in browse.js. */
-.rail .hbtns { flex-wrap: wrap; border-bottom: 1px solid var(--line); }
-.rail .hbtns .hbtn {
-  flex: 1 0 auto; height: 42px; justify-content: center;
-  border-left: none; border-right: 1px solid var(--line);
-}
-.rail .hbtns .hbtn:last-child { border-right: none; }
-
-/* The categories menu travels into the panel with the rest of the nav, and it
-   is the one control in it that opens something. As a dropdown it would be
-   measured against the rail — which at this width is a fixed, full-height
-   drawer — so `top: 100%` would put the panel below the bottom of the screen.
-   In the panel it stops being a dropdown and becomes what everything around it
-   already is: a group that expands in place. A row of its own because the
-   category names are the longest labels here and will not sit two-up beside
-   Sale and Brands. */
-.rail .hmenu { flex: 1 0 100%; display: block; position: static; }
-/* Three classes, to outrank the .rail .hbtns .hbtn rule above that gives every
-   button in the panel a divider on its right. This one spans the row. */
-.rail .hbtns .hmenu > summary { border-right: none; }
-.rail .hmenupanel {
-  position: static; width: auto; max-width: none; max-height: none;
-  border: none; border-top: 1px solid var(--line);
-}
-/* As a dropdown the last row needs no rule under it — the panel's own border
-   is there. In flow there is no panel border, and without this the last
-   category sits directly on top of Sale with nothing between them. Both cells
-   of that row, so the line does not stop halfway across at two columns. */
-.rail .hmenupanel a:nth-last-child(-n+2) { border-bottom: 1px solid var(--line); }
 
 /* ---------- saved filters, at the top of the rail ----------
    Same hairline construction as a filter group, but it is not one: no
@@ -592,6 +550,29 @@ main { flex: 1; min-width: 0; }
 }
 .tbtn:hover { color: var(--ink); border-color: var(--ink-dim); }
 .tbtn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+/* Filters. Every control in the rail is behind this one button once the rail
+   is a drawer, so it is filled rather than outlined — the only accent on the
+   bar, against six neutral toggles it would otherwise be mistaken for. Shown
+   only where the drawer exists; at desk widths the rail is on screen already
+   and a button to reveal it would open nothing. */
+#railtoggle { display: none; }
+.filters {
+  align-items: center; gap: 7px;
+  background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
+  font-weight: 600;
+}
+.filters:hover { color: var(--accent-ink); border-color: var(--accent); filter: brightness(1.08); }
+.filters[aria-expanded="true"] { filter: brightness(.9); }
+/* Drawn from borders rather than a glyph so it takes the button's colour. */
+.filters .bars {
+  display: block; position: relative; width: 12px; height: 9px;
+  border-top: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+}
+.filters .bars::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 3.5px;
+  border-top: 1.5px solid currentColor;
+}
 
 /* Grid and Table are one control with two positions, not two controls, so they
    share a border and sit tight against each other — the toolbar's 12px gap
@@ -1030,24 +1011,69 @@ td.nil, .nil { color: var(--ink-mute); }
      hairline stranded in the middle of an empty row. */
   .brand { margin-right: auto; border-right: none; }
   .searchwrap {
-    /* Ordered last so it wraps below the row it shares a header with, rather
-       than pushing the hamburger onto a third row. */
+    /* Ordered last so it wraps below the row it shares the header with, rather
+       than pushing the nav onto a third row. */
     order: 9; flex: 0 0 100%; height: var(--bar);
     border-top: 1px solid var(--line);
   }
 
-  .browsehead .hbtns { display: none; }
   .rail { width: 100%; }
-  .rail .hbtns { display: flex; }
 
-  /* The nav does not fit beside the wordmark, and .hbtns does not shrink —
-     before this it simply ran off the right edge. A row of its own, wrapping
-     within itself, is what holds it at 320px. The browse header is exempt
-     because its controls have already left for the filter panel above. */
+  /* The browse header keeps its nav beside the wordmark here, which is what
+     it could not do while that nav also carried Categories, Grid, Table, cm
+     and a Filters button. What is left — Sale, Brands, the theme — is about
+     160px, and it fits next to the wordmark at 320px with room over.
+
+     The categories menu is the one that does not fit, so below this width it
+     is not in the browse header at all. It is a dropdown as wide as the
+     longest category name and it would take the row on its own; every
+     category is in the footer of every page, which is where a phone reader
+     ends up looking for a list of them anyway. */
+  .browsehead .hmenu { display: none; }
+
+  /* The other header carries a Browse link and the menu as well, and that does
+     not fit beside the wordmark. A row of its own, wrapping within itself, is
+     what holds it at 320px. */
   header:not(.browsehead) .hbtns {
     flex: 0 0 100%; flex-wrap: wrap;
     border-top: 1px solid var(--line);
   }
+
+  /* The toolbar wraps to two rows here, and which two matters. Left in source
+     order it took three: the count is a sentence, and it is long enough to
+     push Clear off its row and the controls off the one after that, so the
+     sticky chrome above the first result ran to five rows once the header's
+     own two are counted.
+
+     So the controls come first and the reading matter second — Filters, the
+     view, the unit and the sort on one row, the count and Clear under it. The
+     spacer goes, having nothing left to push apart. */
+  /* The toolbar wraps here, and left to itself it wrapped badly: the count is
+     a sentence, long enough to push Clear off its row and everything else off
+     the one after, so the bar ran to four rows at 360px with a control alone
+     on three of them. Widths are what decides that, and guessing at widths is
+     how it went wrong — so the rows are stated rather than left to fall out.
+
+     Every control goes on the first row — Filters, the view, the unit, Clear —
+     because they are all short and all act on the grid. The sort takes the
+     second outright: it is the widest, its label is the only one that would
+     have to be cut to fit beside anything, and full width makes it the easiest
+     thing on the bar to hit with a thumb. The count takes the third, alone.
+
+     The count is last and it is given a row rather than left to share one,
+     which is the correction: it is a sentence about 300px wide, and a flex row
+     that cannot fit its next item wraps at the item boundary before it will
+     shrink anything, so pairing it with Clear did not squeeze the sentence —
+     it pushed Clear onto a fourth row. Stating both as 100% is what stops the
+     rows depending on how many digits the counts happen to have today. */
+  .toolbar { gap: 8px; padding: 9px 12px; }
+  .toolbar .spacer { display: none; }
+  #railtoggle { order: 1; }
+  .views { order: 2; }
+  #units { order: 3; }
+  #clear { order: 4; }
+  .toolbar select { order: 5; flex: 1 1 100%; }
+  .count { order: 6; flex: 1 1 100%; }
 
   /* Anchored to the header rather than to the button: at this width the panel
      is wider than the distance from Categories to the right edge, so hanging
@@ -1265,6 +1291,26 @@ td.instock { color: var(--ok); }
   font-size: 10.5px; color: var(--ink-dim); text-align: right;
 }
 .brandlist a { font-size: 13px; }
+
+/* The filter box above the brand index. Sits on the list rather than in the
+   header, because it narrows this one list and does not search the site — the
+   header field on a brand's own page does that, and the two would be mistaken
+   for each other if they looked alike. */
+.brandfind {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 14px 12px;
+}
+.brandfind input {
+  flex: 1; min-width: 0; height: 34px; padding: 0 11px;
+  background: var(--bg); border: 1px solid var(--line-2);
+  font-size: 12px; outline: none;
+}
+.brandfind input:focus { border-color: var(--accent); }
+.brandfind input::placeholder { color: var(--ink-mute); }
+.brandfindcount {
+  font-size: 10px; color: var(--ink-mute); letter-spacing: .04em;
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
 
 /* The no-JavaScript front page: a sample of each category, inside <noscript>
    in pages/index.astro. #results is otherwise only ever filled by the island,

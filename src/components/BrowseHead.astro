@@ -34,9 +34,13 @@ const {
   <div class="searchwrap">
     <input id="q" type="search" placeholder={placeholder} autocomplete="off" spellcheck="false" />
   </div>
-  {/* Moves into the filter panel below the mobile breakpoint — a phone has
-      room for the wordmark and one control beside it, and the panel is the
-      only full-width surface on the page. See mountChrome() in browse.js. */}
+  {/* Stays in the header at every width now. It used to be moved into the
+      filter panel on a phone, which put the site's navigation inside a drawer
+      labelled Filters and left the header itself holding nothing but a way to
+      open that drawer — the one control on it that was not navigation. The
+      trade is the categories menu, which is hidden here below the breakpoint:
+      Sale, Brands and the theme fit beside the wordmark on one row and the
+      menu does not, and every category is in the footer of every page. */}
   <div class="hbtns" id="hbtns">
     {/* The same menu the other header carries, in the same place, because the
         two headers are the same site. Without it the front page — the one page
@@ -56,9 +60,4 @@ const {
     <a class="hbtn" href="/brands/">Brands</a>
     <ThemeToggle />
   </div>
-  {/* Stays in the header at every width: it is the way back to the controls
-      that left it. */}
-  <button class="hbtn burger" id="railtoggle" aria-controls="rail" aria-expanded="false">
-    <span class="bars" aria-hidden="true"></span>Filters
-  </button>
 </header>

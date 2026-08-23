@@ -27,7 +27,24 @@ const description =
       <button class="btn" type="button" data-request-brand hidden>Request a brand</button>
       <span>Missing one? Tell us which — the most-asked-for get crawled first.</span>
     </p>
-    <ul class="related brandlist">
+    {/* 147 makers in one alphabetical column, and until now the only way to
+        find one was the browser's own find-in-page. Every other list on the
+        site can be narrowed where it stands — the rail has a box for exactly
+        this, and each brand's own page carries the search field in its header
+        — so this was the one place you could arrive knowing the name you
+        wanted and still have to scroll for it.
+
+        Ships hidden and is revealed by the script below, the same way the
+        saved-filters panel and the request-brand button are: it filters the
+        list by hiding rows, which nothing can do with scripting off, and a box
+        that silently ignores what you type into it is worse than no box. */}
+    <div class="brandfind" id="brandfind" hidden>
+      <input id="brandq" type="search" autocomplete="off" spellcheck="false"
+             placeholder="filter brands…" aria-label="Filter brands by name"
+             aria-controls="brandlist" />
+      <span class="brandfindcount" id="brandcount" role="status" aria-live="polite"></span>
+    </div>
+    <ul class="related brandlist" id="brandlist">
       {brands.map((brand) => {
         const prices = brand.bags.map((b) => b.price_min).filter((p) => p != null);
         return (
@@ -43,5 +60,53 @@ const description =
         );
       })}
     </ul>
+    <p class="note" id="brandnone" hidden>
+      No brand here matches that. It may still be one we have not crawled —
+      the button above sends it to the list that gets picked up first.
+    </p>
   </div>
+
+  {/* Matching on the name the row shows, lowercased, with no fuzziness: this
+      is a list of proper nouns someone already knows the spelling of, and the
+      useful behaviour is that typing "ab" leaves Able Carry and nothing else.
+      The rows are hidden rather than removed so that clearing the box costs
+      nothing and the DOM never has to be rebuilt.
+
+      data-name is read off the row rather than recomputed from textContent,
+      which also carries the model count and the price and would match "12". */}
+  <script is:inline>
+    (() => {
+      const box = document.getElementById('brandfind');
+      const input = document.getElementById('brandq');
+      const list = document.getElementById('brandlist');
+      const none = document.getElementById('brandnone');
+      const count = document.getElementById('brandcount');
+      if (!box || !input || !list) return;
+      box.hidden = false;
+
+      const rows = [...list.children].map((li) => ({
+        li, name: (li.querySelector('b')?.textContent || '').toLowerCase(),
+      }));
+
+      const apply = () => {
+        const q = input.value.trim().toLowerCase();
+        let shown = 0;
+        for (const row of rows) {
+          const hit = !q || row.name.includes(q);
+          row.li.hidden = !hit;
+          if (hit) shown++;
+        }
+        if (none) none.hidden = shown > 0;
+        if (count) count.textContent = q ? shown + ' of ' + rows.length : '';
+      };
+
+      input.addEventListener('input', apply);
+      // Escape clears rather than only blurring, which is what a type-to-narrow
+      // box is expected to do and saves selecting the text to delete it.
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { input.value = ''; apply(); }
+      });
+      apply();
+    })();
+  </script>
 </Base>

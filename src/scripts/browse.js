@@ -1542,25 +1542,19 @@ function syncUnits() {
 // fetched: a failed fetch leaves a degraded page, and a degraded page still
 // has to have a reachable theme toggle and a search field you can see.
 //
-// The breakpoint has to agree with the one in app.css, which hides the header
-// copy of the nav at the same width this moves it into the panel.
-const NARROW = matchMedia("(max-width: 760px)");
+// 900px, not the 760px this used to watch. The number has to be the width at
+// which app.css turns the rail from a column in the page into a fixed drawer
+// over it, because the only thing left keyed to it is closing that drawer —
+// and 760 was the old nav-relocation breakpoint, which no longer exists. The
+// gap between the two was a real hole: opening the drawer at 850px and then
+// widening past 900 left the rail styled as a column again with body.railopen
+// still set, so the page behind it could not be scrolled and nothing was over
+// it to explain why.
+const DRAWER = matchMedia("(max-width: 900px)");
 
 function mountChrome() {
   const rail = $("#rail");
-  const nav = $("#hbtns");
   const toggle = $("#railtoggle");
-  // Captured before the first move, while the nav is still where the markup
-  // put it.
-  const bar = nav.parentElement;
-
-  const placeNav = () => {
-    const home = NARROW.matches ? rail : bar;
-    if (nav.parentElement === home) return;
-    // Under the panel's own heading, above the filter groups.
-    if (home === rail) rail.insertBefore(nav, rail.firstElementChild.nextSibling);
-    else bar.insertBefore(nav, toggle);
-  };
 
   const setRail = on => {
     rail.classList.toggle("on", on);
@@ -1568,14 +1562,17 @@ function mountChrome() {
     document.body.classList.toggle("railopen", on);
   };
 
-  placeNav();
-  NARROW.addEventListener("change", () => {
-    placeNav();
-    // Crossing the breakpoint restyles the panel underneath the reader. Closing
-    // it is the only state that reads the same on both sides of the line, and
-    // it is what keeps the body scroll lock from being stranded.
-    setRail(false);
-  });
+  // This used to also carry the header nav into the rail and back out again as
+  // the breakpoint was crossed, which is why it needed a media query listener
+  // and a remembered home element. The nav stays in the header at every width
+  // now — see the note in components/BrowseHead.astro — so all that is left is
+  // opening and shutting the drawer. CSS does the rest.
+  //
+  // Crossing the breakpoint still has to close it: the rail restyles from a
+  // column to a fixed drawer underneath the reader, and shut is the only state
+  // that reads the same on both sides of the line. It is also what keeps the
+  // body scroll lock from being stranded on a page with no drawer over it.
+  DRAWER.addEventListener("change", () => setRail(false));
 
   toggle.addEventListener("click", () => setRail(!rail.classList.contains("on")));
   $("#railclose").addEventListener("click", () => setRail(false));
