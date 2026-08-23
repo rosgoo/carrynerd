@@ -73,6 +73,13 @@ const drops = bags
     <summary class="salehead">
       <h2>Newly on sale</h2>
       <em>{drops.length} of {onSale} models with a price cut moved in the last few days</em>
+      {/* Inside the <summary> because that is the only part of a <details> that
+          survives being shut, and the whole point of this link is that it works
+          when the band is put away — the tile at the end of the row did not, and
+          was twelve cards of horizontal scrolling away even when it did.
+          The script below keeps the click from toggling the band on its way
+          out. */}
+      <a class="saleall" href="/sale/">All {onSale} on sale →</a>
     </summary>
 
     <ul class="salerow">
@@ -95,23 +102,16 @@ const drops = bags
           </a>
         </li>
       ))}
-      {/* The way to the rest, as the last tile rather than as a line under the
-          row: the row is what the eye is already travelling along, and a link
-          below it is a link below the fold on a phone. Outside the <summary>
-          on purpose — a link inside one fights the disclosure it sits in. */}
-      <li class="salecard salemore">
-        <a href="/sale/">All {onSale} on sale →</a>
-      </li>
     </ul>
   </details>
 )}
 
-{/* Remembers whether the band is shut, and nothing else. Inline and next to
-    what it acts on so it runs while the parser is here, before first paint —
-    the same reason the theme and unit script sits in <head>. The key is
-    brand-neutral for the reason the note there gives. Storage refusals are
-    ignored: a browser that cannot remember this is still a browser that can
-    open and shut it. */}
+{/* Remembers whether the band is shut, and keeps the link out of the way of
+    the disclosure. Inline and next to what it acts on so it runs while the
+    parser is here, before first paint — the same reason the theme and unit
+    script sits in <head>. The key is brand-neutral for the reason the note
+    there gives. Storage refusals are ignored: a browser that cannot remember
+    this is still a browser that can open and shut it. */}
 {drops.length > 0 && (
   <script is:inline>
     try {
@@ -122,6 +122,14 @@ const drops = bags
           localStorage.setItem('sale-strip', strip.open ? 'open' : 'shut');
         } catch {}
       });
+      /* A click anywhere in a <summary> toggles it, including on a link inside
+         one. Left alone, following this link would flip the band open or shut
+         on the way out and write that to storage, so the reader comes back to
+         a strip in the state they never chose. Stopping the event short of the
+         summary is what cancels the toggle; the link still navigates, because
+         nothing here prevents its default. */
+      strip.querySelector('.saleall')
+        ?.addEventListener('click', (e) => e.stopPropagation());
     } catch {}
   </script>
 )}

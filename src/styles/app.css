@@ -269,7 +269,7 @@ header .spacer { flex: 1; }
    In the panel it stops being a dropdown and becomes what everything around it
    already is: a group that expands in place. A row of its own because the
    category names are the longest labels here and will not sit two-up beside
-   Grid and Table. */
+   Sale and Brands. */
 .rail .hmenu { flex: 1 0 100%; display: block; position: static; }
 /* Three classes, to outrank the .rail .hbtns .hbtn rule above that gives every
    button in the panel a divider on its right. This one spans the row. */
@@ -280,8 +280,8 @@ header .spacer { flex: 1; }
 }
 /* As a dropdown the last row needs no rule under it — the panel's own border
    is there. In flow there is no panel border, and without this the last
-   category sits directly on top of Carry-on with nothing between them. Both
-   cells of that row, so the line does not stop halfway across at two columns. */
+   category sits directly on top of Sale with nothing between them. Both cells
+   of that row, so the line does not stop halfway across at two columns. */
 .rail .hmenupanel a:nth-last-child(-n+2) { border-bottom: 1px solid var(--line); }
 
 /* ---------- saved filters, at the top of the rail ----------
@@ -551,6 +551,12 @@ main { flex: 1; min-width: 0; }
 }
 .tbtn:hover { color: var(--ink); border-color: var(--ink-dim); }
 .tbtn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+/* Grid and Table are one control with two positions, not two controls, so they
+   share a border and sit tight against each other — the toolbar's 12px gap
+   between them would read as an unrelated pair. */
+.views { display: flex; }
+.views .tbtn + .tbtn { border-left: none; }
 
 .grid {
   display: grid; gap: 10px; padding: 14px 16px 120px;
@@ -966,11 +972,11 @@ td.nil, .nil { color: var(--ink-mute); }
 }
 
 /* Below this the header cannot hold the wordmark, a usable search field and
-   six controls on one line — the search field is what lost, collapsing to a
-   sliver while the buttons ran off the right edge and took the page's width
-   with them. So the search field takes a row of its own, and the controls move
-   into the filter panel, which goes full width. See mountChrome() in
-   browse.js; the breakpoint there has to agree with this one. */
+   the nav on one line — the search field is what lost, collapsing to a sliver
+   while the buttons ran off the right edge and took the page's width with
+   them. So the search field takes a row of its own, and the controls move into
+   the filter panel, which goes full width. See mountChrome() in browse.js; the
+   breakpoint there has to agree with this one. */
 @media (max-width: 760px) {
   :root { --bar: 48px; --head: 96px; }
 
@@ -993,9 +999,9 @@ td.nil, .nil { color: var(--ink-mute); }
   .rail { width: 100%; }
   .rail .hbtns { display: flex; }
 
-  /* Six controls do not fit beside the wordmark, and .hbtns does not shrink —
+  /* The nav does not fit beside the wordmark, and .hbtns does not shrink —
      before this it simply ran off the right edge. A row of its own, wrapping
-     within itself, is what holds all six at 320px. The browse header is exempt
+     within itself, is what holds it at 320px. The browse header is exempt
      because its controls have already left for the filter panel above. */
   header:not(.browsehead) .hbtns {
     flex: 0 0 100%; flex-wrap: wrap;
@@ -1507,8 +1513,20 @@ a.cbrand:hover { color: var(--accent); text-decoration: underline; text-underlin
   font-size: 10px; font-style: normal; letter-spacing: .03em;
   color: var(--ink-mute);
 }
+/* The way out to the whole sale. It has to be in the <summary>, because that is
+   the only row that survives the band being shut — see the note in the
+   component. It takes the auto margin the disclosure marker used to hold, so
+   the two of them end up side by side at the right rather than splitting the
+   free space between them, which is what two auto margins in a flex row do. */
+.saleall {
+  margin-left: auto; white-space: nowrap;
+  font-size: 10.5px; letter-spacing: .04em; color: var(--accent);
+  text-decoration: none;
+}
+.saleall:hover { text-decoration: underline; text-underline-offset: 3px; }
+
 .salehead::after {
-  content: "+"; margin-left: auto; color: var(--ink-mute); font-size: 13px;
+  content: "+"; color: var(--ink-mute); font-size: 13px;
 }
 .salestrip[open] > .salehead::after { content: "\2212"; }
 .salehead:hover h2 { text-decoration: underline; text-underline-offset: 3px; }
@@ -1583,15 +1601,6 @@ a.cbrand:hover { color: var(--accent); text-decoration: underline; text-underlin
   margin: 3px 8px 0; align-self: flex-start;
   border-color: var(--ok); color: var(--ok);
 }
-
-/* The way out to the whole sale, as the last tile in the row rather than as a
-   line under it: the row is what the eye is already travelling along. */
-.salemore > a {
-  align-items: center; justify-content: center; height: 100%;
-  padding: 12px 10px; text-align: center;
-  font-size: 11px; letter-spacing: .04em; color: var(--accent);
-}
-.salemore:hover > a { text-decoration: underline; text-underline-offset: 3px; }
 
 @media (max-width: 560px) {
   .salecard { flex-basis: 132px; }

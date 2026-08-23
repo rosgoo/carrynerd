@@ -150,8 +150,14 @@ const isHome = Astro.url.pathname === '/';
       {/* Next to the categories rather than out with the reference pages: it
           is a shelf like they are, cut by price instead of by shape. */}
       <a class="hbtn" href="/sale/">Sale</a>
-      <a class="hbtn" href="/carry-on/">Carry-on</a>
       <a class="hbtn" href="/brands/">Brands</a>
+      {/* Stays in the nav here, and only here. On a browse page this control
+          sits in the toolbar above the results, beside the sort, because that
+          is what it acts on — see components/BrowseShell.astro. The pages that
+          fall back to this header have no toolbar to put it in: their lengths
+          are spread across a model's spec grid or several comparison tables at
+          once, so the header is the only place that governs all of them. Those
+          pages render the other header, never both, so the id stays unique. */}
       <button class="hbtn units" id="units" title="Show lengths in centimetres or inches">
         <span class="u-cm">cm</span><span class="u-in">in</span>
       </button>

@@ -96,17 +96,15 @@ const breadcrumbs = {
 
     <h1>Airline carry-on sizes</h1>
     <p class="lead">
-      The published carry-on and personal-item limits for {airlines.length} airlines,
-      each one checked against the {measuredCount} bags in this index that state
-      all three of their dimensions. Limits last reviewed {airlinesUpdated}.
+      Published carry-on and personal-item limits for {airlines.length} airlines,
+      checked against the {measuredCount} bags here that state all three
+      dimensions. Last reviewed {airlinesUpdated}.
     </p>
     <p class="lead">
-      “Carry-on size” is not one size. {strictest.airline.name} is the
-      strictest of the {carryOnAirlineCount} we track — {strictest.fits} of
-      the {measuredCount} bags clear it — and {loosest.airline.name} the most
-      generous, at {loosest.fits}. That gap is
-      {' '}{loosest.fits - strictest.fits} bags wide, which is the whole reason
-      a single “fits carry-on” label on a product page is worth so little.
+      “Carry-on size” is not one size. Of the {carryOnAirlineCount} carriers
+      with a published limit, {strictest.airline.name} is the strictest —
+      {' '}{strictest.fits} bags clear it — and {loosest.airline.name} the most
+      generous, at {loosest.fits}.
     </p>
 
     {rows.map(({ label, rows: group }) => group.length > 0 && (

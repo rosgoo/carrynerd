@@ -309,6 +309,19 @@ const unlock = scope?.unlock ?? null;
       <div class="count" id="count">loading…</div>
       <button class="tbtn" id="clear">Clear</button>
       <div class="spacer"></div>
+      {/* View and units used to live in the header nav, beside Brands and the
+          category menu, where they read as places to go rather than as knobs
+          on what is already on screen. They belong here: both change how the
+          rows below are drawn, and so does the sort they now sit next to.
+          The ids are unchanged — browse.js finds them exactly as before, and
+          so does the unit toggle wired in the layout. */}
+      <div class="views">
+        <button class="tbtn" id="viewgrid" aria-pressed="true">Grid</button>
+        <button class="tbtn" id="viewtable" aria-pressed="false">Table</button>
+      </div>
+      <button class="tbtn units" id="units" title="Show lengths in centimetres or inches">
+        <span class="u-cm">cm</span><span class="u-in">in</span>
+      </button>
       {/* `selected` rather than a value set from script: the page can open on
           an order of its own — /sale/ does — and the select has to say so
           before the island's first answer lands. */}
