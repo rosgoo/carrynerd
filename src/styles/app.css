@@ -1,43 +1,31 @@
 /* carrynerd — technical spec-sheet aesthetic: hairline rules, hard corners,
    monospace figures, one hi-vis accent. Nothing rounded, nothing soft. */
 
+/* ---------- palette ----------
+
+   Light is the default: the bare :root below carries the light values, so it
+   is what a reader gets when nothing else has an opinion. A system asking for
+   dark gets the dark palette from the media query, and an explicit choice from
+   the header toggle outranks both, in either direction.
+
+   Three blocks, and none of them can go. The bare :root has to hold every
+   colour, or a token defined only inside the media query is undefined for
+   everyone that query does not match. The media query is guarded on
+   :not([data-theme="light"]) so that choosing light on a dark machine sticks.
+   The [data-theme="dark"] block is the same guard pointing the other way: it
+   is what lets the toggle reach dark on a light machine, where the media query
+   never fires. Hence the dark values twice — CSS has no way to hand one
+   declaration block to both a media rule and a plain one, and the indirection
+   that would avoid it costs more to read than the repetition does.
+
+   This was the other way round until now, and the media query could never run:
+   <html> shipped with data-theme="dark" hardcoded, so the :not([data-theme=
+   "dark"]) guard never passed and a reader whose system asked for light was
+   served dark regardless. The attribute is out of the markup — see
+   layouts/Base.astro, where the head script writes it only once the reader has
+   actually chosen. */
+
 :root {
-  /* Dark grey, not black. Pure black against the white image plates was a
-     harsh edge, and greys give the hairline rules somewhere to sit. */
-  --bg:      #191c1d;
-  --panel:   #202425;
-  --raised:  #282d2e;
-  --line:    #343a3b;
-  --line-2:  #474e4f;
-  --ink:     #e8eae8;
-  --ink-dim: #949c9a;
-  --ink-mute:#6b7472;
-  --accent:  #ff5a1f;
-  --accent-ink: #141617;
-  --ok:      #5fd38d;
-  --warn:    #ffc046;
-  --grid:    rgba(255,255,255,.032);
-  --mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo,
-          Consolas, "Liberation Mono", monospace;
-  --rail: 264px;
-  /* One header row. --head is the height of the whole sticky header, which is
-     what the rail, the toolbar and the sticky table head hang off; on narrow
-     screens the search field takes a second row and the two diverge. */
-  --bar: 52px;
-  --head: 52px;
-
-  /* The image plate is white in both themes and is deliberately NOT
-     redefined in the light-theme block below — product photography is shot
-     on white, so anything else puts a visible box around every opaque JPEG. */
-  --shot-bg:   #ffffff;
-  --shot-ink:  #6b6f6d;
-  --shot-chip: rgba(255,255,255,.84);
-  --shot-line: #ddd9d2;
-  /* How far a product photo's own edge fades into the plate. See .shot img. */
-  --feather:   10px;
-}
-
-:root[data-theme="light"] {
   --bg:      #f4f3f0;
   --panel:   #fbfaf8;
   --raised:  #ffffff;
@@ -51,15 +39,52 @@
   --ok:      #17804a;
   --warn:    #9a6600;
   --grid:    rgba(0,0,0,.035);
+
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo,
+          Consolas, "Liberation Mono", monospace;
+  --rail: 264px;
+  /* One header row. --head is the height of the whole sticky header, which is
+     what the rail, the toolbar and the sticky table head hang off; on narrow
+     screens the search field takes a second row and the two diverge. */
+  --bar: 52px;
+  --head: 52px;
+
+  /* The image plate is white in every theme and is deliberately NOT redefined
+     in either dark block below — product photography is shot on white, so
+     anything else puts a visible box around every opaque JPEG. */
+  --shot-bg:   #ffffff;
+  --shot-ink:  #6b6f6d;
+  --shot-chip: rgba(255,255,255,.84);
+  --shot-line: #ddd9d2;
+  /* How far a product photo's own edge fades into the plate. See .shot img. */
+  --feather:   10px;
 }
 
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --bg:#f4f3f0; --panel:#fbfaf8; --raised:#fff; --line:#d9d6cf;
-    --line-2:#bcb8ae; --ink:#16181a; --ink-dim:#5e6360; --ink-mute:#8e938f;
-    --accent:#e8430a; --accent-ink:#fff; --ok:#17804a; --warn:#9a6600;
-    --grid:rgba(0,0,0,.035);
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:#191c1d; --panel:#202425; --raised:#282d2e; --line:#343a3b;
+    --line-2:#474e4f; --ink:#e8eae8; --ink-dim:#949c9a; --ink-mute:#6b7472;
+    --accent:#ff5a1f; --accent-ink:#141617; --ok:#5fd38d; --warn:#ffc046;
+    --grid:rgba(255,255,255,.032);
   }
+}
+
+/* Dark grey, not black. Pure black against the white image plates was a harsh
+   edge, and greys give the hairline rules somewhere to sit. */
+:root[data-theme="dark"] {
+  --bg:      #191c1d;
+  --panel:   #202425;
+  --raised:  #282d2e;
+  --line:    #343a3b;
+  --line-2:  #474e4f;
+  --ink:     #e8eae8;
+  --ink-dim: #949c9a;
+  --ink-mute:#6b7472;
+  --accent:  #ff5a1f;
+  --accent-ink: #141617;
+  --ok:      #5fd38d;
+  --warn:    #ffc046;
+  --grid:    rgba(255,255,255,.032);
 }
 
 * { box-sizing: border-box; }
@@ -164,6 +189,22 @@ header .spacer { flex: 1; }
 .hbtn:hover { color: var(--ink); background: var(--raised); }
 .hbtn[aria-pressed="true"],
 .hbtn[aria-expanded="true"] { color: var(--accent-ink); background: var(--accent); }
+
+/* The theme button is a sun or a moon rather than the word "Theme". Which one
+   shows is resolved the same three ways the palette above is — light default,
+   system dark, explicit choice — so the icon can never disagree with the
+   colours around it, including at first paint on a page running no script.
+   Each icon is the theme you would arrive at, not the one you are in: the
+   colours already say which one that is. */
+.i-moon { display: block; }
+.i-sun  { display: none; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .i-sun  { display: block; }
+  :root:not([data-theme="light"]) .i-moon { display: none; }
+}
+:root[data-theme="dark"] .i-sun  { display: block; }
+:root[data-theme="dark"] .i-moon { display: none; }
 
 /* ---------- categories menu ----------
    A <details> in the header nav. It carries no aria-expanded of its own — the

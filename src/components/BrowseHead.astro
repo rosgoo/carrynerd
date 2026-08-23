@@ -16,6 +16,7 @@
 import Logo from './Logo.astro';
 import { SITE_NAME_DISPLAY } from '../lib/brand.js';
 import { hubs } from '../lib/hubs.js';
+import ThemeToggle from './ThemeToggle.astro';
 
 interface Props {
   /** What to say in the search field. A scoped page searches inside its own
@@ -53,7 +54,7 @@ const {
     </details>
     <a class="hbtn" href="/sale/">Sale</a>
     <a class="hbtn" href="/brands/">Brands</a>
-    <button class="hbtn" id="theme" title="Toggle theme">Theme</button>
+    <ThemeToggle />
   </div>
   {/* Stays in the header at every width: it is the way back to the controls
       that left it. */}

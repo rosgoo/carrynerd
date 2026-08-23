@@ -1,0 +1,36 @@
+---
+/* The theme toggle: a sun or a moon, whichever one you are not currently in.
+ *
+ * A component rather than markup repeated in the two headers, because it is no
+ * longer a five-letter word — it is two SVGs and a rule deciding which of them
+ * shows, and that is exactly the kind of thing that drifts when it is written
+ * twice. Both headers mount one, never both on the same page, so #theme stays
+ * unique and the layout's single wiring finds it either way.
+ *
+ * Both icons ship in the markup and CSS reveals one, the same construction the
+ * lengths use for cm and in. That is what lets the right icon be on screen at
+ * first paint on a static page running no island — and, more to the point, what
+ * stops the button flashing a sun at someone whose system asked for dark. The
+ * alternative, picking the icon in script, cannot beat the first paint.
+ */
+---
+{/* The label says what pressing it does, not what theme you are in: the icon
+    already carries the state, and a button announced as "Dark" is ambiguous
+    about whether that is the current setting or the destination. */}
+<button class="hbtn theme" id="theme" type="button"
+        title="Switch between light and dark"
+        aria-label="Switch between light and dark">
+  {/* Shown while the page is dark — press it for light. */}
+  <svg class="i-sun" viewBox="0 0 24 24" width="15" height="15" fill="none"
+       stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+       aria-hidden="true">
+    <circle cx="12" cy="12" r="4.1" />
+    <path d="M12 2.4v2.3M12 19.3v2.3M4.4 4.4l1.6 1.6M18 18l1.6 1.6M2.4 12h2.3M19.3 12h2.3M4.4 19.6l1.6-1.6M18 6l1.6-1.6" />
+  </svg>
+  {/* Shown while the page is light — press it for dark. */}
+  <svg class="i-moon" viewBox="0 0 24 24" width="15" height="15" fill="none"
+       stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+       stroke-linejoin="round" aria-hidden="true">
+    <path d="M20.6 14.4A8.7 8.7 0 1 1 9.6 3.4a6.9 6.9 0 0 0 11 11Z" />
+  </svg>
+</button>

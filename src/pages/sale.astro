@@ -17,10 +17,14 @@
  * price track spans what is discounted rather than what exists and the category
  * chips say how many of each are cut rather than how many are held.
  *
- * The honest caveat is load-bearing enough to sit above the fold: a compare-at
- * price is the seller's own claim about what a bag used to cost, and nothing in
- * the feed can confirm it was ever charged. What can be confirmed is on the
- * model pages, where the chart is drawn from prices this site recorded itself.
+ * The compare-at caveat used to sit above the fold, in a second line under the
+ * counts: a compare-at price is the seller's own claim about what a bag used to
+ * cost, and nothing in the feed can confirm it was ever charged. It has been
+ * cut from the page — four lines of hedging between the heading and the grid,
+ * on a page whose readers came to see the grid. The claim it qualifies is not
+ * made anywhere in the markup, and what can be confirmed is still where it
+ * always was: the model pages, whose chart is drawn from prices this site
+ * recorded itself.
  */
 import Base from '../layouts/Base.astro';
 import BrowseHead from '../components/BrowseHead.astro';
@@ -126,13 +130,6 @@ const breadcrumbs = {
           {onSale.length} models · {brandCount} brands
           {deepest != null && ` · up to ${deepest}% off`}
           {median != null && ` · ${median}% off in the middle of the pack`}
-        </p>
-        <p class="scopefacts">
-          Every model whose listing quotes a price below its own compare-at
-          figure, deepest cut first. That figure is the seller's claim about
-          what the bag used to cost and nothing in the feed can confirm it was
-          ever charged — the prices this site recorded itself are on each
-          model's page, under the chart.
         </p>
       </div>
     </div>

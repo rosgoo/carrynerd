@@ -3,6 +3,7 @@ import '../styles/app.css';
 import Logo from '../components/Logo.astro';
 import Analytics from '../components/Analytics.astro';
 import RequestBrand from '../components/RequestBrand.astro';
+import ThemeToggle from '../components/ThemeToggle.astro';
 import { SITE_NAME_DISPLAY, SITE_DESCRIPTION, TAGLINE } from '../lib/brand.js';
 import { siteGraph } from '../lib/schema.js';
 import { hubs } from '../lib/hubs.js';
@@ -69,9 +70,27 @@ const ogImageAlt = ogFallback ? `${SITE_NAME_DISPLAY} — ${TAGLINE}` : title;
  * bytes on every page in the catalogue.
  */
 const isHome = Astro.url.pathname === '/';
+
+/* Why <html> below carries data-units but no data-theme.
+ *
+ * The absence is load-bearing. Every theme rule in app.css is built around "no
+ * attribute" meaning "the reader has not asked", which is what hands the
+ * question to prefers-color-scheme; writing a default here would take that back,
+ * and doing exactly that is the bug this replaced — the attribute was pinned to
+ * dark, so the media query's guard never passed and a reader whose system asked
+ * for light was served dark anyway. The head script sets it only for someone
+ * who has actually chosen.
+ *
+ * data-units stays pinned, because there is no system preference for
+ * centimetres to defer to.
+ *
+ * Both of these belong here rather than in a comment above the tag: between the
+ * doctype and <html>, an Astro expression is content, not a note, and the
+ * document builder responds by dropping <html>, <head> and <body> from the
+ * output. */
 ---
 <!doctype html>
-<html lang="en" data-theme="dark" data-units="cm">
+<html lang="en" data-units="cm">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -99,9 +118,14 @@ const isHome = Astro.url.pathname === '/';
 )}
 
 <!-- Restore the saved theme and unit before first paint. Deferring either to
-     the island would flash — dark-on-light for anyone who chose the light
-     theme, and centimetres for anyone who chose inches, since every length on
-     the page ships in both units and CSS picks one. -->
+     the island would flash — the wrong palette for anyone who chose against
+     their system, and centimetres for anyone who chose inches, since every
+     length on the page ships in both units and CSS picks one.
+
+     Only what was chosen is written. Leaving the attribute off is what hands
+     the question to prefers-color-scheme, so a reader who has never touched
+     the toggle gets their system's answer rather than ours; setting it to a
+     default here would take that back and is the bug this replaced. -->
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <script is:inline>
   // These keys are deliberately not brand-named. The site has been renamed
@@ -161,7 +185,7 @@ const isHome = Astro.url.pathname === '/';
       <button class="hbtn units" id="units" title="Show lengths in centimetres or inches">
         <span class="u-cm">cm</span><span class="u-in">in</span>
       </button>
-      <button class="hbtn" id="theme" title="Toggle theme">Theme</button>
+      <ThemeToggle />
     </nav>
   </header>
 </slot>
@@ -205,16 +229,19 @@ const isHome = Astro.url.pathname === '/';
   // — which is what lets them work on the static model pages, where no island
   // is mounted at all.
   // `event` is optional: the theme toggle is pure CSS and has nobody to tell.
+  // `current` is optional too, and only theme passes one — see below.
   const swap = (
     id: string,
     attr: string,
     key: string,
     values: [string, string],
     event?: string,
+    current?: () => string,
   ) =>
     document.getElementById(id)?.addEventListener('click', () => {
       const root = document.documentElement;
-      const next = root.getAttribute(attr) === values[0] ? values[1] : values[0];
+      const now = root.getAttribute(attr) ?? current?.() ?? values[0];
+      const next = now === values[0] ? values[1] : values[0];
       root.setAttribute(attr, next);
       try {
         localStorage.setItem(key, next);
@@ -223,7 +250,16 @@ const isHome = Astro.url.pathname === '/';
     });
 
   // Keys are brand-neutral on purpose — see the migration note in <head>.
-  swap('theme', 'data-theme', 'theme', ['dark', 'light']);
+  //
+  // The resolver is what makes the first press work now that <html> ships with
+  // no data-theme. Reading the attribute alone, an unset one is not 'dark', so
+  // the toggle computed 'dark' as the next value — correct for a reader on the
+  // light default, and a no-op for one whose system asked for dark and who was
+  // already looking at dark. One press that visibly did nothing. The media
+  // query is the only other thing that decides the answer, so asking it is what
+  // closes the gap.
+  swap('theme', 'data-theme', 'theme', ['dark', 'light'], undefined,
+       () => (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
   // The browse island keeps two lengths in <input>s, which CSS cannot rewrite.
   // It listens for this and converts them.
   swap('units', 'data-units', 'units', ['cm', 'in'], 'unitchange');
