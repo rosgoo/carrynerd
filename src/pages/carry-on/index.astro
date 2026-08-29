@@ -152,13 +152,8 @@ const breadcrumbs = {
         </div>
       </div>
       <p class="note">
-        Counts are the models in each category that clear
-        {' '}<Measure value={fmtLinear(COMMON_CARRYON_CM)} /> linear — the total
-        most carriers converge on, and a reasonable first cut before you check
-        the airline you are actually flying. To check one properly, every
-        carrier in the tables above is also a filter in the browse rail, under
-        “Airline — carry-on fit”: tick the ones on your itinerary and a bag has
-        to clear all of them.
+        Counts are the models in each category clearing
+        {' '}<Measure value={fmtLinear(COMMON_CARRYON_CM)} /> linear.
         {' '}<a href={`/?airline=${airlineSlug(strictest.airline)}`}>
           Start with {strictest.airline.name}, the strictest of them →
         </a>

@@ -17,7 +17,7 @@ import Base from '../../layouts/Base.astro';
 import BagTable from '../../components/BagTable.astro';
 import Measure from '../../components/Measure.astro';
 import {
-  hubs, byDensity, rankable, COMMON_CARRYON_CM, MIN_FACET,
+  hubs, byDensity, rankable, COMMON_CARRYON_CM,
 } from '../../lib/hubs.js';
 import { bagHref } from '../../lib/catalog.js';
 import { airlines } from '../../lib/carryon.js';
@@ -184,7 +184,9 @@ const breadcrumbs = {
 
     {laptopFacets.length > 0 && (
       <section>
-        <h2>By laptop size</h2>
+        <h2>By laptop size<i class="tip" tabindex="0"
+          title={`A bag is listed under the largest machine it takes, so a ${laptopFacets[laptopFacets.length - 1].label} bag also appears under the smaller sizes.`}
+          aria-label="A bag is listed under the largest machine it takes, so it also appears under the smaller sizes.">i</i></h2>
         <div class="chiprow">
           <div class="chips">
             {laptopFacets.map((facet) => (
@@ -192,32 +194,14 @@ const breadcrumbs = {
             ))}
           </div>
         </div>
-        {/* One clause, the one that changes what you click. Which sizes get
-            a page and why is a fact about how this site is built, not about
-            the bags, and it was being explained to somebody who wanted a list
-            of 15-inch daypacks. */}
-        <p class="note">
-          Listed under the largest machine it takes, so a
-          {' '}{laptopFacets[laptopFacets.length - 1].label} bag also appears
-          under the smaller sizes.
-        </p>
+
       </section>
     )}
 
     {lightest.length >= 5 && (
       <section>
         <h2>Lightest per litre</h2>
-        {/* The sentence that says what the list is, and nothing after it.
-            What went was a paragraph defending the ranking's existence — "the
-            one ranking we can compute rather than assert", "no ratings in this
-            index and none are invented" — which is the site arguing with a
-            reader who has not objected. The MIN_PLAUSIBLE_GPL exclusion is
-            real but it is a footnote about four rows, and /about carries it. */}
-        <p class="note">
-          The {lightest.length} lowest grams-per-litre of the
-          {' '}{comparable.length}{' '}{hub.plural} stating both a volume and a
-          weight.
-        </p>
+
         <BagTable bags={lightest} />
       </section>
     )}
@@ -225,9 +209,7 @@ const breadcrumbs = {
     {cheapest.length >= 5 && (
       <section>
         <h2>Cheapest per litre</h2>
-        <p class="note">
-          Lowest USD price per litre, of the {valued.length} priced in dollars.
-        </p>
+
         <BagTable bags={cheapest} />
       </section>
     )}
@@ -270,16 +252,6 @@ const breadcrumbs = {
       </div>
     </section>
 
-    <p class="note foot">
-      Counts are of models with specs complete enough to compare — dimensions,
-      or a volume and a weight together.
-      {!hub.indexable && (
-        <Fragment>
-          {' '}This category holds fewer than {MIN_FACET} comparable models, so
-          the page is served but kept out of search results until it has more
-          to say.
-        </Fragment>
-      )}
-    </p>
+
   </div>
 </Base>

@@ -183,9 +183,8 @@ const breadcrumbs = {
         </tbody>
       </table>
       <p class="note">
-        Read off the baggage policy {airline.name} publishes, on {airline.checked},
-        and reviewed across all {airlines.length} carriers on {airlinesUpdated}.
-        Airlines change these without notice — confirm before you fly.
+        Read off {airline.name}'s published policy on {airline.checked},
+        reviewed across all {airlines.length} carriers on {airlinesUpdated}.
       </p>
     </section>
 
@@ -208,8 +207,7 @@ const breadcrumbs = {
       <section>
         <h2>The largest bags that fit</h2>
         <p class="note">
-          Sorted by stated volume, biggest first — the most you can carry inside
-          the frame {airline.name} allows.
+          Sorted by stated volume, biggest first.
           {largest.length > largestRows.length
             ? ` Showing ${largestRows.length} of ${largest.length} that fit and state a volume; the rest are reachable from their brand pages and the category hubs above.`
             : ` All ${largestRows.length} of the bags that fit and state a volume.`}
@@ -232,9 +230,8 @@ const breadcrumbs = {
       <section>
         <h2>Fits most airlines, but not this one</h2>
         <p class="note">
-          Bags that clear at least 60% of the {carryOnAirlineCount} carriers we
-          track and fail here. This is the list worth reading before you fly
-          {' '}{airline.name} with a bag that has always been fine.
+          Bags that clear at least 60% of the {carryOnAirlineCount} carriers
+          tracked and fail here.
           {misses.length > missRows.length && ` ${missRows.length} of ${misses.length}, most widely accepted first.`}
         </p>
         <ul class="related">

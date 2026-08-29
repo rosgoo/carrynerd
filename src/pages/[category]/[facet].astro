@@ -150,14 +150,14 @@ const breadcrumbs = {
     </p>
 
     <section>
-      <h2>Lightest per litre first</h2>
+      <h2>Lightest per litre first<i class="tip" tabindex="0"
+        title="A bag with no stated weight, or one whose weight and volume disagree badly enough that one must be wrong, cannot be ranked; those sit at the end rather than being dropped."
+        aria-label="Bags that cannot be ranked sit at the end rather than being dropped.">i</i></h2>
       <p class="note">
         {withheld > 0
           ? `The ${rows.length} lightest per litre of ${ranked.length}. `
           : `All ${rows.length}, ranked by grams per litre. `}
-        A bag with no stated weight, or one whose weight and volume disagree
-        badly enough that one of them must be wrong, cannot be ranked; those
-        sit at the end rather than being dropped.
+
         {withheld > 0 && (
           <Fragment>
             {' '}The remaining {withheld} are on
