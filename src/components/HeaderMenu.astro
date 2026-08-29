@@ -1,0 +1,86 @@
+---
+/* The header's disclosure menu, and below 760px the header's whole navigation.
+ *
+ * A component rather than markup written twice, for the reason ThemeToggle is
+ * one: it stopped being a word and a list. It is now two labels, a glyph and
+ * two sections with different visibility, and that is exactly the kind of thing
+ * that drifts when the browse header and the other one each keep their own
+ * copy. Both mount one and never both on the same page, so the <details> stays
+ * unique and the layout's dismissal handler finds it either way.
+ *
+ * Why it grew. Below the breakpoint this menu used to be hidden outright in the
+ * browse header, on the argument that a dropdown as wide as the longest hub
+ * name cannot sit beside the wordmark and that every category is in the footer
+ * of every page anyway. The first half is still true. The second half stopped
+ * being true when the grid became an infinite scroll: the footer of a document
+ * with no bottom is not a place a phone reader ends up, it is a place they
+ * cannot get to, so the site's fourteen hub pages were unreachable on a phone
+ * and so were About, Privacy and the crawler page.
+ *
+ * So below 760 the nav collapses in here instead of being cut: the three link
+ * buttons beside it hide, this becomes a hamburger reading Menu, and the panel
+ * carries the hubs and then the site links under a rule. One button of width
+ * rather than a second header row, which is what restoring the old dropdown
+ * would have cost on a screen whose toolbar is already three rows deep.
+ *
+ * It stays a <details>. That is the whole reason this can be the one navigation
+ * affordance on pages that run no other script — it opens, closes and takes
+ * focus with no JavaScript at all, and the only thing the layout adds is
+ * dismissal, which a <details> has no notion of.
+ */
+import { hubs } from '../lib/hubs.js';
+
+/* `units` is set by the header that owns the unit pair — the one on pages with
+ * no island. The browse header does not: on those pages cm/in is on the
+ * toolbar, an inch from the grid it redraws, and a second copy of the same
+ * control inside a menu would be two answers to one question. */
+interface Props { units?: boolean }
+const { units = false } = Astro.props;
+---
+<details class="hmenu">
+  {/* Both labels ship and CSS reveals one, the same construction the lengths
+      and the theme icon use. "Categories" is honest at desk widths, where the
+      panel holds categories and the site links sit outside it as their own
+      buttons; below the breakpoint those buttons are in here too and the word
+      would be a lie about half its contents. */}
+  <summary class="hbtn">
+    <span class="bars" aria-hidden="true"></span>
+    <span class="mwide">Categories</span><span class="mnarrow">Menu</span>
+  </summary>
+  <div class="hmenupanel">
+    <div class="mgrid">
+      {hubs.map((hub) => <a href={hub.href}>{hub.title}</a>)}
+    </div>
+    {/* Hidden above the breakpoint, where every one of these is either a button
+        in the header already or a link in a footer the reader can reach. It is
+        in the markup at every width rather than being built conditionally so
+        that the panel is one thing with one shape, and so a reader who opens it
+        on a narrow desktop window does not find a different menu than the one
+        they left. */}
+    <div class="mgrid msite">
+      <a href="/sale/">Sale</a>
+      <a href="/brands/">Brands</a>
+      <a href="/carry-on/">Carry-on</a>
+      <a href="/about/">About</a>
+      <a href="/privacy/">Privacy</a>
+      <a href="/bot/">The crawler</a>
+    </div>
+    {units && (
+      /* The unit pair, in the menu at the widths where the header has no room
+         to keep it out here. It is the same control and the same three
+         contracts — data-units on <html>, the units key in localStorage, the
+         unitchange event — and the layout wires every [data-unit] on the page
+         rather than the one it used to find by id, so both copies answer. No
+         id on this one: two elements cannot share it, and nothing needs to
+         address this pair specifically. */
+      <div class="units munits" role="group" aria-label="Measurement units">
+        <button class="hbtn" type="button" data-unit="cm" aria-pressed="true"
+                title="Show measurements in centimetres and grams"
+                aria-label="Show measurements in centimetres and grams">cm</button>
+        <button class="hbtn" type="button" data-unit="in" aria-pressed="false"
+                title="Show measurements in inches and pounds"
+                aria-label="Show measurements in inches and pounds">in</button>
+      </div>
+    )}
+  </div>
+</details>

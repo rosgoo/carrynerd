@@ -4,6 +4,7 @@ import Logo from '../components/Logo.astro';
 import Analytics from '../components/Analytics.astro';
 import RequestBrand from '../components/RequestBrand.astro';
 import ThemeToggle from '../components/ThemeToggle.astro';
+import HeaderMenu from '../components/HeaderMenu.astro';
 import { SITE_NAME_DISPLAY, SITE_DESCRIPTION, TAGLINE } from '../lib/brand.js';
 import { siteGraph } from '../lib/schema.js';
 import { hubs } from '../lib/hubs.js';
@@ -172,12 +173,7 @@ const isHome = Astro.url.pathname === '/';
           /daypacks/ had nothing above the fold telling them travel backpacks
           were also held. A <details> rather than a scripted menu because
           these pages mount no island — see the note on the script below. */}
-      <details class="hmenu">
-        <summary class="hbtn">Categories</summary>
-        <div class="hmenupanel">
-          {hubs.map((hub) => <a href={hub.href}>{hub.title}</a>)}
-        </div>
-      </details>
+      <HeaderMenu units />
       {/* Next to the categories rather than out with the reference pages: it
           is a shelf like they are, cut by price instead of by shape. */}
       <a class="hbtn" href="/sale/">Sale</a>
@@ -336,7 +332,7 @@ const isHome = Astro.url.pathname === '/';
    * and the saved preference are built on those three and none of them care how
    * many buttons write them. */
   const unitBtns =
-    document.querySelectorAll<HTMLButtonElement>('#units [data-unit]');
+    document.querySelectorAll<HTMLButtonElement>('.units [data-unit]');
   const paintUnits = () => {
     const now = document.documentElement.getAttribute('data-units') ?? 'cm';
     unitBtns.forEach((b) =>

@@ -12,8 +12,8 @@
  */
 import Logo from './Logo.astro';
 import { SITE_NAME_DISPLAY } from '../lib/brand.js';
-import { hubs } from '../lib/hubs.js';
 import ThemeToggle from './ThemeToggle.astro';
+import HeaderMenu from './HeaderMenu.astro';
 ---
 <header class="browsehead">
   <a class="brand" href="/"><Logo size={17} />{SITE_NAME_DISPLAY}</a>
@@ -34,12 +34,7 @@ import ThemeToggle from './ThemeToggle.astro';
         one. Identical markup to Base.astro on purpose: it is a <details>, so it
         needs no script, and the dismissal handler in the layout finds it here
         exactly as it finds it there. */}
-    <details class="hmenu">
-      <summary class="hbtn">Categories</summary>
-      <div class="hmenupanel">
-        {hubs.map((hub) => <a href={hub.href}>{hub.title}</a>)}
-      </div>
-    </details>
+    <HeaderMenu />
     {/* Same reason as the swap in Base.astro: the footer is not a place you
         can reach on a page that keeps loading. This header has no Browse to
         trade for it — you are already browsing — so it is an addition. */}
