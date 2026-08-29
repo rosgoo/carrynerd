@@ -31,7 +31,7 @@
  */
 
 import { CAT_LABELS, FEATURE_LABELS, COLOUR_LABELS, COLOUR_SWATCH,
-         COLOUR_ORDER } from '../lib/labels.js';
+         COLOUR_ORDER, cssColor } from '../lib/labels.js';
 import { thumb, THUMB } from '../lib/thumb.js';
 import { favourites, toggleFavourite, MAX_FAVOURITES,
          savedFilters, saveFilter, forgetFilter, MAX_FILTERS } from '../lib/store.js';
@@ -67,7 +67,6 @@ const facetSets = () => ({
 const RANGE_KEYS = ["volMin", "volMax", "priceMin", "priceMax",
                     "weightMin", "weightMax", "linearMax", "laptopMin"];
 
-let VIEW = "grid";
 const compare = new Set();
 
 // id → bag, for every bag this session has been sent. A page of results is the
@@ -358,10 +357,10 @@ function shotBlock(b) {
     </div>`;
 }
 
-/* The star, for a card and for a table row. Filled or hollow rather than a
- * pressed-in colour block like the comparison tick: a favourite is a thing you
- * keep, and the two controls sit next to each other in the card foot, so they
- * have to be told apart at a glance rather than by reading them. */
+/* The star, for a card. Filled or hollow rather than a pressed-in colour block
+ * like the comparison tick: a favourite is a thing you keep, and the two
+ * controls sit next to each other in the card foot, so they have to be told
+ * apart at a glance rather than by reading them. */
 const favLabel = on => on ? "Remove from favourites" : "Save to favourites";
 
 const favBtn = (id, cls = "fav") => {
@@ -407,66 +406,6 @@ function card(b) {
   </article>`;
 }
 
-// Map common colourway names to a swatch. Unknown names fall back to a neutral
-// block rather than an invented colour.
-function cssColor(name) {
-  const n = name.toLowerCase();
-  const map = {
-    black: "#111", jet: "#111", navy: "#1c2b4a", blue: "#2f5ea8", olive: "#4a5335",
-    green: "#33623f", grey: "#7c7f7c", gray: "#7c7f7c", charcoal: "#3a3d3c",
-    white: "#eee", cream: "#e6ddc9", tan: "#c2a178", brown: "#5f4632",
-    red: "#a8322b", orange: "#d4601f", yellow: "#d9b02c", purple: "#5b4076",
-    pink: "#c98099", sand: "#cbbb9a", khaki: "#9d8a63", coyote: "#8a6f4b",
-    silver: "#b9bcbb", clear: "#8fa3a8", multicam: "#7a7150",
-  };
-  for (const k in map) if (n.includes(k)) return map[k];
-  return "var(--line-2)";
-}
-
-// One list, so the skeleton's column count and the real table's cannot drift
-// apart — a column added here used to mean remembering a magic 12 two
-// functions down.
-//
-// Weight's unit went down into the cells, where the dimensions' stays up here.
-// That is not an inconsistency: H×W×D is centimetres for every row or inches
-// for every row, so a heading can say which, while a weight column is grams and
-// kilograms against ounces and pounds and no heading is true of all of it.
-// g/L keeps its heading and stays metric in every unit — it is a density this
-// audience reads as a unit in its own right, the way a fabric's denier is one,
-// and "oz per US quart" would be a conversion nobody asked for.
-const HEAD = ["★", "Brand", "Model", "Category", "Vol L", "Weight",
-              `H×W×D ${dual("cm", "in")}`,
-              `Linear ${dual("cm", "in")}`,
-              "Laptop", "Price", "g/L", "Price/L", "Colours"];
-
-// The head and one row are separate so the table can be extended a chunk at a
-// time, the same way the grid is. See paintPage().
-function tableShell() {
-  return `<div class="tablewrap"><table>
-    <thead><tr>${HEAD.map(h => `<th>${h}</th>`).join("")}</tr></thead>
-    <tbody></tbody></table></div>`;
-}
-
-function row(b) {
-  const on = compare.has(b.id);
-  const td = v => v == null
-    ? `<td class="nil" title="${NIL_TITLE}">—</td>` : `<td>${v}</td>`;
-  return `<tr class="${on ? "sel" : ""}" data-id="${esc(b.id)}">
-    <td class="favcell">${favBtn(b.id)}</td>
-    <td>${esc(b.brand)}</td>
-    <td class="name"><a href="${esc(bagHref(b))}">${esc(b.name)}</a></td>
-    <td>${esc(CAT_LABELS[b.category] || b.category)}</td>
-    ${td(b.volume_l)}${td(dualWeight(b.weight_g))}
-    ${td(dualDims(b.dims_cm))}
-    ${td(dualLen(b.linear_cm))}
-    ${td(b.laptop_in ? b.laptop_in + "″" : null)}
-    ${td(b.price_min ? fmtPrice(b.price_min, b.currency) : null)}
-    ${td(gpl(b) ? gpl(b).toFixed(0) : null)}
-    ${td(ppl(b) ? ppl(b).toFixed(1) : null)}
-    ${td((b.colors || []).length || null)}
-  </tr>`;
-}
-
 /* What boot paints while the first answer is in flight. Until now the reader
  * spent that round trip looking at the crawler's fallback — a text list that
  * shares nothing but data with the grid about to replace it, so the page
@@ -490,13 +429,7 @@ function skeletonCard() {
 }
 
 function skeletonPage() {
-  // Columns from HEAD, rows from SKEL — the two numbers are about different
-  // things and only one of them is about the skeleton.
-  const rows = `<tr class="skel" aria-hidden="true">${
-    '<td><i class="bone"></i></td>'.repeat(HEAD.length)}</tr>`.repeat(SKEL);
-  $("#results").innerHTML = VIEW === "grid"
-    ? `<div class="grid">${skeletonCard().repeat(SKEL)}</div>`
-    : tableShell().replace("<tbody>", `<tbody>${rows}`);
+  $("#results").innerHTML = `<div class="grid">${skeletonCard().repeat(SKEL)}</div>`;
 }
 
 /* The result set is the whole catalog when nothing is filtered, and drawing
@@ -519,14 +452,12 @@ const SENTINEL = '<div id="sentinel" aria-hidden="true"></div>';
 const LOADMORE = '<button class="btn ghost loadmore" id="loadmore" type="button"' +
   ' data-more>Load more</button>';
 
-/* Direct children of #results, because the favourites strip contains a grid —
- * or a table — of exactly the same shape, and a descendant selector would
- * append every page of results into it. */
-const paintHost = () => VIEW === "grid"
-  ? $("#results > .grid") : $("#results > .tablewrap tbody");
+/* Direct children of #results, because the favourites strip contains a grid of
+ * exactly the same shape, and a descendant selector would append every page of
+ * results into it. */
+const paintHost = () => $("#results > .grid");
 
-const favHost = () => VIEW === "grid"
-  ? $("#favs .grid") : $("#favs tbody");
+const favHost = () => $("#favs .grid");
 
 /* The saved bags that match, drawn above the answer they are part of.
  *
@@ -538,12 +469,9 @@ const favHost = () => VIEW === "grid"
  * so, when the two numbers disagree. */
 function favBlock(list) {
   if (!list?.length) return "";
-  const inner = VIEW === "grid"
-    ? `<div class="grid">${list.map(card).join("")}</div>`
-    : tableShell().replace("<tbody>", `<tbody>${list.map(row).join("")}`);
   return `<section class="favs" id="favs" aria-label="Favourites">
     <div class="favhead"><h2>★ Favourites</h2>${favCaption(list.length)}</div>
-    ${inner}</section>`;
+    <div class="grid">${list.map(card).join("")}</div></section>`;
 }
 
 const favCaptionText = shown => shown === FAV.size
@@ -587,16 +515,13 @@ function paintPage(list, fresh, favs) {
       out.innerHTML = pinned + emptyState(Boolean(pinned));
       return;
     }
-    out.innerHTML = pinned
-      + (VIEW === "grid" ? '<div class="grid"></div>' : tableShell())
-      + SENTINEL;
+    out.innerHTML = pinned + '<div class="grid"></div>' + SENTINEL;
   }
   const host = paintHost();
   if (!host) return;
   // Whole cards, photography and all: a page arrives complete, so there is no
   // placeholder state to draw and nothing to patch in behind the reader.
-  host.insertAdjacentHTML("beforeend",
-    (VIEW === "grid" ? list.map(card) : list.map(row)).join(""));
+  host.insertAdjacentHTML("beforeend", list.map(card).join(""));
   // A photo already in cache can finish before the listener in wire() ever sees
   // an event for it, and a card whose image never fades in is a card with a
   // blank plate. Anything already complete is marked here instead.
@@ -883,7 +808,7 @@ function openFavStrip() {
     sec.setAttribute("aria-label", "Favourites");
     sec.innerHTML =
       '<div class="favhead"><h2>★ Favourites</h2><em class="favnote"></em></div>'
-      + (VIEW === "grid" ? '<div class="grid"></div>' : tableShell());
+      + '<div class="grid"></div>';
     $("#results").prepend(sec);
   }
   return favHost();
@@ -1000,13 +925,8 @@ function resetState() {
     .forEach(s => s.clear());
 }
 
-/** Become this query string: the address bar, the controls and the results.
- *
- *  The view survives it. A saved filter says which bags, and Clear says which
- *  bags it no longer is; neither is an opinion about whether you were reading
- *  a grid or a table. */
+/** Become this query string: the address bar, the controls and the results. */
 function applyQuery(query) {
-  const view = VIEW;
   resetState();
   // The facet boxes hide options rather than filter bags, so they survive a
   // render untouched and have to be told explicitly — otherwise the rail keeps
@@ -1014,7 +934,6 @@ function applyQuery(query) {
   clearFacetSearches();
   history.replaceState(null, "", query ? "?" + query : location.pathname);
   loadURL();
-  paintView(view);
   say("");
   render();
 }
@@ -1565,7 +1484,6 @@ function chosenParams() {
 
 function syncURL() {
   const p = stateParams();
-  if (VIEW !== "grid") p.set("view", VIEW);
   history.replaceState(null, "", p.toString() ? "?" + p : location.pathname);
 
   /* The way off a scoped page, kept in step with the filters on it. Whatever is
@@ -1604,17 +1522,7 @@ function loadURL() {
   // the same way the Brand group is absent on a brand page.
   $("#f-sale")?.setAttribute("aria-pressed", S.sale);
   $("#f-fav").setAttribute("aria-pressed", S.favOnly);
-  paintView(p.get("view") || "grid");
   syncFacetButtons();
-}
-
-/** The view, and the two buttons that say which one it is. Separate from
- *  setView() below, which also asks for the results again — applying a saved
- *  filter and reading the URL both need to set it without a second request. */
-function paintView(v) {
-  VIEW = v;
-  $("#viewgrid").setAttribute("aria-pressed", v === "grid");
-  $("#viewtable").setAttribute("aria-pressed", v === "table");
 }
 
 function syncFacetButtons() {
@@ -1914,13 +1822,6 @@ function wire() {
   // the markup ships hidden and this is what admits it exists.
   $("#saved").hidden = false;
   mountSaveForm();
-
-  const setView = v => {
-    paintView(v);
-    render();
-  };
-  $("#viewgrid").addEventListener("click", () => setView("grid"));
-  $("#viewtable").addEventListener("click", () => setView("table"));
 
   $("#cmpopen").addEventListener("click", () => {
     renderCompare();

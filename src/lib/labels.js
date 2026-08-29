@@ -92,6 +92,31 @@ export const COLOUR_ORDER = [
   'yellow', 'purple', 'pink', 'multi',
 ];
 
+/* The dots in a card's foot, which are the *colourway* names rather than the
+ * families above: a card lists what the brand calls each variant, so "Coyote"
+ * and "Ranger Green" get their own swatches instead of collapsing into two
+ * browns. Substring matching because the names are phrases — "Solution Dyed
+ * Black", "Multicam Arid" — and an unknown one falls back to a neutral block
+ * rather than an invented colour.
+ *
+ * Here rather than in scripts/browse.js, where it lived while the grid was the
+ * island's alone. The hub, facet and airline pages draw the same card from
+ * Astro now, and two copies of this table would mean the same bag's dots coming
+ * out different colours depending on which page you found it on. */
+export function cssColor(name) {
+  const n = String(name ?? '').toLowerCase();
+  const map = {
+    black: '#111', jet: '#111', navy: '#1c2b4a', blue: '#2f5ea8', olive: '#4a5335',
+    green: '#33623f', grey: '#7c7f7c', gray: '#7c7f7c', charcoal: '#3a3d3c',
+    white: '#eee', cream: '#e6ddc9', tan: '#c2a178', brown: '#5f4632',
+    red: '#a8322b', orange: '#d4601f', yellow: '#d9b02c', purple: '#5b4076',
+    pink: '#c98099', sand: '#cbbb9a', khaki: '#9d8a63', coyote: '#8a6f4b',
+    silver: '#b9bcbb', clear: '#8fa3a8', multicam: '#7a7150',
+  };
+  for (const k in map) if (n.includes(k)) return map[k];
+  return 'var(--line-2)';
+}
+
 export const colourLabel = (c) => COLOUR_LABELS[c] ?? c;
 
 export const catLabel = (c) => CAT_LABELS[c] ?? c;

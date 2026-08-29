@@ -13,7 +13,7 @@
  * here.
  */
 import Base from '../../layouts/Base.astro';
-import BagTable from '../../components/BagTable.astro';
+import BagCard from '../../components/BagCard.astro';
 import Measure from '../../components/Measure.astro';
 import {
   airlines, airlinesUpdated, airlinesByRegion, airlineSlug, airlineHref, fmtLimit,
@@ -212,8 +212,10 @@ const breadcrumbs = {
             ? ` Showing ${largestRows.length} of ${largest.length} that fit and state a volume; the rest are reachable from their brand pages and the category hubs above.`
             : ` All ${largestRows.length} of the bags that fit and state a volume.`}
         </p>
-        <BagTable bags={largestRows} metric="linear" />
-        {/* The way past the hundred rows above. The browse rail carries the
+        <div class="grid pagegrid">
+          {largestRows.map((bag) => <BagCard bag={bag} metric="linear" />)}
+        </div>
+        {/* The way past the hundred cards above. The browse rail carries the
             same comparison as a filter — one carrier per row under "Airline —
             carry-on fit" — so this hands the reader the whole set with the
             volume, weight and price controls on top of it, which is the next
@@ -260,7 +262,9 @@ const breadcrumbs = {
             ? ` The ${personalRows.length} largest of ${personal.length} that fit.`
             : ` All ${personalRows.length} that fit and state a volume.`}
         </p>
-        <BagTable bags={personalRows} metric="linear" />
+        <div class="grid pagegrid">
+          {personalRows.map((bag) => <BagCard bag={bag} metric="linear" />)}
+        </div>
       </section>
     )}
 

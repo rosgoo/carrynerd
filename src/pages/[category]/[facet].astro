@@ -7,11 +7,11 @@
  * not gated. The gate is in lib/hubs.js: a slice exists only where there are
  * at least MIN_FACET comparable models in it, volume bands do not overlap, and
  * a laptop size that would resolve to nearly the same list as the size below
- * it does not get a page. So every URL here has a table on it worth reading,
- * and there is no combinatorial tail.
+ * it does not get a page. So every URL here has a grid on it worth reading, and
+ * there is no combinatorial tail.
  */
 import Base from '../../layouts/Base.astro';
-import BagTable from '../../components/BagTable.astro';
+import BagCard from '../../components/BagCard.astro';
 import Measure from '../../components/Measure.astro';
 import { hubs, byDensity, COMMON_CARRYON_CM } from '../../lib/hubs.js';
 import { bagHref } from '../../lib/catalog.js';
@@ -38,11 +38,14 @@ const ranked = [...facet.bags].sort(byDensity);
 
 /* A cap, said out loud.
  *
- * The largest slice here runs to several hundred models, and a table that long
+ * The largest slice here runs to several hundred models, and a grid that long
  * is thousands of DOM nodes for a phone to lay out before it can respond to
- * anything. The tail is not lost: every model is linked from its brand page
- * and reachable from the browse grid, which is where a list this long belongs
- * anyway. */
+ * anything. Cards are the more expensive shape of the two — a photograph each,
+ * where a row had none — so if anything the cap matters more now; what makes
+ * 250 of them affordable at all is content-visibility on .card, which keeps the
+ * ones off screen out of layout and paint. The tail is not lost: every model is
+ * linked from its brand page and reachable from the browse grid, which is where
+ * a list this long belongs anyway. */
 const SHOWN = 250;
 const rows = ranked.slice(0, SHOWN);
 const withheld = ranked.length - rows.length;
@@ -166,7 +169,9 @@ const breadcrumbs = {
           </Fragment>
         )}
       </p>
-      <BagTable bags={rows} />
+      <div class="grid pagegrid">
+        {rows.map((bag) => <BagCard bag={bag} />)}
+      </div>
     </section>
 
     {siblings.length > 0 && (

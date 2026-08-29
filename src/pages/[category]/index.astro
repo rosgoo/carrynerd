@@ -8,13 +8,15 @@
  * page reached eight siblings and its brand, and nothing reached across brands
  * at all.
  *
- * Everything on it is computed from the same data the tables show. The two
+ * Everything on it is computed from the same data the cards show. The two
  * leaderboards are deliberately the only ranking here: we hold no ratings and
- * no reviews, so the ordering has to be a number a reader can check against
- * the columns beside it rather than a judgement we have not earned.
+ * no reviews, so the ordering has to be a number a reader can check against the
+ * specs on the card itself rather than a judgement we have not earned — which
+ * is why the g/L a leaderboard ranks on is one of the four figures each card
+ * carries, and not a column left behind when these stopped being tables.
  */
 import Base from '../../layouts/Base.astro';
-import BagTable from '../../components/BagTable.astro';
+import BagCard from '../../components/BagCard.astro';
 import Measure from '../../components/Measure.astro';
 import {
   hubs, byDensity, rankable, COMMON_CARRYON_CM,
@@ -35,14 +37,14 @@ const s = hub.stats;
  *
  * Both rank only over bags that pass rankable() — a volume and a weight
  * consistent enough with each other to be worth trusting. Without that gate
- * the top of both tables is a list of the index's worst records rather than
- * its best bags: a 30 L pack whose feed says it weighs one gram wins "lightest
+ * the top of both leaderboards is a list of the index's worst records rather
+ * than its best bags: a 30 L pack whose feed says it weighs one gram wins "lightest
  * per litre" outright, and a shoe bag mis-parsed as 40 litres wins "cheapest".
  * Neither is a finding about bags. See MIN_PLAUSIBLE_GPL in lib/hubs.js.
  *
  * Price per litre is USD-only for the reason statsFor() gives: nothing here
- * converts currencies, so a table mixing them would be ranking figures rather
- * than worth. */
+ * converts currencies, so a leaderboard mixing them would be ranking figures
+ * rather than worth. */
 const LEADERBOARD = 25;
 const comparable = hub.bags.filter(rankable);
 
@@ -81,7 +83,7 @@ const description =
   '.';
 
 /* The models this page actually stands behind, listed once for a crawler.
- * Only the leaderboards go in: an ItemList naming rows that are not on the
+ * Only the leaderboards go in: an ItemList naming bags that are not on the
  * page is a claim about content that is not there. */
 const listed = [...new Map([...lightest, ...cheapest].map((b) => [b.id, b])).values()];
 
@@ -201,16 +203,18 @@ const breadcrumbs = {
     {lightest.length >= 5 && (
       <section>
         <h2>Lightest per litre</h2>
-
-        <BagTable bags={lightest} />
+        <div class="grid pagegrid">
+          {lightest.map((bag) => <BagCard bag={bag} />)}
+        </div>
       </section>
     )}
 
     {cheapest.length >= 5 && (
       <section>
         <h2>Cheapest per litre</h2>
-
-        <BagTable bags={cheapest} />
+        <div class="grid pagegrid">
+          {cheapest.map((bag) => <BagCard bag={bag} />)}
+        </div>
       </section>
     )}
 

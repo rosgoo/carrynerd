@@ -1,0 +1,149 @@
+---
+/* One bag, as a card — the server-rendered half of the browse grid.
+ *
+ * The hub, facet and airline pages used to answer with a six-column table, and
+ * the site now answers with a grid everywhere it has photography to answer
+ * with. So this exists to draw, from Astro and with no island on the page, the
+ * card that scripts/browse.js draws from the client: same shell, same plate,
+ * same four-cell spec strip, same foot. Reading the two side by side is the
+ * test — a bag found on /daypacks/ and the same bag found on the front page
+ * have to be the same object, or the grid stops being one thing the reader has
+ * learned once.
+ *
+ * That is also why almost nothing here is new CSS. It emits the .card structure
+ * app.css already styles for the island; the two additions both hang off
+ * .pagegrid on the wrapper — the grid's own padding, because .grid carries the
+ * instrument panel's gutters and a content page is ruled at 14px, and the card
+ * body's cursor, because on the island that body opens a drawer and here it
+ * does not.
+ *
+ * What is deliberately absent is the favourite star and the comparison tick.
+ * Both are island behaviour — a Set in memory, localStorage, a tray that slides
+ * up — and a button that looks live and does nothing is worse than no button.
+ * The card is a link to the model page here, which is what a static page has to
+ * offer.
+ *
+ * `metric` is the same choice BagTable's last column made, kept because the
+ * pages genuinely argue about different numbers: an airline page is about the
+ * h+w+d total a gauge measures, a size page about what a litre costs you in
+ * grams. Everything else in the card is the same on both.
+ */
+import Measure from './Measure.astro';
+import { bagHref, saleDiscount } from '../lib/catalog.js';
+import { catLabel, cssColor } from '../lib/labels.js';
+import { thumb, THUMB } from '../lib/thumb.js';
+import {
+  fmtPrice, fmtWeightPair, fmtDimsCompact, fmtLinear, gramsPerLitre,
+} from '../lib/format.js';
+import type { Bag } from '../lib/types.d.ts';
+
+interface Props {
+  bag: Bag;
+  /** 'gpl' — grams per litre; 'linear' — the h+w+d total airlines measure. */
+  metric?: 'gpl' | 'linear';
+}
+
+const { bag, metric = 'gpl' } = Astro.props;
+
+const href = bagHref(bag);
+const density = gramsPerLitre(bag);
+const weight = fmtWeightPair(bag.weight_g);
+
+/* How far, when the listing states both numbers — "Sale" says a price moved,
+   "−30%" says whether it is worth opening. The deepest colourway, which is
+   what /sale/ ranks on. A move that rounds to nothing keeps the word rather
+   than printing "−0%". Same reading as shotBlock() in scripts/browse.js, which
+   gets this figure pre-computed from api/browse.ts. */
+const discount = bag.on_sale ? saleDiscount(bag) : null;
+const off = discount ? Math.round(discount * 100) : 0;
+
+/* Five, then a count. A bag sold in eleven colourways would otherwise put a row
+   of dots across a foot that also has to hold a price. */
+const swatches = (bag.colors ?? []).slice(0, 5);
+const extra = (bag.colors ?? []).length - swatches.length;
+
+/* The dash's answer, for the reader who hovers rather than the reader who did
+   not ask — the long version is on /about and the rail's coverage panel says it
+   once in prose. Spelled out here rather than imported because the other copy
+   is in scripts/browse.js, and reaching for it would mean the island pulling in
+   a module it has deliberately kept out of its bundle. Two copies of one
+   sentence; if it grows a third, that is the point to give it a home. */
+const NIL_TITLE = 'Not established — never estimated';
+---
+<article class="card">
+  {/* The plate, not just the <img>: the photograph and the colour it was shot
+      on are one decision. image_bg.py reads the colour each photo was actually
+      taken against, which is what stops an off-white product shot drawing a
+      rectangle on a #fff plate; absent, the plate keeps its default and the CSS
+      edge feather covers the seam.
+
+      An <a> rather than the island's <div>, and that is the whole difference in
+      this file's markup: on the island the plate opens the detail drawer, and
+      there is no drawer here. .shot is the flex container either way, so the
+      photo sizing rules land exactly as before — wrapping the <img> in a link
+      instead would have made the link the flex item and broken them. */}
+  <a class="shot" href={href} style={bag.image_bg ? `--shot-bg:${bag.image_bg}` : undefined}>
+    {bag.image ? (
+      <img loading="lazy" decoding="async" src={thumb(bag.image, THUMB.card)} alt={bag.name} />
+    ) : (
+      /* 24 of 8,144 bags, and 2 of the 3,523 these pages rank. The card holds
+         its shape around the gap rather than the page falling back to a table
+         for the sake of a rounding error. */
+      <span class="none">NO IMAGE</span>
+    )}
+    <div class="cat">{catLabel(bag.category)}</div>
+    <div class="flags">
+      {bag.on_sale && <div class="flag sale">{off >= 1 ? `−${off}%` : 'Sale'}</div>}
+      {!bag.in_stock && <div class="flag oos">Out</div>}
+    </div>
+  </a>
+  <div class="cbody">
+    <div class="cbrand">{bag.brand}</div>
+    <a class="cname" href={href}>{bag.name}</a>
+  </div>
+  {/* Four cells, and the fourth is the argument this page is making. Lengths
+      and weights ship in both systems with CSS revealing one — see <Measure />;
+      there is no script on these pages to convert anything after the fact. */}
+  <div class="specs">
+    <div class="spec"><em>Vol</em>{bag.volume_l != null
+      ? <b>{bag.volume_l}<em style="font-size:8px">L</em></b>
+      : <b class="nil" title={NIL_TITLE}>—</b>}</div>
+    {/* The one cell that spells its own two slots out rather than handing them
+        to <Measure />. A card puts a weight's unit under the figure at eight
+        pixels — .spec em is a block — and Measure renders text, so "1.70 kg"
+        would come out on one line here and stacked on the front page, which is
+        exactly the disagreement this component exists to avoid. Same u-cm/u-in
+        pair Measure emits, with the unit wrapped. */}
+    <div class="spec"><em>Weight</em>{weight
+      ? <b><span class="u-cm">{weight.metric[0]}<em style="font-size:8px">{weight.metric[1]}</em></span><span class="u-in">{weight.imperial[0]}<em style="font-size:8px">{weight.imperial[1]}</em></span></b>
+      : <b class="nil" title={NIL_TITLE}>—</b>}</div>
+    <div class="spec"><em>H×W×D</em>{bag.dims_cm
+      ? <b><Measure value={fmtDimsCompact(bag.dims_cm)} /></b>
+      : <b class="nil" title={NIL_TITLE}>—</b>}</div>
+    {metric === 'linear' ? (
+      <div class="spec"><em>Linear</em>{bag.linear_cm != null
+        ? <b><Measure value={fmtLinear(bag.linear_cm)} /></b>
+        : <b class="nil" title={NIL_TITLE}>—</b>}</div>
+    ) : (
+      <div class="spec"><em>g/L</em>{density != null
+        ? <b>{density.toFixed(0)}</b>
+        : <b class="nil" title={NIL_TITLE}>—</b>}</div>
+    )}
+  </div>
+  <div class="cfoot">
+    {/* A ternary and not `&&`, which is the one place JSX semantics differ from
+        the island's template string: a price_max of 0 is falsy in both, but
+        `&&` hands the 0 back and Astro prints it, so the card would read
+        "$0" — a number nobody quoted. */}
+    <div class="price">{fmtPrice(bag.price_min, bag.currency)}{
+      bag.price_max && bag.price_max !== bag.price_min
+        ? <s>–{fmtPrice(bag.price_max, bag.currency)}</s>
+        : null}</div>
+    <div class="dots">
+      {swatches.map((c) => (
+        <i class="dot" title={c} style={`background:${cssColor(c)}`}></i>
+      ))}
+      {extra > 0 && <em>+{extra}</em>}
+    </div>
+  </div>
+</article>

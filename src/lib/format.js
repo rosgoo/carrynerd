@@ -41,6 +41,30 @@ export const CM_PER_IN = 2.54;
 export const G_PER_LB = 453.59237;
 export const G_PER_OZ = 28.349523;
 
+/* A weight in both systems, each half still in two pieces.
+ *
+ * A card sets the unit eight pixels tall under the figure rather than beside
+ * it, so it needs the figure and the unit separately; everywhere else the unit
+ * is simply the next word and fmtWeightBoth() below joins them. Splitting a
+ * formatted string back apart at the call site would work until the day a
+ * figure carries a space, so the split is done here, once, and the joined form
+ * is what is built from it.
+ *
+ * Mirrors weightPair() in scripts/browse.js, deliberately and exactly: the
+ * island and the hub pages draw the same card now, and a bag that reads 1.70 kg
+ * on the front page and 1.7 kg on /daypacks/ is a bag a reader will go back and
+ * check. */
+export const fmtWeightPair = (g) =>
+  g == null
+    ? null
+    : {
+        metric: g >= 1000 ? [(g / 1000).toFixed(2), 'kg'] : [String(g), 'g'],
+        imperial:
+          g >= G_PER_LB
+            ? [(g / G_PER_LB).toFixed(1), 'lb']
+            : [String(Math.round(g / G_PER_OZ)), 'oz'],
+      };
+
 /* Weight formats to *both* unit systems at once, exactly as the lengths below
    do and for the same reason — see the note above fmtDims.
 
@@ -57,16 +81,13 @@ export const G_PER_OZ = 28.349523;
    The two halves are named for the systems rather than for the units, because
    unlike a length neither half here *has* one unit: it is g or kg against oz or
    lb. <Measure /> takes that spelling as well as the cm/in one. */
-export const fmtWeightBoth = (g) =>
-  g == null
-    ? null
-    : {
-        metric: fmtWeight(g),
-        imperial:
-          g >= G_PER_LB
-            ? `${(g / G_PER_LB).toFixed(1)} lb`
-            : `${Math.round(g / G_PER_OZ)} oz`,
-      };
+export const fmtWeightBoth = (g) => {
+  const pair = fmtWeightPair(g);
+  return pair && {
+    metric: pair.metric.join(' '),
+    imperial: pair.imperial.join(' '),
+  };
+};
 
 /* Lengths format to *both* units at once, and the caller renders both.
    These pages are static HTML with no island on them, so a unit preference
@@ -79,6 +100,29 @@ export const fmtDims = (d) =>
     ? {
         cm: `${d.map((n) => n.toFixed(1)).join(' × ')} cm`,
         in: `${d.map((n) => (n / CM_PER_IN).toFixed(1)).join(' × ')} in`,
+      }
+    : null;
+
+/* The same triple, sized for a card's spec cell rather than a table row.
+ *
+ * A spec cell on a 232px card is about 49px wide and the type in it is 11.5px,
+ * which "44.0 × 30.0 × 20.0 cm" does not fit into by a factor of three. Whole
+ * centimetres, no spaces, no suffix — the cell's own label says H×W×D and the
+ * unit toggle says which system, so neither is worth the width twice.
+ *
+ * Mirrors dualDims() in scripts/browse.js, and has to: the island and the hub
+ * pages now draw the same card, and a bag whose dimensions round differently
+ * on /daypacks/ and on the front page is a bag a reader will think they have
+ * mis-remembered. Same rounding, same separator, same order.
+ *
+ * fmtDims() above is unchanged and is still what a table cell and a model page
+ * want — those have room for the decimals, and the decimals are the point when
+ * a reader is checking a bag against a gauge. */
+export const fmtDimsCompact = (d) =>
+  d && d.length
+    ? {
+        cm: d.map((n) => n.toFixed(0)).join('×'),
+        in: d.map((n) => (n / CM_PER_IN).toFixed(0)).join('×'),
       }
     : null;
 

@@ -313,23 +313,6 @@ header .spacer { flex: 1; }
 }
 .railclose:hover { color: var(--accent); background: var(--raised); }
 
-/* Sort, above the filter groups. Sized like a filter control rather than like
-   the toolbar's toggles, because that is what it sits among now. */
-.railsort {
-  display: flex; align-items: center; gap: 9px;
-  padding: 11px 14px; border-bottom: 1px solid var(--line);
-}
-.railsort label {
-  font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase;
-  color: var(--ink-dim); font-weight: 600;
-}
-.railsort select {
-  flex: 1; min-width: 0; background: var(--bg);
-  border: 1px solid var(--line-2); padding: 5px 8px;
-  font-size: 11px; outline: none; letter-spacing: .04em;
-}
-.railsort select:focus { border-color: var(--accent); }
-
 /* ---------- saved filters, at the top of the rail ----------
    Same hairline construction as a filter group, but it is not one: no
    disclosure triangle, nothing collapses, and it sits above the alphabet
@@ -627,23 +610,42 @@ main { flex: 1; min-width: 0; }
   border-top: 1.5px solid currentColor;
 }
 
-/* Grid and Table are one control with two positions, not two controls, so they
-   share a border and sit tight against each other — the toolbar's 12px gap
-   between them would read as an unrelated pair.
-
-   cm and in are now the same control in the same shape, and that is the point
-   of them: the two pairs sit a few pixels apart on the same bar, so a reader
-   who has worked out one has worked out the other. The unit control used to be
-   a single button printing the unit it was already in, which nothing else on
-   the bar did. */
-.views, .units { display: flex; }
-.views .tbtn + .tbtn,
+/* cm and in are one control with two positions, not two controls, so they share
+   a border and sit tight against each other — the toolbar's 12px gap between
+   them would read as an unrelated pair. The unit control used to be a single
+   button printing the unit it was already in, which nothing else on the bar
+   did. Grid and Table were the pair this shape was borrowed from; they are gone
+   and the shape stayed, because it was the better half of the pair anyway. */
+.units { display: flex; }
 .units .tbtn + .tbtn { border-left: none; }
 /* In the header the pair is built from .hbtn instead — the nav's full-height
    cell rather than the toolbar's outlined box. The divider between the two
    halves goes for the reason it goes above: they are one thing, and the nav's
    hairlines are for separating things that are not. */
 .units .hbtn + .hbtn { border-left: none; }
+
+/* Sort, in the slot Grid and Table vacated.
+   A field rather than a toggle, so it takes the search box's border and height
+   instead of the .tbtn outline — the two are the only things on this bar you
+   type or pick into, and a <select> wearing button chrome would be the third
+   grammar on a bar that is already carrying two.
+
+   The label is the piece that will not shrink and the select is the piece that
+   will, which is what the flex-shrink and the two `min-width: 0` say between
+   them. Without them a flex item refuses to go below its automatic minimum —
+   for this select, the full width of "Grams per litre ↑" — and the bar runs off
+   the side of a phone rather than taking the room that is there. */
+.tbsort { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.tbsort > span {
+  font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-dim); font-weight: 600; flex-shrink: 0;
+}
+.tbsort select {
+  flex: 1 1 auto; min-width: 0; height: 26px; background: var(--bg);
+  border: 1px solid var(--line-2); padding: 0 4px 0 6px;
+  font-size: 11px; outline: none; letter-spacing: .04em; color: var(--ink);
+}
+.tbsort select:focus { border-color: var(--accent); }
 
 /* Which half is lit, decided by the attribute on <html> rather than by
    aria-pressed.
@@ -668,6 +670,20 @@ html[data-units="in"] #units [data-unit="in"] {
   display: grid; gap: 10px; padding: 14px 16px 120px;
   grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
 }
+
+/* The same grid on a content page — a hub's leaderboards, a facet slice, the
+   bags that fit an airline. The cards are identical and deliberately so; what
+   cannot come with them is the padding. The 120px foot above is clearance for
+   the comparison tray, which is a fixed bar that only exists on the browse
+   island, and the 16px gutter is the instrument panel's rather than the 14px
+   every heading, note and table on a content page is ruled to. So the columns
+   are inherited and the frame is restated. */
+.pagegrid { padding: 10px 14px 14px; }
+/* .cbody wears a pointer because on the island the whole body opens the detail
+   drawer. There is no drawer on a content page and the only live thing in the
+   body is the model name, which is a link and says so on its own. A hand over
+   text that does nothing is a control that is not there. */
+.pagegrid .cbody { cursor: auto; }
 
 .card {
   border: 1px solid var(--line); background: var(--panel);
@@ -724,10 +740,9 @@ html[data-units="in"] #units [data-unit="in"] {
 /* The grid holds 120px of empty under its last row so the fixed comparison
    tray never lands on a card. With a button down there the reserve has to move
    below the button instead, or the tray would cover the one control this whole
-   change exists to make reachable. Direct children only: the favourites strip
+   change exists to make reachable. Direct child only: the favourites strip
    contains a .grid of its own and has nothing under it to clear. */
-#results:has(> .loadmore) > .grid,
-#results:has(> .loadmore) > .tablewrap { padding-bottom: 18px; }
+#results:has(> .loadmore) > .grid { padding-bottom: 18px; }
 .card:hover { border-color: var(--line-2); }
 .card.sel { border-color: var(--accent); }
 
@@ -871,7 +886,6 @@ html[data-units="in"] #units [data-unit="in"] {
 }
 .fav:hover { color: var(--accent); }
 .fav[aria-pressed="true"] { color: var(--accent); }
-td.favcell { width: 26px; padding-right: 0; }
 /* The drawer's copy, beside the model name. Bigger than the one on a card:
    it is the only control in that header besides Close. */
 .drawer header .fav { width: 26px; height: 26px; font-size: 21px; flex-shrink: 0; }
@@ -883,11 +897,6 @@ td.favcell { width: 26px; padding-right: 0; }
    below rather than by a different card, because they are the same bags. */
 .favs { border-bottom: 1px solid var(--line); background: var(--panel); }
 .favs .grid { padding-bottom: 14px; }
-.favs .tablewrap { padding-bottom: 0; }
-/* The strip is a second table and keeps its own column heads. It used to need
-   `position: static` here to undo the sticky above — two heads pinned to the
-   same offset would have sat on top of each other — but the head above is
-   static now for its own reasons, so there is nothing left to undo. */
 
 .favhead {
   display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
@@ -924,54 +933,32 @@ td.favcell { width: 26px; padding-right: 0; }
 .skel .cname .bone { width: 78%; height: 11px; margin-top: 4px; }
 .skel .spec .bone { width: 55%; height: 9px; margin: 8px 0 9px; }
 .skel .cfoot .bone { width: 54px; height: 12px; margin: 4px 0; }
-/* The table's columns are numbers except Model, which is the wide one — third
-   now that the star has a column of its own. */
-.skel td .bone { width: 3.5em; }
-.skel td:nth-child(3) .bone { width: 9em; }
 
-/* ---------- table view ---------- */
+/* ---------- tables ----------
+   The browse island used to draw its results as a table behind a Grid/Table
+   toggle, and most of this section was about that: a horizontal scroller, a
+   nowrap table inside it, a sticky-header fix that had to be undone. The site
+   is grid-only now — the toggle is gone and so is the row renderer — and what
+   is left here is what every *other* table on the site was already leaning on.
 
-.tablewrap { padding: 0 0 120px; overflow-x: auto; }
+   Every one of those is a spec matrix rather than a list of bags: the
+   comparison sheet (.cmptable), a model page's specification and offers tables
+   and the airline limits (.spectable), the colourway and price-history tables
+   (.vartable). They have their own rules further down and inherit these, so
+   these are deliberately left unscoped. */
 table { border-collapse: collapse; width: 100%; font-size: 11.5px; }
-/* Scoped to the browse table view, which is the only table on the site inside
-   a horizontal scroller. Unscoped, this held the offers, colourway and spec
-   tables on every model page open past the viewport, and since nothing wraps
-   those they took the whole page wider than the screen with them. */
-.tablewrap table { white-space: nowrap; }
-/* Not sticky, and it cannot be — the offset it used to carry was
-   `top: calc(var(--head) + 41px)`, aimed at the gap under the toolbar, and it
-   put the header 93px DOWN the table instead: two rows sat above their own
-   column heads and a third was painted over.
-
-   The cause is the wrapper above. `overflow-x: auto` makes .tablewrap a scroll
-   container — in both axes, because a non-visible overflow-x forces overflow-y
-   to compute to auto — so a sticky th resolves against .tablewrap's scrollport
-   rather than the viewport, and since the wrapper is exactly as tall as its
-   content and never scrolls down, the header simply parked at the offset and
-   stayed there.
-
-   The wrapper has to keep overflow-x: the table is nowrap and wants 1018px,
-   which is wider than main below about a 1280px viewport. Nor can the wrapper
-   become the vertical scroller instead (max-height + thead top:0, the usual
-   shape of this fix): #sentinel is a sibling of .tablewrap, not a child — see
-   render() in scripts/browse.js — so page after page of infinite scroll would
-   stop arriving the moment the table scrolled inside its own pane rather than
-   inside the window.
-
-   So: the head scrolls away with the page, which is what it has always
-   actually done, minus the 93px lie. A header that genuinely stays put needs
-   the sentinel moved inside the wrapper first. */
-.tablewrap thead th {
-  position: static; z-index: 30;
-  background: var(--panel); border-bottom: 1px solid var(--line-2);
-  padding: 7px 10px; text-align: left; font-size: 9.5px; letter-spacing: .09em;
-  text-transform: uppercase; color: var(--ink-dim); font-weight: 600;
-}
 tbody td { padding: 6px 10px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
 tbody tr:hover { background: var(--panel); }
-tbody tr.sel { background: var(--raised); box-shadow: inset 3px 0 0 var(--accent); }
-td.name { white-space: normal; min-width: 190px; cursor: pointer; font-weight: 600; }
 td.nil, .nil { color: var(--ink-mute); }
+
+/* The one browse-era rule kept: .tablewrap survives on the internal dashboard,
+   where the rejected-rows table wraps in one and takes its overflow-x from
+   here. Its 120px foot was the clearance the comparison tray needed over the
+   browse table and is overridden there — see .rjwrap in pages/internal/index
+   — but the horizontal scroll is not, and dropping this would take the page
+   sideways. */
+.tablewrap { padding: 0 0 120px; overflow-x: auto; }
+.tablewrap table { white-space: nowrap; }
 
 /* ---------- compare tray + panel ---------- */
 
@@ -1174,44 +1161,59 @@ td.nil, .nil { color: var(--ink-mute); }
     border-top: 1px solid var(--line);
   }
 
-  /* The toolbar wraps to two rows here, and which two matters. Left in source
-     order it took three: the count is a sentence, and it is long enough to
-     push Clear off its row and the controls off the one after that, so the
-     sticky chrome above the first result ran to five rows once the header's
-     own two are counted.
-
-     So the controls come first and the reading matter second — Filters, the
-     view, the unit and the sort on one row, the count and Clear under it. The
-     spacer goes, having nothing left to push apart. */
   /* The toolbar wraps here, and left to itself it wrapped badly: the count is
      a sentence, long enough to push Clear off its row and everything else off
      the one after, so the bar ran to four rows at 360px with a control alone
      on three of them. Widths are what decides that, and guessing at widths is
      how it went wrong — so the rows are stated rather than left to fall out.
 
-     Filters comes first, then the view, the unit and Clear — all short, all
-     acting on the grid. The search field takes the second row whole and the
-     count the third.
+     Three rows, and which three matters. Filters, the unit pair and Clear are
+     short and fixed, so they share the first. The search field and the sort
+     share the second: both are things you set rather than press, both want
+     more room than a button, and neither fits beside the fixed three. The
+     count takes the third.
 
-     The count is given a full row rather than left to share one, which is the
-     correction: it is a sentence about 300px wide, and a flex row that cannot
-     fit its next item wraps at the item boundary before it will shrink
-     anything, so pairing it with Clear did not squeeze the sentence — it
-     pushed Clear onto a row of its own anyway. Stating it as 100% is what
-     stops the rows depending on how many digits the counts happen to have
-     today. */
+     The sort is here rather than up with the buttons because at 390px the
+     first row has about 130px left over and the select's longest option is
+     "Grams per litre ↑", which needs 150 before the label beside it — it would
+     have spent the whole page in an ellipsis. Sharing a row with the field
+     gives the select about 160px, which shows every option whole, and leaves
+     the field about 165px, comfortably past the 120 that made it unreadable
+     the last time it shared a row.
+
+     The count is given a full row rather than left to share one: it is a
+     sentence about 300px wide, and a flex row that cannot fit its next item
+     wraps at the item boundary before it will shrink anything, so pairing it
+     with Clear did not squeeze the sentence — it pushed Clear onto a row of
+     its own anyway. Stating it as 100% is what stops the rows depending on how
+     many digits the counts happen to have today. */
   .toolbar { gap: 8px; padding: 9px 12px; }
   .toolbar .spacer { display: none; }
   #railtoggle { order: 1; }
-  .views { order: 2; }
-  #units { order: 3; }
-  #clear { order: 4; }
-  /* A row to itself. Sharing one with the buttons left it about 120px wide —
-     too narrow to read back what you typed — and pushed Clear onto a row of
-     its own anyway, so the bar was no shorter for it. Full width also makes it
-     the easiest thing here to hit. */
-  .searchwrap { order: 5; flex: 1 1 100%; }
+  #units { order: 2; }
+  #clear { order: 3; }
+  /* Shares of the row rather than pixel bases, because pixels are what makes
+     this fragile: flex breaks a line on the basis before it will shrink
+     anything, so a pair of fixed bases is either a few pixels too wide at
+     320 — and the sort drops to a fourth row — or a few pixels too narrow at
+     390, and the field slides up to join the buttons at about 130px, which is
+     the unreadable width this arrangement exists to avoid. Two percentages
+     that come to 100% of the line minus its one gap can do neither: they never
+     both fit beside the buttons and they always fit each other.
+
+     46/54 and not half each. The field only has to be wide enough to read back
+     a few words; the select has to be able to say "Grams per litre ↑", which
+     is 120px of monospace before its padding and its arrow. At 390 that leaves
+     the field 164 and the select 159, which is the first split where neither is
+     lying about what it can show. Below about 370 the longest option does start
+     to clip, and that is the right thing to give up last: it is one option of
+     nine, and the field beside it is where the reader is typing. The cap stops
+     the select taking a whole tablet row for a control whose usual answer is
+     "Brand A–Z". */
+  .searchwrap { order: 4; flex: 1 1 calc(46% - 4px); }
   #q { height: 30px; }
+  .tbsort { order: 5; flex: 1 1 calc(54% - 4px); max-width: 240px; }
+  .tbsort select { height: 30px; }
   .count { order: 6; flex: 1 1 100%; }
 
   /* Anchored to the header rather than to the button: at this width the panel
@@ -1740,12 +1742,10 @@ td.instock { color: var(--ok); }
 .offers .spectable a { color: var(--accent); text-decoration: none; }
 .offers .spectable a:hover { text-decoration: underline; }
 
-/* The model name is the way to its page, from either view. Underline on hover
-   only — 480 permanently underlined names would read as noise in a dense grid. */
+/* The model name is the way to its page. Underline on hover only — 480
+   permanently underlined names would read as noise in a dense grid. */
 a.cname { display: block; text-decoration: none; }
 .card:hover a.cname { text-decoration: underline; text-underline-offset: 2px; }
-td.name a { text-decoration: none; }
-td.name a:hover { color: var(--accent); text-decoration: underline; }
 
 /* The brand line above the model name became a link to the brand page. It has
    to keep reading as the quiet label it was — inheriting the default link

@@ -84,40 +84,6 @@ const unlock = scope?.unlock ?? null;
       <button class="railclose" id="railclose" aria-label="Close filters">✕</button>
     </div>
 
-    {/* Sort, at the top of the filters rather than out on the toolbar.
-        It shapes the result set the way every group under it does — the
-        difference is only that it orders rather than removes — and on a phone
-        it was the widest control on a bar that had no room for it, taking a
-        full row of sticky chrome to say "Brand A–Z".
-
-        Above the alphabet of filter groups, not in it, for the same reason
-        the saved panel below is: this is how you arrive at a list, not one of
-        the questions you ask of it.
-
-        `selected` rather than a value set from script: the page can open on an
-        order of its own — /sale/ does — and the select has to say so before
-        the island's first answer lands. */}
-    <div class="railsort">
-      <label for="sort">Sort</label>
-      <select id="sort">
-        {/* Same value either way — the server sorts by brand then model, and
-            within one brand that is the model. Only the label changes, because
-            "Brand A–Z" on a page with one brand on it reads as a control that
-            does nothing. */}
-        <option value="brand" selected={sort === 'brand'}>{brand ? 'Model A–Z' : 'Brand A–Z'}</option>
-        <option value="price-asc" selected={sort === 'price-asc'}>Price ↑</option>
-        <option value="price-desc" selected={sort === 'price-desc'}>Price ↓</option>
-        {/* Anything not on sale has no discount to rank and sorts last, so this
-            is a real control on every page rather than only on /sale/. */}
-        <option value="discount" selected={sort === 'discount'}>Discount ↓</option>
-        <option value="vol-asc" selected={sort === 'vol-asc'}>Volume ↑</option>
-        <option value="vol-desc" selected={sort === 'vol-desc'}>Volume ↓</option>
-        <option value="weight-asc" selected={sort === 'weight-asc'}>Weight ↑</option>
-        <option value="gpl" selected={sort === 'gpl'}>Grams per litre ↑</option>
-        <option value="ppl" selected={sort === 'ppl'}>Price per litre ↑</option>
-      </select>
-    </div>
-
     {/* The one part of the rail that is about you rather than about the
         catalog, so it sits above every filter group rather than in the
         alphabet with them: a saved filter is how you arrive at the filters,
@@ -369,7 +335,7 @@ const unlock = scope?.unlock ?? null;
           one thing here that cannot read as another of the small outlined
           toggles beside it. It used to sit up in the header, which is the one
           place on the page that is not about the results; it belongs on the
-          bar that carries the sort and the view, because like them it acts on
+          bar that carries the sort and the units, because like them it acts on
           the grid below. Hidden at desk widths, where the rail is simply
           there. */}
       <button class="tbtn filters" id="railtoggle" aria-controls="rail"
@@ -386,24 +352,59 @@ const unlock = scope?.unlock ?? null;
       <div class="count" id="count">loading…</div>
       <button class="tbtn" id="clear">Clear</button>
       <div class="spacer"></div>
-      {/* View and units used to live in the header nav, beside Brands and the
-          category menu, where they read as places to go rather than as knobs
-          on what is already on screen. They belong here: both change how the
-          rows below are drawn, and so does the sort they now sit next to.
-          The ids are unchanged — browse.js finds them exactly as before, and
-          so does the unit toggle wired in the layout. */}
-      <div class="views">
-        <button class="tbtn" id="viewgrid" aria-pressed="true">Grid</button>
-        <button class="tbtn" id="viewtable" aria-pressed="false">Table</button>
-      </div>
-      {/* The same control as Grid/Table above it, deliberately: both units on
-          screen, the live one lit, pressing the other selects it. It used to be
-          one button printing the unit you were already in, which read as the
-          opposite of the theme toggle beside it — that one shows where you are
-          going. Two small buttons an inch apart disagreeing about their own
-          grammar is a thing a reader can only settle by pressing one, and this
-          removes the question rather than answering it. The layout's markup
-          carries the long version of this note. */}
+      {/* Sort, out here on the toolbar, in the slot Grid/Table used to hold.
+          It was in the rail, at the top of the filter groups, and the argument
+          for that was width: on a phone it was the widest control on a bar
+          that had no room for it, taking a full row of sticky chrome to say
+          "Brand A–Z". True at the time and no longer — the site is grid-only
+          now, the view pair is gone, and this fits in what it left behind.
+
+          What the rail argument never answered is that below 900px the rail is
+          a drawer labelled Filters, so ordering a list meant opening a panel
+          that says it is for narrowing one. Sort does not narrow anything; it
+          is how you read the answer you already have, which is the same job as
+          the unit toggle beside it, and it belongs on the bar with the things
+          that act on the grid rather than behind a door that names something
+          else.
+
+          `selected` rather than a value set from script: the page can open on
+          an order of its own — /sale/ does — and the select has to say so
+          before the island's first answer lands. The id is unchanged, because
+          browse.js finds this by id and does not care where it sits. */}
+      <label class="tbsort">
+        <span>Sort</span>
+        <select id="sort">
+          {/* Same value either way — the server sorts by brand then model, and
+              within one brand that is the model. Only the label changes,
+              because "Brand A–Z" on a page with one brand on it reads as a
+              control that does nothing. */}
+          <option value="brand" selected={sort === 'brand'}>{brand ? 'Model A–Z' : 'Brand A–Z'}</option>
+          <option value="price-asc" selected={sort === 'price-asc'}>Price ↑</option>
+          <option value="price-desc" selected={sort === 'price-desc'}>Price ↓</option>
+          {/* Anything not on sale has no discount to rank and sorts last, so
+              this is a real control on every page rather than only on /sale/. */}
+          <option value="discount" selected={sort === 'discount'}>Discount ↓</option>
+          <option value="vol-asc" selected={sort === 'vol-asc'}>Volume ↑</option>
+          <option value="vol-desc" selected={sort === 'vol-desc'}>Volume ↓</option>
+          <option value="weight-asc" selected={sort === 'weight-asc'}>Weight ↑</option>
+          <option value="gpl" selected={sort === 'gpl'}>Grams per litre ↑</option>
+          <option value="ppl" selected={sort === 'ppl'}>Price per litre ↑</option>
+        </select>
+      </label>
+      {/* Units used to live in the header nav, beside Brands and the category
+          menu, where they read as a place to go rather than as a knob on what
+          is already on screen. It belongs here, next to the sort, for the
+          reason the sort does: both change how the grid below reads without
+          changing which bags are in it.
+
+          Both units on screen, the live one lit, pressing the other selects
+          it. It used to be one button printing the unit you were already in,
+          which read as the opposite of the theme toggle beside it — that one
+          shows where you are going. Two small buttons an inch apart
+          disagreeing about their own grammar is a thing a reader can only
+          settle by pressing one, and this removes the question rather than
+          answering it. The layout's markup carries the long version of this
+          note. */}
       <div class="units" id="units" role="group" aria-label="Measurement units">
         <button class="tbtn" type="button" data-unit="cm" aria-pressed="true"
                 title="Show measurements in centimetres and grams"
