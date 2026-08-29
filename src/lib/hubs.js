@@ -41,112 +41,89 @@ export const CATEGORIES = [
     key: 'daypack', slug: 'daypacks', title: 'Daypacks',
     plural: 'daypacks', counted: 'daypacks',
     blurb:
-      'One main compartment, usually a laptop sleeve, no frame worth the ' +
-      'name. The default bag: what most people mean when they say backpack.',
+      'One main compartment, usually a laptop sleeve, no frame.',
   },
   {
     key: 'travel-backpack', slug: 'travel-backpacks', title: 'Travel backpacks',
     plural: 'travel backpacks', counted: 'travel backpacks',
     blurb:
-      'Clamshell packs cut to the overhead bin — a suitcase you wear. The ' +
-      'category where stated dimensions matter most, because the whole point ' +
-      'is not being made to check it.',
+      'Clamshell packs cut to the overhead bin.',
   },
   {
     key: 'hiking-pack', slug: 'hiking-packs', title: 'Hiking packs',
     plural: 'hiking packs', counted: 'hiking packs',
     blurb:
-      'Built to move weight onto a hip belt and keep it there for days. This ' +
-      'is the category where brands publish volume and weight but not ' +
-      'external dimensions, and are right to: a frameless pack is genuinely ' +
-      'specified by litres and grams.',
+      'Built to move weight onto a hip belt and keep it there for days.',
   },
   {
     key: 'sling', slug: 'slings', title: 'Slings',
     plural: 'slings', counted: 'slings',
     blurb:
-      'One strap, worn across the body. Everything between a large pocket ' +
-      'and a small daypack, and the shape most likely to clear a personal-' +
-      'item limit.',
+      'One strap, worn across the body.',
   },
   {
     key: 'duffel', slug: 'duffels', title: 'Duffels',
     plural: 'duffels', counted: 'duffels',
     blurb:
-      'A soft cylinder with handles, often with straps to wear it. Volume ' +
-      'before organisation — and the category that most often fails a ' +
-      'carry-on gauge on depth alone.',
+      'A soft cylinder with handles, often with straps to wear it.',
   },
   {
     key: 'luggage', slug: 'luggage', title: 'Luggage',
     plural: 'luggage', counted: 'pieces of luggage',
     blurb:
-      'Wheeled cases and the soft bags that behave like them. Stated ' +
-      'dimensions here usually exclude the wheels and handle; airlines ' +
-      'measure with them, so treat a near-miss as a miss.',
+      'Wheeled cases and the soft bags that behave like them. Stated '
+      + 'dimensions here usually exclude the wheels and handle; airlines '
+      + 'measure with them, so treat a near-miss as a miss.',
   },
   {
     key: 'tote', slug: 'totes', title: 'Totes',
     plural: 'totes', counted: 'totes',
     blurb:
-      'Open at the top or lightly closed, carried by hand or on one ' +
-      'shoulder. Structure is the variable: the same litres behave very ' +
-      'differently in a stiff tote and a soft one.',
+      'Open at the top or lightly closed, carried by hand or on one shoulder.',
   },
   {
     key: 'pouch', slug: 'pouches', title: 'Pouches & organisers',
     plural: 'pouches', counted: 'pouches',
     blurb:
-      'Dopp kits, cubes, cable rolls and ditty bags — the bags that go ' +
-      'inside other bags. Small enough that a listed volume is often the ' +
-      'only spec a brand publishes at all.',
+      'Dopp kits, cubes, cable rolls and ditty bags.',
   },
   {
     key: 'hip-pack', slug: 'hip-packs', title: 'Hip packs',
     plural: 'hip packs', counted: 'hip packs',
     blurb:
-      'Worn on the waist or slung across the chest. Almost all of them clear ' +
-      'every personal-item limit we track, which is most of the appeal.',
+      'Worn on the waist or slung across the chest.',
   },
   {
     key: 'bike-bag', slug: 'bike-bags', title: 'Bike bags',
     plural: 'bike bags', counted: 'bike bags',
     blurb:
-      'Panniers, frame bags, handlebar rolls and saddle packs. Mounted ' +
-      'rather than worn, so weight matters less here than volume and how ' +
-      'waterproof the closure is.',
+      'Panniers, frame bags, handlebar rolls and saddle packs.',
   },
   {
     key: 'messenger', slug: 'messengers', title: 'Messenger bags',
     plural: 'messenger bags', counted: 'messenger bags',
     blurb:
-      'A flap over a single shoulder strap: the shape that carried documents ' +
-      'before it carried laptops, and still the widest opening onto a ' +
-      'main compartment of anything here.',
+      'A flap over a single shoulder strap.',
   },
   {
     key: 'wallet', slug: 'wallets', title: 'Wallets',
     plural: 'wallets', counted: 'wallets',
     blurb:
-      'Card and note carriers, from leather bifolds to the fabric ones ' +
-      'hikers weigh in grams. In this index they are here because the same ' +
-      'makers build them, not because they are bags.',
+      'Card and note carriers, from leather bifolds to the fabric ones '
+      + 'hikers weigh in grams. Here because the same makers build them, '
+      + 'not because they are bags.',
   },
   {
     key: 'briefcase', slug: 'briefcases', title: 'Briefcases',
     plural: 'briefcases', counted: 'briefcases',
     blurb:
-      'A structured case for a laptop and paper, carried by a handle. The ' +
-      'most consistently specified category in the index — every one of ' +
-      'them clears a common carry-on limit.',
+      'A structured case for a laptop and paper, carried by a handle.',
   },
   {
     key: 'camera-bag', slug: 'camera-bags', title: 'Camera bags',
     plural: 'camera bags', counted: 'camera bags',
     blurb:
-      'Padded, divided interiors built around a body and lenses. The ' +
-      'thinnest category we hold: most camera bags reach the index through ' +
-      'makers who mainly build something else.',
+      'Padded, divided interiors built around a body and lenses.',
   },
 ];
 

@@ -165,15 +165,13 @@ const breadcrumbs = {
       </p>
     </section>
 
+    {/* See the note in components/BrowseShell.astro. The long version of all
+        of this — every axis, the weight caps, what a soft bag does — lives on
+        /about, which is the page a reader goes to when they want it. */}
     <p class="note foot">
-      Fit is computed from the bag's stated dimensions against the limits each
-      airline publishes, sorting both largest-axis-first so orientation does not
-      matter — a bag fits a frame whichever way round it goes in. Soft bags
-      compress and a near-miss may fit in practice; we do not estimate that.
-      Weight caps apply to the packed bag and the index only knows the empty
-      weight, so they are shown as context and never fail a bag here. Limits
-      change: check the airline before you fly, and treat these pages as a
-      shortlist rather than a guarantee.
+      Fit is computed from stated dimensions, largest axis first. Soft bags
+      compress; we do not estimate that. Check the airline before you fly.
+      {' '}<a href="/about/">How the numbers are read</a>.
     </p>
   </div>
 </Base>

@@ -2,7 +2,6 @@
 import Base from '../layouts/Base.astro';
 import { hubs } from '../lib/hubs.js';
 import { SITE_NAME_DISPLAY } from '../lib/brand.js';
-import { meta, bags } from '../lib/catalog.js';
 
 /* The page for a URL that does not exist.
  *
@@ -27,9 +26,6 @@ const title = `Not found — ${SITE_NAME_DISPLAY}`;
 const description =
   'That page is not here. The categories, the brand index and the carry-on '
   + 'tables are.';
-
-const bagCount = meta.bag_count ?? bags.length;
-const brandCount = meta.brand_count ?? 0;
 ---
 <Base title={title} description={description} noindex nofollow={false}>
   <div class="page">
@@ -37,13 +33,13 @@ const brandCount = meta.brand_count ?? 0;
       <a href="/">Bags</a> <span>/</span> <b>Not found</b>
     </nav>
     <h1>Not found</h1>
+    {/* Two clauses. The rest of what stood here explained the rebuild cadence
+        and the merge rules to somebody who has mistyped a URL, and closed on
+        "Nothing was hidden — the address simply no longer names anything",
+        which is the same sentence as the first one wearing a hat. */}
     <p class="note">
-      There is no page at this address. If you followed a link from somewhere
-      else it may have been a model page: the index holds
-      {bagCount.toLocaleString('en-US')} bags from {brandCount} brands and it
-      is rebuilt every night, so a bag that is
-      discontinued, or that merged into another listing, stops having a page of
-      its own. Nothing was hidden — the address simply no longer names anything.
+      There is no page at this address. Discontinued models lose their page
+      when the index rebuilds.
     </p>
 
     <section>

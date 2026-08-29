@@ -281,15 +281,13 @@ const breadcrumbs = {
       ))}
     </section>
 
+    {/* See the note in components/BrowseShell.astro. measuredCount stays: it
+        is the denominator for this page's own list, not a restatement of the
+        method. */}
     <p class="note foot">
-      Fit is computed from each bag's stated dimensions against the limit
-      {' '}{airline.name} publishes, sorting both largest-axis-first so
-      orientation does not matter. Only bags stating all three axes are
-      considered — {measuredCount} of them — and the rest are neither passed nor
-      failed. Soft bags compress, so a near-miss may go in anyway; we do not
-      estimate that. Weight caps apply to the packed bag and the index knows
-      only the empty weight, so a weight cap never fails a bag here. Nothing on
-      this page is an assurance you will be let through a gate.
+      Fit is computed from stated dimensions, largest axis first, for the
+      {' '}{measuredCount} bags stating all three. Soft bags compress; we do not
+      estimate that. Check {airline.name} before you fly.
     </p>
   </div>
 </Base>

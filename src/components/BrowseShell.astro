@@ -170,14 +170,17 @@ const unlock = scope?.unlock ?? null;
       <summary>Airline — carry-on fit</summary>
       <div class="fbody">
         <div class="checks" id="f-airline"></div>
+        {/* One sentence, and the same sentence everywhere fit is computed —
+            here, /carry-on/, an airline page and CarryOn.astro. It used to be
+            four notes of eighty-odd words each, no two worded alike, all
+            saying largest-axis-first and soft-bags-compress and check-before-
+            you-fly. A caveat restated on every surface is not more honest than
+            one stated once; it is a site that does not trust the reader to
+            have read it, and /about is where the long version belongs. */}
         <p class="note" style="padding:10px 0 0;border:none">
-          Bag and limit are both sorted largest-axis-first before comparing, so
-          orientation does not matter. Tick more than one and a bag has to
-          clear all of them. Only bags stating all three axes can be checked;
-          the rest are neither passed nor failed, and the line above the
-          results says how many that left out. Soft bags compress and a
-          near-miss may go in anyway — we do not estimate that.
-          {' '}<a href="/carry-on/">All {airlines.length} carriers side by side</a>.
+          Fit is computed from stated dimensions, largest axis first. Ticking
+          more than one carrier requires a bag to clear them all.
+          {' '}<a href="/carry-on/">All {airlines.length} carriers</a>.
         </p>
       </div>
     </details>
@@ -214,13 +217,15 @@ const unlock = scope?.unlock ?? null;
       <summary>Features</summary>
       <div class="fbody">
         <div class="checks" id="f-feat"></div>
+        {/* The one genuinely non-obvious thing in the rail, kept, and the
+            scaffolding around it dropped. Two flags sit next to each other
+            reading almost the same and meaning different things; that is worth
+            a sentence. "Read off product pages" and "often a different set of
+            bags" were the reader working it out again after being told. */}
         <p class="note" style="padding:10px 0 0;border:none">
-          Read off product pages, with one exception: <b>Carry-on compliant</b>
-          {' '}is measured, not claimed — the bag's stated dimensions clear the
-          published carry-on limit at every one of the {carryOnAirlines.length}
-          {' '}carriers tracked above. <b>Carry-on claimed</b> beside it is the
-          brand's own word for it, which is a different thing and often a
-          different set of bags.
+          <b>Carry-on compliant</b> is measured — the stated dimensions clear
+          all {carryOnAirlines.length} carriers above. <b>Carry-on claimed</b>
+          {' '}is the brand's own word for it.
         </p>
       </div>
     </details>
@@ -343,10 +348,13 @@ const unlock = scope?.unlock ?? null;
       <summary>Data coverage</summary>
       <div class="fbody">
         <div class="cov" id="coverage"></div>
+        {/* The one surviving copy of this, and it lives here because this is
+            the panel about coverage — the only place a reader has asked. It
+            was on four pages, explaining a dash to people who had not asked
+            about the dash. Elsewhere the dash carries a title attribute, which
+            is what a reader who does wonder will reach for. */}
         <p class="note" style="padding:10px 0 0;border:none">
-          Fields we could not establish are shown as “—”, never estimated.
-          Every value records where it came from; open any bag to see its
-          provenance.
+          Shown as “—” when not established, never estimated.
         </p>
       </div>
     </details>

@@ -1323,6 +1323,19 @@ a.brand { text-decoration: none; }
   font-variant-numeric: tabular-nums;
 }
 
+/* The same grid on a hub, where it replaced a paragraph of statistics — see
+   the note in pages/[category]/index.astro. Two differences and both follow
+   from it being a lead rather than a card footer: it wraps, because a hub
+   shows up to eight figures where a card shows four and eight in one row is
+   unreadable at any width; and it carries the border on both edges, because
+   here it is a block in the page rather than the last thing in a plate. */
+.hubstats {
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  margin: 0 0 18px; border-bottom: 1px solid var(--line);
+}
+.hubstats dd { font-size: 13px; }
+.hubstats .of { font-weight: 400; font-size: 9px; color: var(--ink-mute); }
+
 /* The other capacities a model is sold in — see `siblings` in
    pages/bags/[brand]/[model].astro. Directly under the Volume figure and above
    the buy button, because it answers a question about the number it sits

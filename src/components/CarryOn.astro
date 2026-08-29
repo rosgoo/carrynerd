@@ -72,14 +72,14 @@ const mark = (v: boolean | null) =>
         </div>
       </details>
     ))}
+    {/* See the note in BrowseShell.astro: one sentence, the same one on every
+        surface that computes fit. The date stays — it is the one fact here
+        that is about this page rather than about the method. */}
     <p class="note">
-      Computed from the bag’s stated dimensions against limits published by
-      each airline (last reviewed {airlinesUpdated}). Soft bags compress, so a
-      near-miss may fit in practice — we do not estimate that. Weight caps
-      apply to the packed bag and never fail a bag here, since only the empty
-      weight is known. Limits change; check the airline before you fly.
-      {' '}<a href="/carry-on/">All {airlines.length} carriers side by side</a>,
-      each with the bags that fit them.
+      Computed from stated dimensions against each airline’s published limit
+      (last reviewed {airlinesUpdated}). Soft bags compress; we do not estimate
+      that. Check the airline before you fly.
+      {' '}<a href="/carry-on/">All {airlines.length} carriers</a>.
     </p>
   </section>
 )}

@@ -199,7 +199,15 @@ const dualWeight = (g, unit = u => ` ${u}`) => {
 
 /* ---------- formatting ---------- */
 
-const nil = '<b class="nil">—</b>';
+/* The dash, and the whole of what used to be said about it.
+ *
+ * Four pages carried a sentence explaining that "—" means not established
+ * rather than zero, to readers who had not asked about the dash. The title is
+ * where an answer belongs when the question is optional: it costs no words on
+ * the page and it is there for the one reader who hovers. The long version is
+ * on /about, and the coverage panel still says it once in prose. */
+const NIL_TITLE = 'Not established — never estimated';
+const nil = `<b class="nil" title="${NIL_TITLE}">—</b>`;
 const fmtVol    = b => b.volume_l ? `${b.volume_l}<em style="font-size:8px">L</em>` : null;
 const fmtWeight = b =>
   dualWeight(b.weight_g, u => `<em style="font-size:8px">${u}</em>`);
@@ -441,7 +449,8 @@ function tableShell() {
 
 function row(b) {
   const on = compare.has(b.id);
-  const td = v => v == null ? '<td class="nil">—</td>' : `<td>${v}</td>`;
+  const td = v => v == null
+    ? `<td class="nil" title="${NIL_TITLE}">—</td>` : `<td>${v}</td>`;
   return `<tr class="${on ? "sel" : ""}" data-id="${esc(b.id)}">
     <td class="favcell">${favBtn(b.id)}</td>
     <td>${esc(b.brand)}</td>
