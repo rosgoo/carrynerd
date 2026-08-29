@@ -28,6 +28,7 @@ Usage:
     python3 validate.py --max-drop 0.3  # allow a 30% fall in bag count
     python3 validate.py --max-brand-drop 0.6   # a brand really did shrink
     python3 validate.py --allow-brands-gone dmm,mammut   # they really did leave
+    python3 validate.py --allow-failing-brands rab   # known broken, fix in flight
 """
 
 import argparse
@@ -301,10 +302,46 @@ def baseline(path=None):
 # brand that is wired but has never worked, so it has no catalogue to go stale
 # in the first place. It is here so that the day one of them starts working and
 # is switched back on, freshness starts watching it again automatically.
-DORMANT = {"retired", "walled", "unreachable", "custom", "no-adapter", "todo"}
+#
+# `removed` is here because the failing-fetch check below reaches states this
+# set never had to name. Until it existed, every one of these brands was
+# filtered out one line earlier by `status != "ok"`, so the set only ever had to
+# cover the ones that go *stale*; `campsaver` — a retailer retired for yielding
+# no models — was skipped for failing, never for being retired. Now that a
+# non-ok status is something this function reasons about rather than skips, the
+# set has to name every deliberate state or the gate blocks the deploy over a
+# brand somebody removed on purpose. fetch.py declines to count a streak for it
+# too, which is belt and braces on purpose: the gate should not need the
+# crawler to agree with it about what a decision looks like.
+DORMANT = {"retired", "walled", "unreachable", "custom", "no-adapter", "todo",
+           "removed"}
+
+# Consecutive failing nights before this says anything, and before it stops the
+# deploy. fetch.py counts them into fetch-log.json as `fail_streak`; see
+# failing_nights() there for why the count is carried in the log rather than
+# derived from its history.
+#
+# 3 to warn, for the same reason --stale-days is 3: the nightly refetches
+# everything, so three failures in a row is not a flake, it is a pattern. One
+# bad night is the exact thing fetch.py's cached-catalogue fallback exists to
+# absorb, and a gate that prints a line about it teaches people to read past
+# the lines it prints.
+#
+# 10 to block, and the number is picked against three other numbers rather than
+# out of the air. Bonfus fails on roughly half of all nights and must never
+# reach it — at p≈0.5 a run of ten is a one-in-a-thousand night, so a flapping
+# brand warns forever and blocks never. It sits under --fail-days (14), so a
+# brand failing *loudly* is stopped before the age of a brand that is merely
+# quiet. And it sits under 11, which is where scripts/crawl_history.py's
+# erosion baseline becomes 0 — a median over 21 prior nights is itself 0 once
+# eleven of them are — because past that point the other alarm can still say a
+# brand is dark but can no longer say how far it fell. Ten nights is the last
+# night on which every number in this system still means something.
+WARN_FAIL_NIGHTS = 3
+BLOCK_FAIL_NIGHTS = 10
 
 
-def freshness(rep, stale_days, fail_days):
+def freshness(rep, stale_days, fail_days, block_nights, waived):
     """Has any brand quietly stopped producing?
 
     Borrowed from the sister project, which hit this failure mode from the
@@ -323,6 +360,13 @@ def freshness(rep, stale_days, fail_days):
 
     Per-brand, because that is the granularity the failure happens at. The
     aggregate is fine by construction while any one brand rots.
+
+    Two tenses, one file. A brand whose fetch *succeeded* is judged on the age
+    of that success, which is the check below and the one this was written for.
+    A brand whose fetch *failed* is judged on how many nights in a row it has
+    been failing, which is the check that was missing entirely — see the note
+    on the skip it replaced. Both end in the same place: rows in the published
+    catalogue that nobody has verified in weeks, being served as current.
     """
     path = os.path.join(HERE, "data", "fetch-log.json")
     try:
@@ -334,12 +378,43 @@ def freshness(rep, stale_days, fail_days):
 
     now = datetime.datetime.now(datetime.timezone.utc)
     stale, dead = [], []
+    failing, blocking, over_threshold = [], [], set()
     for slug, entry in sorted(log.items()):
         if not isinstance(entry, dict) or slug.startswith("_"):
             continue
-        if entry.get("status") != "ok":
-            continue                       # never fetched, or failing loudly
         if (entry.get("platform") or "") in DORMANT:
+            continue
+        if entry.get("status") != "ok":
+            # This used to `continue` here, on the premise that a fetch failure
+            # is a failure *loudly*. It is not. The only place it is loud is a
+            # run log nobody opens; the run still exits 0, the brand keeps
+            # yesterday's catalogue by design, and its rows publish again
+            # looking exactly as current as they did the night before. Between
+            # that skip and the age check below — which only ever saw brands
+            # that had succeeded — a brand could fail every night forever and
+            # this gate would not say a word. Rab did, for 18 of them, while
+            # this check reported "every active brand fetched within 3d".
+            #
+            # fetched_at is no use here either, and that is the other half of
+            # why it stayed invisible: fetch.py stamps it when it starts the
+            # request, not when the request works, so a brand that has 403'd
+            # nightly since the 10th carries tonight's timestamp. The streak is
+            # the only field that knows.
+            #
+            # Missing streak reads as 0 and stays silent: a log written before
+            # fetch.py started counting cannot be interrogated about nights it
+            # never recorded, and guessing would be worse than waiting.
+            nights = entry.get("fail_streak") or 0
+            status = entry.get("status") or "?"
+            if nights >= block_nights:
+                over_threshold.add(slug)
+                if slug not in waived:
+                    blocking.append((slug, nights, status))
+                    continue
+            # A waived brand lands here, one tier down. It is still broken and
+            # its rows are still ageing; it is only not stopping tonight.
+            if nights >= WARN_FAIL_NIGHTS:
+                failing.append((slug, nights, status))
             continue
         ts = entry.get("fetched_at")
         if not ts:
@@ -365,8 +440,39 @@ def freshness(rep, stale_days, fail_days):
         rep.warn("freshness",
                  f"{len(stale)} brand(s) not refreshed in {stale_days}d: "
                  f"{sample(stale, 6)}")
-    if not dead and not stale:
-        rep.note(f"freshness: every active brand fetched within {stale_days}d")
+
+    def shown(rows):
+        return sample([f"{slug} ({n}n, {st}"
+                       f"{', waived' if slug in waived else ''})"
+                       for slug, n, st in rows], 6)
+
+    if blocking:
+        rep.fail("fetch:failing",
+                 f"{len(blocking)} brand(s) have failed every night for "
+                 f"{block_nights}+ nights and are still being served from "
+                 f"cache: {shown(blocking)}. Nothing in the counts moves while "
+                 f"this happens — the rows are all still there, just older "
+                 f"every night. Fix the adapter, retire the brand, or buy one "
+                 f"night with --allow-failing-brands "
+                 f"{','.join(slug for slug, _, _ in blocking)}")
+    if failing:
+        rep.warn("fetch:failing",
+                 f"{len(failing)} brand(s) failing several nights running, "
+                 f"serving cached rows: {shown(failing)}")
+    # Named on the command line and not actually failing that badly — the same
+    # thing --allow-brands-gone warns about, for the same reason. The waiver is
+    # a night bought while a fix lands, and one left behind in the workflow is a
+    # brand this gate has quietly stopped watching.
+    unused = sorted(slug for slug in waived if slug not in over_threshold)
+    if unused:
+        rep.warn("allow:failing-brands",
+                 f"{len(unused)} brand(s) waived but not failing "
+                 f"{block_nights}+ nights: {sample(unused, 8)}. Drop them from "
+                 f"--allow-failing-brands — whatever it was written for is "
+                 f"either fixed or gone.")
+    if not dead and not stale and not failing and not blocking:
+        rep.note(f"freshness: every active brand fetched within {stale_days}d, "
+                 f"none failing {WARN_FAIL_NIGHTS} nights running")
 
 
 # The most expensive median any genuine brand in this catalogue reaches is
@@ -872,6 +978,17 @@ def main():
     ap.add_argument("--fail-days", type=int, default=14,
                     help="fail when an active brand's catalogue is this old and "
                          "still being served as current (default 14)")
+    ap.add_argument("--max-fail-nights", type=int, default=BLOCK_FAIL_NIGHTS,
+                    help=f"fail when a brand's fetch has failed this many "
+                         f"nights in a row while its cached rows stay in the "
+                         f"catalogue (default {BLOCK_FAIL_NIGHTS}; warns from "
+                         f"{WARN_FAIL_NIGHTS})")
+    ap.add_argument("--allow-failing-brands", default="",
+                    help="comma-separated brand slugs whose failing fetch is "
+                         "already known — they warn instead of blocking. A "
+                         "night's reprieve and not a fix: the rows are still "
+                         "being served and still ageing, so it belongs on the "
+                         "run that ships the repair, not in the roster")
     ap.add_argument("--max-usd-median", type=float, default=USD_MEDIAN_CEILING,
                     help=f"fail when a brand's median price exceeds this, which "
                          f"means its storefront is quoting another currency "
@@ -899,7 +1016,9 @@ def main():
     rep = Report()
     structural(payload, rep)
     brandmark(rep)
-    freshness(rep, args.stale_days, args.fail_days)
+    freshness(rep, args.stale_days, args.fail_days, args.max_fail_nights,
+              {s.strip() for s in args.allow_failing_brands.split(",")
+               if s.strip()})
     currency(payload, rep, args.max_usd_median)
     swept_volume(payload, rep)
     density(payload, rep)

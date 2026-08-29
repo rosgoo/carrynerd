@@ -92,6 +92,15 @@ the commit deploys. It checks two things:
   the total by 7%, against a 25% tolerance, and nothing fires. Freshness does
   not fire either: the fetch *succeeded*, it just came back short. A brand
   falling more than 25% warns, more than 40% (`--max-brand-drop`) fails.
+- **Still fetching at all**, which is the failure none of the above can see.
+  `fetch.py` keeps yesterday's catalogue when a refetch fails, so a brand can
+  fail every night for weeks with its rows sitting in the index looking
+  current: the counts do not move, because the rows are all still there. It
+  reads the consecutive-failure streak `fetch.py` writes into
+  `data/fetch-log.json` — three nights running warns, ten
+  (`--max-fail-nights`) fails. A brand already known to be broken can be
+  waived for a night with `--allow-failing-brands`, which is a reprieve while a
+  fix lands and not somewhere to park a brand.
 
 A single implausible value is a warning; a lot of them at once is a failure,
 because that is the difference between a brand publishing a packed-box weight

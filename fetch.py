@@ -1529,6 +1529,51 @@ def prune_to_shard(spec):
           f"dropped {dropped} belonging to other shards")
 
 
+# Statuses that mean no request was made, so there is nothing to have failed.
+# Every one of them is a decision recorded in brands.json — see the branch in
+# main() that writes them — and a decision is not an outage.
+NOT_ATTEMPTED = ("retired", "removed", "todo", "walled", "unreachable",
+                 "no-adapter")
+
+
+def failing_nights(prev, status):
+    """Consecutive nights this brand's fetch has failed, tonight included.
+
+    A failed refetch keeps yesterday's catalogue rather than dropping the brand
+    for a night, which is the right call for one bad night and a slow leak over
+    twenty of them: the rows stay in the index looking exactly as current as
+    they did yesterday, so nothing in the bag count, the brand count or the
+    coverage numbers ever moves. Only their age does. This is the number that
+    makes that visible, and it has to be carried, because fetch-log.json is
+    overwritten every run and only ever describes one night.
+
+    Recorded here rather than derived at the gate, and that was a real choice.
+    scripts/crawl_history.py can reconstruct the whole series out of this
+    file's commit history and already does — but it clones the data repo at
+    full depth, it writes a database that is deliberately committed nowhere,
+    and its job runs *after* the one holding the gate. Reading it from
+    validate.py would mean giving a local, self-contained check a network
+    dependency and a several-minute clone, to answer a question the crawler
+    knew the answer to at the moment it failed. One integer per brand per night
+    is cheaper than the history that summarises it.
+
+    The cost of that choice, stated plainly: the count starts from zero the
+    night this ships. The published log carries no streaks yet, so a brand that
+    has been failing since the 10th reads as 1 tonight and takes as many nights
+    to become visible as it has already been broken. Seeding is a hand edit of
+    the published fetch-log.json — crawl_history.py is what tells you the real
+    numbers — and it is worth doing once rather than waiting the backlog out.
+
+    A declared state counts as zero, not as a failure. That matters more than
+    it looks: without it a brand parked as `todo` for a year would come back
+    from the day somebody wires it up carrying a 300-night streak, and fail the
+    gate on its first honest attempt.
+    """
+    if status == "ok" or status in NOT_ATTEMPTED:
+        return 0
+    return ((prev or {}).get("fail_streak") or 0) + 1
+
+
 def merge_logs():
     """Fold data/fetch-log.part-*.json back into the single committed log."""
     log = {}
@@ -1540,10 +1585,22 @@ def merge_logs():
     parts = sorted(glob.glob(LOG_PART.format("*")))
     for path in parts:
         try:
-            log.update(json.load(open(path)))
+            part = json.load(open(path))
         except (json.JSONDecodeError, OSError):
             sys.stderr.write(f"  skipping unreadable {path}\n")
             continue
+        # Entry by entry rather than log.update(), because the streak has to be
+        # recomputed here and cannot be computed anywhere else. A shard runs
+        # against a checkout with no data/, so it never sees the published log
+        # and the count it wrote is a floor of 1; yesterday's count is in the
+        # copy this is about to overwrite, and this is the last moment it
+        # exists. `_stopped` and anything else non-brand passes through
+        # untouched.
+        for slug, entry in part.items():
+            if isinstance(entry, dict) and not slug.startswith("_"):
+                entry["fail_streak"] = failing_nights(log.get(slug),
+                                                      entry.get("status"))
+            log[slug] = entry
         os.remove(path)
     with open(LOG, "w") as f:
         json.dump(log, f, indent=2, sort_keys=True)
@@ -1712,7 +1769,11 @@ def main():
                                   "status": platform if declared
                                             else "no-adapter",
                                   "note": brand.get("note", "")[:200],
-                                  "product_count": 0}
+                                  "product_count": 0,
+                                  # Zero because nothing was asked of this
+                                  # brand tonight, not because it answered.
+                                  # See failing_nights().
+                                  "fail_streak": 0}
             with open(log_path, "w") as f:
                 json.dump(log, f, indent=2, sort_keys=True)
             continue
@@ -1727,8 +1788,15 @@ def main():
                 res["note"] = (res["note"] + "; kept cached catalogue").strip("; ")
         print(f"    -> {res['status']} {n} products {res['note']}", flush=True)
 
+        # Read before the overwrite below, which replaces yesterday's entry
+        # outright — and yesterday's entry is where the streak so far lives. A
+        # sharded run has nothing to read here (it writes a part file and never
+        # loads the published log), so what a shard records is a floor;
+        # merge_logs() recomputes it against the real previous night.
+        prev = log.get(brand["slug"])
         log[brand["slug"]] = {k: v for k, v in res.items() if k != "products"}
         log[brand["slug"]]["product_count"] = n
+        log[brand["slug"]]["fail_streak"] = failing_nights(prev, res["status"])
         # How long this brand cost. Recovering it from Actions log timestamps
         # works but is forensics, and the logs age out while this file lives in
         # the data repo. Recorded here, "which brands are expensive" is a sort

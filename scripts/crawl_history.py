@@ -162,8 +162,22 @@ def erosion(conn, window, min_obs, threshold):
     Hence 21 and 0.20 rather than 14 and 0.25. Compounding is the reason to care
     about the slow case: 3% a night is 46% gone in three weeks, and no
     night-over-night check will ever see a 3% step.
+
+    Two lists out, because a baseline of zero cannot answer the question this
+    is asking. Once a brand has produced nothing for eleven nights its median
+    over the prior 21 is itself 0, and "0% down from 0" is not a sentence worth
+    printing — so a `baseline <= 0` was skipped, and the brand fell out of this
+    report permanently, on exactly the night its outage became certain. The
+    alarm silenced itself by the fault continuing, which is the one failure
+    mode a slow signal cannot afford.
+
+    They come back as an outage instead. Different sentence, same page: the
+    number is nights dark rather than the size of the fall, because there is no
+    fall left to size. validate.py blocks the deploy on the same fault from the
+    fetch log's own streak counter, well before this point; this is the view
+    that says how long it has been true.
     """
-    findings = []
+    eroding, dark = [], []
     slugs = [r[0] for r in conn.execute(
         "SELECT DISTINCT slug FROM crawl ORDER BY slug")]
     for slug in slugs:
@@ -179,11 +193,23 @@ def erosion(conn, window, min_obs, threshold):
             continue
         baseline = statistics.median(prior)
         if baseline <= 0:
+            # Producing again tonight after a dark spell is a recovery, and the
+            # only thing worth saying about it is nothing.
+            if latest[1] > 0:
+                continue
+            nights = 0
+            for row in series:
+                if row[1]:
+                    break
+                nights += 1
+            # `capped` when the whole window came back empty: the outage is at
+            # least this long and this query cannot see how much longer.
+            dark.append((slug, nights, nights == len(series)))
             continue
         drop = (baseline - latest[1]) / baseline
         if drop > threshold:
-            findings.append((slug, baseline, latest[1], drop, len(prior)))
-    return findings
+            eroding.append((slug, baseline, latest[1], drop, len(prior)))
+    return eroding, dark
 
 
 def main():
@@ -244,19 +270,26 @@ def main():
                   f"{args.min_observations}. Nothing to compare yet.")
             return 0
 
-        findings = erosion(conn, args.window, args.min_observations,
-                           args.threshold)
-        if not findings:
+        eroding, dark = erosion(conn, args.window, args.min_observations,
+                                args.threshold)
+        if not eroding and not dark:
             print(f"  · no brand is below {args.threshold:.0%} of its "
-                  f"{args.window}-night median")
+                  f"{args.window}-night median, and none is dark")
             return 0
         # Reported, never blocking. The gate's job is to stop a bad catalogue
         # from publishing; this is the slower signal, and a slow signal that can
         # fail a build is one that gets muted.
-        print(f"  ! {len(findings)} brand(s) below their recent normal:")
-        for slug, base, now, drop, n in sorted(findings, key=lambda f: -f[3]):
-            print(f"      {slug:<18} {now} vs median {base:g} "
-                  f"over {n} nights ({drop:.0%} down)")
+        if eroding:
+            print(f"  ! {len(eroding)} brand(s) below their recent normal:")
+            for slug, base, now, drop, n in sorted(eroding, key=lambda f: -f[3]):
+                print(f"      {slug:<18} {now} vs median {base:g} "
+                      f"over {n} nights ({drop:.0%} down)")
+        if dark:
+            print(f"  ! {len(dark)} brand(s) producing nothing at all:")
+            for slug, nights, capped in sorted(dark, key=lambda f: -f[1]):
+                print(f"      {slug:<18} no products for {nights}"
+                      f"{'+' if capped else ''} nights — its own baseline is "
+                      f"now 0, so there is no fall left to measure")
         return 0
     finally:
         if tmp:

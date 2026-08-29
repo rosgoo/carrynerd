@@ -569,13 +569,31 @@ jobs:
       # brand exactly never. It is spent on one run by design: the night after a
       # removal publishes, the baseline no longer holds those brands and the
       # flag has nothing to allow.
+      #
+      # --allow-failing-brands is the third shape of the same bargain, and the
+      # only one hardcoded here rather than taken as an input — because this one
+      # has to hold on the scheduled run, which is where the failures happen.
+      #
+      # rab (http_403 since 2026-08-10) and almond-oak (http_404 since
+      # 2026-08-09) were 18 and 19 nights deep on 2026-08-28, the day the streak
+      # check shipped, between them serving 66 rows whose prices nobody has
+      # verified since the second week of August. A gate that red-lights the
+      # first night it exists is a gate somebody switches off instead of fixing,
+      # so they warn tonight instead of blocking.
+      #
+      # That is a debt with a date on it, not a setting. Delete each slug the
+      # day its adapter is fixed or the brand is retired, and delete the flag
+      # with the second one. Leaving a slug here after the fix costs the warning
+      # too: validate.py says so on every run that waives a brand which is not
+      # actually failing.
       - name: Validate
         run: |
           python3 validate.py \
             --baseline data/bags.baseline.json \
             --require-baseline \
             --max-coverage-drop ${{ inputs.max_coverage_drop || '10' }} \
-            --allow-brands-gone "${{ inputs.brands_gone }}"
+            --allow-brands-gone "${{ inputs.brands_gone }}" \
+            --allow-failing-brands rab,almond-oak
 
       - name: Install alert matcher dependencies
         run: pip install --quiet -r alerts/requirements.txt
