@@ -624,28 +624,37 @@ main { flex: 1; min-width: 0; }
    hairlines are for separating things that are not. */
 .units .hbtn + .hbtn { border-left: none; }
 
-/* Sort, in the slot Grid and Table vacated.
-   A field rather than a toggle, so it takes the search box's border and height
-   instead of the .tbtn outline — the two are the only things on this bar you
-   type or pick into, and a <select> wearing button chrome would be the third
-   grammar on a bar that is already carrying two.
+/* Sort, drawn as the button it sits beside rather than as a field.
+   It carried a separate label reading "Sort" and took the search box's border
+   and height, on the argument that a <select> is something you pick into and
+   should not wear button chrome. That held while it sat at the far end of the
+   bar next to the units. Beside Filters it does not: those two are the pair
+   that act on the list — one changes which bags are in it, the other the order
+   they come in — and a reader reads a pair by its shape before reading either
+   label. The word "Sort" went for the same reason the captions came off the
+   hub headings: a control whose face already reads "Brand A–Z" does not need
+   one saying it sorts. aria-label carries it for anyone who cannot see the
+   face.
 
-   The label is the piece that will not shrink and the select is the piece that
-   will, which is what the flex-shrink and the two `min-width: 0` say between
-   them. Without them a flex item refuses to go below its automatic minimum —
-   for this select, the full width of "Grams per litre ↑" — and the bar runs off
-   the side of a phone rather than taking the room that is there. */
-.tbsort { display: flex; align-items: center; gap: 7px; min-width: 0; }
-.tbsort > span {
-  font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase;
-  color: var(--ink-dim); font-weight: 600; flex-shrink: 0;
+   No width of its own, and that is the point of the change. A select sizes to
+   its widest option, so "Grams per litre ↑" reserves the same box on every
+   page and the row cannot reflow as the value changes — where the old pair of
+   percentage bases had to be tuned against the field beside them at six
+   breakpoints. What it leaves behind goes to the search field, which is the
+   one control on this bar that is better the wider it is. The cap is only so a
+   long option cannot take most of a phone row. */
+.tbsort {
+  flex: 0 0 auto; max-width: 150px;
+  /* 25px, not 24: .tbtn's height is padding plus line-box plus border and
+     comes out there, and a select one pixel short of the buttons it sits in a
+     row with is the kind of thing you cannot name but can see. */
+  height: 25px; padding: 0 4px 0 8px;
+  border: 1px solid var(--line-2); background: var(--panel);
+  font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ink-dim); outline: none;
 }
-.tbsort select {
-  flex: 1 1 auto; min-width: 0; height: 26px; background: var(--bg);
-  border: 1px solid var(--line-2); padding: 0 4px 0 6px;
-  font-size: 11px; outline: none; letter-spacing: .04em; color: var(--ink);
-}
-.tbsort select:focus { border-color: var(--accent); }
+.tbsort:hover { color: var(--ink); border-color: var(--ink-dim); }
+.tbsort:focus { border-color: var(--accent); color: var(--ink); }
 
 /* Which half is lit, decided by the attribute on <html> rather than by
    aria-pressed.
@@ -1187,32 +1196,29 @@ td.nil, .nil { color: var(--ink-mute); }
      with Clear did not squeeze the sentence — it pushed Clear onto a row of
      its own anyway. Stating it as 100% is what stops the rows depending on how
      many digits the counts happen to have today. */
-  .toolbar { gap: 8px; padding: 9px 12px; }
+  /* 7 and 10, down from 8 and 12, and the two together are worth exactly the
+     five pixels that decide whether Clear sits with the other buttons or on a
+     row of its own. Filters, Sort, units and Clear come to 338px of content
+     and gaps; a 360px phone offers 340 at this padding and 336 at the old one.
+     Under 360 they wrap anyway and that is the right place to let it go. */
+  .toolbar { gap: 7px; padding: 9px 10px; }
   .toolbar .spacer { display: none; }
-  #railtoggle { order: 1; }
+  #railtoggle { order: 0; }
   #units { order: 2; }
   #clear { order: 3; }
-  /* Shares of the row rather than pixel bases, because pixels are what makes
-     this fragile: flex breaks a line on the basis before it will shrink
-     anything, so a pair of fixed bases is either a few pixels too wide at
-     320 — and the sort drops to a fourth row — or a few pixels too narrow at
-     390, and the field slides up to join the buttons at about 130px, which is
-     the unreadable width this arrangement exists to avoid. Two percentages
-     that come to 100% of the line minus its one gap can do neither: they never
-     both fit beside the buttons and they always fit each other.
-
-     46/54 and not half each. The field only has to be wide enough to read back
-     a few words; the select has to be able to say "Grams per litre ↑", which
-     is 120px of monospace before its padding and its arrow. At 390 that leaves
-     the field 164 and the select 159, which is the first split where neither is
-     lying about what it can show. Below about 370 the longest option does start
-     to clip, and that is the right thing to give up last: it is one option of
-     nine, and the field beside it is where the reader is typing. The cap stops
-     the select taking a whole tablet row for a control whose usual answer is
-     "Brand A–Z". */
-  .searchwrap { order: 4; flex: 1 1 calc(46% - 4px); }
+  /* Filters and Sort lead, then the units and Clear; the field takes the
+     whole of the next row.
+     This replaced a pair of percentage bases — the field and the sort sharing
+     one line at 46/54 — which worked and was fragile, tuned against each other
+     at six widths because flex breaks a line on the basis before it shrinks
+     anything. Sort is sized by its own longest option now and no longer wants
+     a share of anything, so the field can simply be told to take a row, which
+     is the arrangement that was wanted in the first place: a search box is the
+     one control here that is better the wider it is, and on a phone the wider
+     it can be is all of it. */
+  .searchwrap { order: 5; flex: 1 1 100%; }
   #q { height: 30px; }
-  .tbsort { order: 5; flex: 1 1 calc(54% - 4px); max-width: 240px; }
+  .tbsort { order: 1; }
   .tbsort select { height: 30px; }
   .count { order: 6; flex: 1 1 100%; }
 

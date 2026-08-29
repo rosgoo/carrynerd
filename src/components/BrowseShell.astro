@@ -342,9 +342,52 @@ const unlock = scope?.unlock ?? null;
               aria-expanded="false">
         <span class="bars" aria-hidden="true"></span>Filters
       </button>
-      {/* The search field, down from the header. It is the widest thing on the
-          bar and the one that grows, so it sits second — immediately right of
-          Filters, which is the other way into narrowing the same list. */}
+      {/* Sort, out here on the toolbar, in the slot Grid/Table used to hold.
+        It was in the rail, at the top of the filter groups, and the argument
+        for that was width: on a phone it was the widest control on a bar
+        that had no room for it, taking a full row of sticky chrome to say
+        "Brand A–Z". True at the time and no longer — the site is grid-only
+        now, the view pair is gone, and this fits in what it left behind.
+
+        What the rail argument never answered is that below 900px the rail is
+        a drawer labelled Filters, so ordering a list meant opening a panel
+        that says it is for narrowing one. Sort does not narrow anything; it
+        is how you read the answer you already have, which is the same job as
+        the unit toggle beside it, and it belongs on the bar with the things
+        that act on the grid rather than behind a door that names something
+        else.
+
+        `selected` rather than a value set from script: the page can open on
+        an order of its own — /sale/ does — and the select has to say so
+        before the island's first answer lands. The id is unchanged, because
+        browse.js finds this by id and does not care where it sits. */}
+      <select class="tbsort" id="sort" aria-label="Sort the results">
+        {/* Same value either way — the server sorts by brand then model, and
+          within one brand that is the model. Only the label changes,
+          because "Brand A–Z" on a page with one brand on it reads as a
+          control that does nothing. */}
+        <option value="brand" selected={sort === 'brand'}>{brand ? 'Model A–Z' : 'Brand A–Z'}</option>
+        <option value="price-asc" selected={sort === 'price-asc'}>Price ↑</option>
+        <option value="price-desc" selected={sort === 'price-desc'}>Price ↓</option>
+        {/* Anything not on sale has no discount to rank and sorts last, so
+          this is a real control on every page rather than only on /sale/. */}
+        <option value="discount" selected={sort === 'discount'}>Discount ↓</option>
+        <option value="vol-asc" selected={sort === 'vol-asc'}>Volume ↑</option>
+        <option value="vol-desc" selected={sort === 'vol-desc'}>Volume ↓</option>
+        <option value="weight-asc" selected={sort === 'weight-asc'}>Weight ↑</option>
+        {/* Abbreviated, and not for the sake of it: a select is as wide as its
+          widest option, so these two were setting the width of the whole
+          control and pushing Clear onto a second row of buttons at 390. "G/L"
+          is what the spec cell on every card calls this and what the old table
+          column called it, so the short form is the one a reader has already
+          met. */}
+        <option value="gpl" selected={sort === 'gpl'}>G / L ↑</option>
+        <option value="ppl" selected={sort === 'ppl'}>Price / L ↑</option>
+      </select>
+      {/* The search field, down from the header. It is the widest thing here
+          and the only one that wants every pixel it can get, so it takes what
+          the two controls before it leave and, below the breakpoint, the whole
+          of its own row. */}
       <div class="searchwrap">
         <input id="q" type="search" placeholder={placeholder} autocomplete="off"
                spellcheck="false" />
@@ -352,45 +395,6 @@ const unlock = scope?.unlock ?? null;
       <div class="count" id="count">loading…</div>
       <button class="tbtn" id="clear">Clear</button>
       <div class="spacer"></div>
-      {/* Sort, out here on the toolbar, in the slot Grid/Table used to hold.
-          It was in the rail, at the top of the filter groups, and the argument
-          for that was width: on a phone it was the widest control on a bar
-          that had no room for it, taking a full row of sticky chrome to say
-          "Brand A–Z". True at the time and no longer — the site is grid-only
-          now, the view pair is gone, and this fits in what it left behind.
-
-          What the rail argument never answered is that below 900px the rail is
-          a drawer labelled Filters, so ordering a list meant opening a panel
-          that says it is for narrowing one. Sort does not narrow anything; it
-          is how you read the answer you already have, which is the same job as
-          the unit toggle beside it, and it belongs on the bar with the things
-          that act on the grid rather than behind a door that names something
-          else.
-
-          `selected` rather than a value set from script: the page can open on
-          an order of its own — /sale/ does — and the select has to say so
-          before the island's first answer lands. The id is unchanged, because
-          browse.js finds this by id and does not care where it sits. */}
-      <label class="tbsort">
-        <span>Sort</span>
-        <select id="sort">
-          {/* Same value either way — the server sorts by brand then model, and
-              within one brand that is the model. Only the label changes,
-              because "Brand A–Z" on a page with one brand on it reads as a
-              control that does nothing. */}
-          <option value="brand" selected={sort === 'brand'}>{brand ? 'Model A–Z' : 'Brand A–Z'}</option>
-          <option value="price-asc" selected={sort === 'price-asc'}>Price ↑</option>
-          <option value="price-desc" selected={sort === 'price-desc'}>Price ↓</option>
-          {/* Anything not on sale has no discount to rank and sorts last, so
-              this is a real control on every page rather than only on /sale/. */}
-          <option value="discount" selected={sort === 'discount'}>Discount ↓</option>
-          <option value="vol-asc" selected={sort === 'vol-asc'}>Volume ↑</option>
-          <option value="vol-desc" selected={sort === 'vol-desc'}>Volume ↓</option>
-          <option value="weight-asc" selected={sort === 'weight-asc'}>Weight ↑</option>
-          <option value="gpl" selected={sort === 'gpl'}>Grams per litre ↑</option>
-          <option value="ppl" selected={sort === 'ppl'}>Price per litre ↑</option>
-        </select>
-      </label>
       {/* Units used to live in the header nav, beside Brands and the category
           menu, where they read as a place to go rather than as a knob on what
           is already on screen. It belongs here, next to the sort, for the
