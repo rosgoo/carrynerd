@@ -58,6 +58,15 @@ on:
         description: "Points of coverage a field may lose before the gate fails (default 10)"
         type: string
         default: "10"
+      # Only ever raised on a run that ships a classifier change, which is the
+      # one thing that legitimately empties a shelf: the crawl found what it
+      # always finds and normalize.py stopped calling half of it a bag. The
+      # scheduled run keeps validate.py's own 0.4, because on any other night a
+      # brand shedding two fifths of its catalogue is a parser that broke.
+      max_brand_drop:
+        description: "Fraction of its bags one brand may lose before the gate fails (default 0.4; raise only when a classifier fix is meant to shrink a brand)"
+        type: string
+        default: "0.4"
       only:
         description: "Comma-separated brand slugs to fetch, instead of the whole roster"
         type: string
@@ -593,7 +602,8 @@ jobs:
             --require-baseline \
             --max-coverage-drop ${{ inputs.max_coverage_drop || '10' }} \
             --allow-brands-gone "${{ inputs.brands_gone }}" \
-            --allow-failing-brands rab,almond-oak
+            --allow-failing-brands rab,almond-oak \
+            --max-brand-drop ${{ inputs.max_brand_drop || '0.4' }}
 
       - name: Install alert matcher dependencies
         run: pip install --quiet -r alerts/requirements.txt

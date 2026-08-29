@@ -89,7 +89,42 @@ CATEGORIES = [
     ("messenger",        r"\bmessengers?\b|\bcouriers?\b|\bsatchels?\b"),
     ("briefcase",        r"\b(?:briefcases?|attach[eé]s?|portfolios?|folios?)\b"),
     ("camera-bag",       r"\bcamera (?:bags?|backpacks?)\b|\bphoto (?:bags?|packs?)\b"),
-    ("hiking-pack",      r"\b(?:hiking|backpacking|trekking|mountaineering|thru[- ]hik)\w*\b"),
+    # An activity qualifying a carry noun, never the activity on its own.
+    #
+    # This rule used to be the bare adjective — hiking|backpacking|trekking|
+    # mountaineering with a \w* on the end — and it is the only entry in this
+    # table that ever named what a product is *for* rather than what it *is*.
+    # Every sibling here names the object: duffels, totes, suitcases, panniers.
+    # Naming the activity meant "Hiking Shoes" scored exactly as strongly as
+    # "Hiking Backpack", and sitting above daypack and travel-backpack it won
+    # against the rules that would have read the noun correctly.
+    #
+    # Decathlon is where that surfaced, because Decathlon puts the activity in
+    # every title it ships: of 148 Forclaz rows, 88 were shoes, fleeces,
+    # mattresses, cooksets, a hammock, a foot pump and a folding chair. But the
+    # damage was not confined to the classification — see the product-type gate
+    # in build(), which stands down whenever the title classifies, and which
+    # this rule was therefore telling to stand down for all 88.
+    #
+    # The bare adjective moves to CATEGORIES_WEAK, where a signal this soft
+    # belongs: a store shelf or a tag reading "backpacking" is still real
+    # evidence about a pack whose title is only a model name, and weak matches
+    # already report themselves as "tag" so they lose to anything stronger.
+    # Up to three words may sit between the activity and the noun, because
+    # brands put the capacity there and nowhere else: "Hiking 28 L Backpack",
+    # "Hiking Hydration Pack", "Trekking 45+10 L Rucksack". Requiring adjacency
+    # read those as daypacks. Three is measured rather than chosen — it is the
+    # widest gap any real pack in the corpus puts between the two, and it is
+    # still narrow enough that the garments stay out: "Hiking Fleece Tights"
+    # and "Backpacking Merino Wool Base Layer Tights" reach their fourth word
+    # without ever naming a thing you carry.
+    ("hiking-pack",      r"\b(?:hiking|backpacking|trekking|mountaineering|"
+                         r"thru[- ]hik)\w*"
+                         r"(?:[\s,-]+[\w.+/&'’-]+){0,3}?[\s,-]+"
+                         r"(?:day)?(?:packs?|backpacks?|rucksacks?|bags?|"
+                         r"sacks?|haulers?)\b|"
+                         r"\b(?:packs?|backpacks?|rucksacks?)[\s,-]+for[\s,-]+"
+                         r"(?:hiking|trekking|backpacking|mountaineering)\b"),
     ("travel-backpack",  r"\btravel (?:packs?|backpacks?)\b|\bcarry[- ]on backpacks?\b"),
     # Above daypack, not below: wallets named "Card Pack" would otherwise be
     # eaten by \bpacks?\b, while backpacks with "wallet" in the title are
@@ -128,6 +163,14 @@ CATEGORIES = [
 # data/category-overrides.json, not a cleverer pattern.
 CATEGORIES_WEAK = [
     ("messenger",        r"\bshoulder bag\b"),
+    # The activity on its own, demoted here from CATEGORIES — see the note on
+    # hiking-pack there. Still worth having: Hyperlite and Zpacks title their
+    # packs with a model name and nothing else, and a "backpacking" tag or a
+    # shelf of that name is the only thing that says what an Arc Haul is. What
+    # it must not do is outrank a product noun, which is the whole difference
+    # between this table and that one.
+    ("hiking-pack",      r"\b(?:hiking|backpacking|trekking|mountaineering|"
+                         r"thru[- ]hik)\w*\b"),
 ]
 
 # Things a bag catalogue should not contain. Same plural rule, same reason —
@@ -143,7 +186,7 @@ NOT_A_BAG = re.compile(
     r"mugs?\b|tumblers?|notebooks?|journals?|pens?\b|sunglass(?:es)?|"
     r"watch(?:es)?\b|towels?|blankets?|pillows?|tents?\b|sleeping bags?|stoves?|"
     r"trekking poles?|inserts?\b|packing cubes?|camera cubes?|dividers?|"
-    r"luggage tags?|bag tags?|"
+    r"luggage tags?|bag tags?|umbrellas?|"
     r"zip(?:per)? pull(?:er)?s?|playing cards?|rain ?(?:covers?|fly|flies)|repairs?|"
     r"warranty|spares?|replacements?|samples?|bundles?|"
     # A "Multi-Pack" is a quantity, not a bag — CamelBak sells straws and
@@ -822,11 +865,33 @@ NOT_A_BAG_TYPE = re.compile(
     r"\b(apparel|outerwear|sportswear|activewear|swimwear|underwear|"
     r"fleece|insulation|baselayer|base layer|tops?|bottoms?|shirts?|"
     r"tees?|hoodies?|jackets?|vests?|trousers?|leggings?|dress(?:es)?|"
+    # The rest of the wardrobe, same source as the camping list below: every
+    # one of these is a whole product_type value Decathlon and Simond were
+    # shipping into a bag index behind the old hiking-pack rule. Garments do
+    # not become carry just because the brand also sells packs.
+    r"parkas?|pullovers?|jumpers?|sweaters?|cardigans?|skirts?|skorts?|"
+    r"boxers?|briefs?|bras?|overalls?|dungarees?|headbands?|"
+    r"neck ?(?:warmers?|gaiters?)|gaiters?|scarf|scarves|"
     r"footwear|shoes?|boots?|trainers?|runners?|sandals?|"
     r"headwear|eyewear|jewell?ery|charms?|"
     r"parts?|hardware|buckles?|components?|spares?|repairs?|"
     r"beauty|skincare|fragrance|grooming|"
     r"cooking|hydration|shelters?|sleep(?:ing)?|tents?|"
+    # Camping and trail gear, which this pattern never named because nothing
+    # used to reach it: the hiking-pack rule classified every one of these off
+    # the activity in its title, and a product_type only gets a vote once the
+    # title has failed to. With that rule fixed the types arrive here, and they
+    # are the rest of what Decathlon was shipping into a bag index — mattresses
+    # and foam mats, cooksets, headlamps, a hammock, a camp bed, a foot pump, a
+    # solar shower, a folding chair, hiking and trail-running poles, ponchos.
+    #
+    # Every word here is a whole product_type value seen in the corpus, not a
+    # guess. Deliberately absent: water bags and water pouches. A 2L bladder is
+    # a soft container and the call is genuinely arguable, and BAGGISH_TYPE
+    # would rescue both spellings anyway on the strength of the noun.
+    r"mattress(?:es)?|pads?|mats?|hammocks?|cots?|beds?|bed bases?|"
+    r"cook(?:sets?|ware)|headlamps?|head ?torch(?:es)?|lanterns?|lamps?|"
+    r"poles?|chairs?|stools?|pumps?|showers?|ponchos?|"
     r"gift cards?|events?|resale)\b",
     re.I,
 )
@@ -929,6 +994,18 @@ def classify(title, product_type, tags):
     return None, None
 
 
+def titled(title):
+    """The category this title names outright, or None.
+
+    classify() answers from three tiers and says which one it used. This is the
+    strongest of them and the only one that should be able to contradict a
+    store's own product_type — see the gate in build(). Kept here rather than
+    inlined at the two call sites so the two cannot drift apart.
+    """
+    cat, src = classify(title, "", [])
+    return cat if src == "title" else None
+
+
 def detect(text, table):
     out = []
     for name, pattern in table:
@@ -977,12 +1054,21 @@ def build_shopify(product, brand, hint=None, force=None):
         shelf = taxonomy_leaf(gtax) if gtax else ptype
         # Only after the title has had its say: a "Camera Bag" filed under a
         # store's "Photo Accessories" shelf is still a camera bag.
+        #
+        # The title's rescue has to be a *title* match, not any match at all.
+        # classify() reports its source, and its third tier — CATEGORIES_WEAK —
+        # answers on evidence far too soft to overturn a store saying outright
+        # that it filed this under Shoes. Reading only the category and
+        # ignoring the source, a weak hit counted the same as a product noun,
+        # which is how 88 Forclaz rows walked past a gate that had already
+        # recognised "Shoes" as not a bag and simply been told the title knew
+        # better. It did not.
         if gtax:
             if (not gtax.startswith(GOOGLE_CARRY_ROOTS)
-                    and not classify(title, "", [])[0]):
+                    and not titled(title)):
                 return None, "not-a-bag:product-type"
         elif (NOT_A_BAG_TYPE.search(ptype) and not BAGGISH_TYPE.search(ptype)
-                and not classify(title, "", [])[0]):
+                and not titled(title)):
             return None, "not-a-bag:product-type"
 
         # Precedence: the product's own title, then the store's shelving, then
