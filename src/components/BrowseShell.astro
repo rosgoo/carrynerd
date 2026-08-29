@@ -196,29 +196,27 @@ const unlock = scope?.unlock ?? null;
       </div>
     </details>
 
+    {/* Rows, like every other group, where this was the rail's one <select>.
+        The options are the same five whole inches and mean the same thing; what
+        they gained is the number beside them, which is the only thing anyone
+        wanted from the other groups and the one thing a dropdown cannot show —
+        a size you have to open a menu to choose is a size you choose blind.
+        Filled by buildFacets() from facets.laptop and recounted by
+        paintFacetCounts() with everything else; the rungs and the reason there
+        are five of them are LAPTOP_STEPS in api/browse.ts.
+
+        The note that used to sit under the select said only bags whose maker
+        states a size are here, and a bag we have no figure for is not shown
+        rather than guessed at. It is gone because the counts now say it in the
+        one place a reader would look: a count line reading 8,144 bags over a
+        Laptop group whose largest row is 1,221 states the same fact in the same
+        breath as the choice it qualifies, on every render, and the sentence
+        under it was the note apologising for a control that could not. The
+        coverage meter in the rail still prints the figure — laptop_in, 15% —
+        for anyone who wants it as a number. */}
     <details class="fgroup">
       <summary>Laptop</summary>
-      <div class="fbody">
-        {/* Fixed options rather than the catalog's 29 distinct values. Brands
-            state 15.6 and 16.2 and 16.9, and a list that long is a list nobody
-            reads — but the sizes people own cluster on the whole inches, and
-            "at least 16" already collects the 16.2. A minimum, because
-            laptop_in is the largest machine a bag takes: see the note on
-            laptopMin in api/browse.ts, and the laptop hub pages, which read it
-            the same way. */}
-        <select id="laptop-min" aria-label="Minimum laptop size">
-          <option value="">Any laptop size</option>
-          <option value="13">Fits 13″ and up</option>
-          <option value="14">Fits 14″ and up</option>
-          <option value="15">Fits 15″ and up</option>
-          <option value="16">Fits 16″ and up</option>
-          <option value="17">Fits 17″ and up</option>
-        </select>
-        <p class="note" style="padding:10px 0 0;border:none">
-          Only bags whose maker states a size. A bag we have no figure for is
-          not shown here rather than guessed at.
-        </p>
-      </div>
+      <div class="fbody"><div class="checks" id="f-laptop"></div></div>
     </details>
 
     <details class="fgroup">

@@ -451,15 +451,6 @@ header .spacer { flex: 1; }
 .rangerow input:focus { border-color: var(--accent); }
 .rangerow em { color: var(--ink-mute); font-style: normal; font-size: 11px; }
 
-/* The rail's one <select>, matched to the number boxes above rather than to
-   the toolbar's sort control: it sits among them, so it takes their border,
-   padding and 11px. Full width because a facet spans its group. */
-.fbody select {
-  width: 100%; background: var(--bg); border: 1px solid var(--line-2);
-  padding: 5px 7px; font-size: 11px; outline: none;
-}
-.fbody select:focus { border-color: var(--accent); }
-
 /* ---------- dual-handle range slider ---------- */
 
 /* Two stacked <input type="range"> rather than a hand-rolled div, so keyboard

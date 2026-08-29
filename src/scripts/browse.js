@@ -53,9 +53,20 @@ const bagHref = b => {
   return brand ? `/bags/${brand}/${slug}/` : "/";
 };
 
-// Every facet's state in one place. This mapping used to be re-declared in
-// four separate functions, which meant adding a facet meant remembering all
-// four.
+/* Every facet's state in one place. This mapping used to be re-declared in
+ * four separate functions, which meant adding a facet meant remembering all
+ * four.
+ *
+ * Laptop is drawn as a group in the rail and is missing from here on purpose.
+ * It is one-of rather than any-of — a single rung, or none — so there is no set
+ * to add to, and it spells itself `laptopMin=15` in the URL, which is what
+ * shared links and saved filters have always said and what the server has
+ * always parsed. Wrapping a Set around it would have bought one line here at
+ * the price of a second spelling for the same filter, and the spelling is the
+ * half that is load-bearing. So it lives in S.laptopMin with the ranges below,
+ * RANGE_KEYS carries it through the URL both ways, and the two functions that
+ * walk [data-f] know about it by name: the click handler in wire(), and
+ * syncFacetButtons(). Anything else added to the rail belongs in this table. */
 const facetSets = () => ({
   cat: S.cats, brand: S.brands, feat: S.feats, mat: S.mats, color: S.colors,
   airline: S.airlines,
@@ -1052,6 +1063,20 @@ function buildFacets({ facets, coverage, stats }) {
   // slug — the same reason the brand names are kept below.
   AIRLINE_NAMES = new Map((facets.airlines || []).map(([slug, name]) => [slug, name]));
 
+  /* One row per whole inch the catalogue reaches, and the label built here
+     rather than sent: the server ships the rung as the string that goes in
+     data-v and in the URL, and "Fits 13″ and up" is that string with words
+     around it — the same division of labour CAT_LABELS and FEATURE_LABELS
+     already do, minus the table, because this one is a formula.
+
+     A minimum, so the counts fall as the rows go down and a bag taking 16″ is
+     inside all four of 13, 14, 15 and 16. And one-of, so pressing a second row
+     moves the choice rather than adding to it; see the click handler in wire(),
+     which is where the difference between this group and the rest lives. */
+  $("#f-laptop").innerHTML = (facets.laptop || [])
+    .map(([v, n]) => `<button class="check" data-f="laptop" data-v="${esc(v)}" aria-pressed="false"><i></i>Fits ${
+      esc(v)}″ and up<b class="n">${n}</b></button>`).join("");
+
   // Kept for describeState(), which names a saved filter after what is in it
   // and would otherwise call it "peak-design".
   BRAND_NAMES = new Map(facets.brands.map(([slug, name]) => [slug, name]));
@@ -1070,10 +1095,12 @@ function buildFacets({ facets, coverage, stats }) {
    * nothing. It never happens on the whole catalogue — every facet has
    * thousands behind it — but a scoped rail is counting one brand's shelf, and
    * a maker whose colourways name no colour we can read would otherwise get a
-   * Colour heading with a blank panel under it. Only the data-driven groups:
-   * Availability and the ranges are always worth offering. */
+   * Colour heading with a blank panel under it. Laptop joined the list when it
+   * stopped being a dropdown: a brand that states no laptop size anywhere sends
+   * no rungs, and five rows of nought would be worse than no group. Only the
+   * data-driven groups: Availability and the ranges are always worth offering. */
   for (const sel of ["#f-cat", "#f-color", "#f-feat", "#f-mat", "#f-brand",
-                     "#f-airline"]) {
+                     "#f-airline", "#f-laptop"]) {
     const group = $(sel)?.closest(".fgroup");
     if (group) group.hidden = !$(sel).children.length;
   }
@@ -1119,6 +1146,9 @@ function paintFacetCounts(facets) {
     // column is being replaced.
     airline: new Map((facets.airlines || []).map(([slug, , n]) => [slug, n])),
     brand: new Map((facets.brands || []).map(([slug, , n]) => [slug, n])),
+    // Rung and count, keyed by the string the server sent — data-v holds "16",
+    // not 16, and a Map does not consider those the same key.
+    laptop: new Map(facets.laptop || []),
   };
 
   for (const el of $$("[data-f]")) {
@@ -1525,7 +1555,8 @@ function loadURL() {
   $("#vol-min").value = S.volMin ?? ""; $("#vol-max").value = S.volMax ?? "";
   $("#price-min").value = S.priceMin ?? ""; $("#price-max").value = S.priceMax ?? "";
   $("#weight-min").value = S.weightMin ?? ""; $("#weight-max").value = S.weightMax ?? "";
-  $("#laptop-min").value = S.laptopMin ?? "";
+  // laptopMin has no box to fill any more: it is a row in the rail now, and
+  // syncFacetButtons() at the bottom of this function lights the right one.
   syncUnits();
   syncSliders();
   $("#f-stock").setAttribute("aria-pressed", S.stock);
@@ -1538,8 +1569,12 @@ function loadURL() {
 
 function syncFacetButtons() {
   const sets = facetSets();
+  // Laptop has no set to ask — see the note above facetSets(). Compared as a
+  // number, because S.laptopMin is one and data-v is the string beside it.
   $$("[data-f]").forEach(el =>
-    el.setAttribute("aria-pressed", sets[el.dataset.f]?.has(el.dataset.v) || false));
+    el.setAttribute("aria-pressed", el.dataset.f === "laptop"
+      ? S.laptopMin === Number(el.dataset.v)
+      : sets[el.dataset.f]?.has(el.dataset.v) || false));
   $$("[data-preset]").forEach(el =>
     el.setAttribute("aria-pressed", S.presets.has(el.dataset.preset)));
 }
@@ -1720,6 +1755,22 @@ function wire() {
     // navigates, so there are two ways through and neither fights the other.
     if (e.target.closest("a[href]")) return;
 
+    /* Laptop first, because it is the one group in the rail with no set behind
+       it — see the note above facetSets(). One-of, so pressing a rung replaces
+       whatever was chosen rather than adding to it, and pressing the lit rung
+       is the way back to any size: every other group has that in unticking, and
+       a group where a press could only ever move the choice sideways would be
+       one you could enter and never leave. syncFacetButtons() rather than
+       setting the attribute here, because two rows change on a press and only
+       one of them was clicked. */
+    const lap = e.target.closest('[data-f="laptop"]');
+    if (lap) {
+      const rung = Number(lap.dataset.v);
+      S.laptopMin = S.laptopMin === rung ? null : rung;
+      syncFacetButtons();
+      return render();
+    }
+
     const facet = e.target.closest("[data-f]");
     if (facet) {
       const set = facetSets()[facet.dataset.f];
@@ -1793,13 +1844,6 @@ function wire() {
   num("#vol-min", "volMin"); num("#vol-max", "volMax");
   num("#price-min", "priceMin"); num("#price-max", "priceMax");
   num("#weight-min", "weightMin"); num("#weight-max", "weightMax");
-
-  // A select, so no debounce: picking a size is one discrete answer, the way
-  // sort is, not a value someone types a digit at a time.
-  $("#laptop-min").addEventListener("change", e => {
-    S.laptopMin = e.target.value === "" ? null : Number(e.target.value);
-    render();
-  });
 
   const askLinear = debounce(render);
   $("#linear-max").addEventListener("input", e => {

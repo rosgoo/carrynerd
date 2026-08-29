@@ -333,6 +333,13 @@ const ORDERS: Record<string, Row[]> = Object.fromEntries(
  * group gets is `lift` in GROUPS, down in the query section beside the matcher
  * it is a decomposition of.
  *
+ * Laptop is lifted too, and for the reason rather than the shape: it is one-of
+ * rather than any-of — laptopMin holds a single rung — so a second choice does
+ * not narrow the first, it replaces it. Counted with itself in place, the four
+ * rungs you did not pick would read nought or read the pool above the one you
+ * did, and the group would stop being able to say what moving from 15" to 16"
+ * costs. Lifted, that is exactly what it says.
+ *
  * What does not move is which options are printed and the order they come in.
  * That is still settled once per scope, from the scope's own rows — re-ordering
  * by the live count would shuffle the list under the cursor on every keystroke,
@@ -344,6 +351,18 @@ const tally = (rows: Row[], of: (r: Row) => Iterable<string>) => {
   for (const r of rows) for (const v of of(r)) m.set(v, (m.get(v) ?? 0) + 1);
   return [...m.entries()].sort((a, b) => b[1] - a[1]);
 };
+
+/* The laptop group's rungs, and the one facet whose options are written here
+ * rather than read off the catalogue.
+ *
+ * laptop_in has 29 distinct values in the data because brands state 15.6 and
+ * 16.2 and 16.9, and a group 29 rows deep is a group nobody reads. The sizes
+ * people actually own cluster on the whole inches, and because the filter is a
+ * minimum — see laptopMin in the query section — "at least 16" already collects
+ * the 16.2. Five rungs, so five rows. This is the same list the rail used to
+ * spell out as <option>s in BrowseShell.astro; it lives here now so that the
+ * options and the counts beside them cannot disagree about how many there are. */
+const LAPTOP_STEPS = [13, 14, 15, 16, 17];
 
 /* Which options a scope prints and the order it prints them in — everything
  * about the rail that a request cannot change. The numbers that ride beside
@@ -370,6 +389,20 @@ const shapeOf = (rows: Row[]) => ({
       .sort((a, b) => byLabel(a.name, b.name))
       .map((c) => [c.slug, c.name] as const);
   })(),
+  /* Written as strings, like every other option list, because the first column
+   * of a facet is the value the rail puts in data-v and the reader's URL puts
+   * after `laptopMin=` — and those are the same string or the client cannot
+   * find its own count.
+   *
+   * Filtered to the rungs the scope can reach, the same way the lists above are
+   * built from the scope's own rows. Every rung survives on the whole catalogue;
+   * what this drops is the 17" row on a brand that makes slings, which would
+   * otherwise sit there reading nought for the life of the deploy. A rung that
+   * merely counts nought under the current filter is a different thing and is
+   * kept — that is the per-request number, and the client dims it. */
+  laptop: LAPTOP_STEPS
+    .filter((n) => rows.some((r) => r.laptop_in != null && r.laptop_in >= n))
+    .map(String),
   materials: tally(rows, (r) => r.materials).map(([v]) => v),
   colors: tally(rows, (r) => r.colours).map(([v]) => v),
   /* Slug and display name — the rail prints the name and files by it, and
@@ -389,7 +422,7 @@ type Counts = Record<keyof Shape, Map<string, number>>;
 
 const noCounts = (): Counts => ({
   categories: new Map(), features: new Map(), airlines: new Map(),
-  materials: new Map(), colors: new Map(), brands: new Map(),
+  laptop: new Map(), materials: new Map(), colors: new Map(), brands: new Map(),
 });
 
 /** The scope's option list with this request's numbers written into it. The
@@ -401,6 +434,7 @@ const dress = (shape: Shape, c: Counts) => ({
   categories: shape.categories.map((v) => [v, c.categories.get(v) ?? 0]),
   features: shape.features.map((v) => [v, c.features.get(v) ?? 0]),
   airlines: shape.airlines.map(([slug, name]) => [slug, name, c.airlines.get(slug) ?? 0]),
+  laptop: shape.laptop.map((v) => [v, c.laptop.get(v) ?? 0]),
   materials: shape.materials.map((v) => [v, c.materials.get(v) ?? 0]),
   colors: shape.colors.map((v) => [v, c.colors.get(v) ?? 0]),
   brands: shape.brands.map(([slug, name]) => [slug, name, c.brands.get(slug) ?? 0]),
@@ -547,7 +581,13 @@ type Query = {
   /* Minimum, not maximum, because laptop_in is the largest machine a bag takes:
    * a reader with a 16" laptop wants everything that fits it or more. Same
    * reading as the laptop hub pages, which is deliberate — the filter and the
-   * hub must not disagree about what "fits" means. */
+   * hub must not disagree about what "fits" means.
+   *
+   * Filed here among the ranges, and parsed by RANGES below, although the rail
+   * now draws it as a counted group like Colour or Brand — it is one rung or
+   * none rather than a set, and `laptopMin=16` is what saved filters and shared
+   * links already spell. Its test therefore sits in GROUPS rather than in
+   * matchesFixed; see the laptop entry there. */
   laptopMin: number | null;
   carryon: boolean;
   underseat: boolean;
@@ -615,14 +655,17 @@ const isFiltered = (q: Query) =>
  * a facet count has to be able to ask what a row would do if one group of the
  * filter were lifted — see the facets section. Which bags match did not change
  * and must not: the two halves together are still the line-for-line port of
- * matches() in browse.js, with the order of the tests preserved within each and
- * every test an and, so where the seam falls cannot move an answer.
+ * matches() in browse.js, and every test in both is an and, which is what makes
+ * the seam movable without moving an answer. laptopMin moved across it when the
+ * rail started drawing that group as counted rows — it is spelled the same and
+ * now lives in the table below, because a group with a number beside every rung
+ * is a group whose own choice has to be liftable.
  *
  * This half is the part no count is ever allowed to lift: the search box, the
- * two toggles, the ranges and the presets. Ranges use `!(x >= min)` rather than
- * `x < min` so that a null fails every comparison — a bag with no measured
- * volume cannot be asserted to sit inside a volume window, and reading it as
- * zero would be an assertion. */
+ * two toggles, the remaining ranges and the presets. Ranges use `!(x >= min)`
+ * rather than `x < min` so that a null fails every comparison — a bag with no
+ * measured volume cannot be asserted to sit inside a volume window, and reading
+ * it as zero would be an assertion. */
 function matchesFixed(r: Row, q: Query) {
   // The scope is deliberately not tested here — it is not a filter, and the
   // loop below applies it first so that a bag belonging to another page cannot
@@ -641,18 +684,12 @@ function matchesFixed(r: Row, q: Query) {
   if (q.weightMin != null && !(r.weight_g! >= q.weightMin)) return false;
   if (q.weightMax != null && !(r.weight_g! <= q.weightMax)) return false;
   if (q.linearMax != null && !(r.linear_cm! <= q.linearMax)) return false;
-  // Spelled with an explicit null test rather than leaning on the comparison
-  // the way the lines above do. A bag with no stated laptop size is an unknown,
-  // not a no, and "fits 16 inches" must not answer with bags nobody has said
-  // that about — which is the same rule the rest of the index runs on.
-  if (q.laptopMin != null
-      && !(r.laptop_in != null && r.laptop_in >= q.laptopMin)) return false;
   if (q.carryon && !r.carryon) return false;
   if (q.underseat && !r.underseat) return false;
   return true;
 }
 
-/* The other half: the six groups the rail draws as lists of options, each as
+/* The other half: the seven groups the rail draws as lists of options, each as
  * the two things a per-request count needs of it — the test its own selection
  * applies, and what to add to its tally off a row that got that far.
  *
@@ -663,8 +700,10 @@ function matchesFixed(r: Row, q: Query) {
  * what makes "Blue — 412" a promise about adding blue rather than a zero.
  * Features and airlines are every-of: a second tick narrows, so the honest
  * number beside an option is how many of the bags already on screen also have
- * it, and their tallies see only rows that matched outright. The facets section
- * argues both at length.
+ * it, and their tallies see only rows that matched outright. Laptop is lifted
+ * on the same reasoning arrived at from the other side — it is one-of, so a
+ * second choice replaces the first rather than narrowing it. The facets section
+ * argues all three at length.
  *
  * A bag stating fewer than three axes has an empty airline set and fails any
  * carrier named — it is not being judged against the gauge and cannot be
@@ -701,6 +740,26 @@ const GROUPS: Group[] = [
   { key: 'airlines', lift: false,
     ok: (r, q) => q.airlines.every((a) => r.airlines.has(a)),
     count: (r, m) => { for (const v of r.airlines) bump(m, v); } },
+  /* One-of and a minimum, which is what makes this group's tally the odd one:
+   * a row does not fall under one rung, it falls under every rung it clears, so
+   * a bag taking 16" is counted at 13, 14, 15 and 16. That is not double
+   * counting, it is what the rows say — "fits 13 and up" is a promise that
+   * bag keeps too — and it is why the five numbers come out as a decreasing
+   * series with 13 at the top rather than as a histogram summing to the total.
+   *
+   * The null test is spelled out rather than left to the comparison, the way
+   * the volume and weight windows leave theirs. A bag with no stated laptop
+   * size is an unknown, not a no: it is matched by no rung, counted at no rung,
+   * and "fits 16 inches" never answers with bags nobody has said that about.
+   * Same rule the rest of the index runs on, and the reason the group's own
+   * numbers now say what a note under the old <select> used to have to. */
+  { key: 'laptop', lift: true,
+    ok: (r, q) => q.laptopMin == null
+                  || (r.laptop_in != null && r.laptop_in >= q.laptopMin),
+    count: (r, m) => {
+      if (r.laptop_in == null) return;
+      for (const n of LAPTOP_STEPS) if (r.laptop_in >= n) bump(m, String(n));
+    } },
 ];
 
 export const GET: APIRoute = ({ url }) => {
@@ -724,15 +783,15 @@ export const GET: APIRoute = ({ url }) => {
   const from = page * per;
   const to = from + per;
 
-  /* One pass, still. The page, the totals, both caveat counts and now all six
+  /* One pass, still. The page, the totals, both caveat counts and all seven
    * facet tallies are decided by the same per-bag verdict, so they are all taken
    * from it — and only the rows inside the requested window are ever held, which
    * is what keeps a query matching the whole catalogue from building an
    * 8,000-element array to send sixty of them.
    *
-   * The rail is what that verdict grew. Counting six groups each with its own
-   * selection lifted is six questions per row, not one, and the obvious way to
-   * answer them is six passes with a different filter dropped each time. The
+   * The rail is what that verdict grew. Counting seven groups each with its own
+   * selection lifted is seven questions per row, not one, and the obvious way to
+   * answer them is seven passes with a different filter dropped each time. The
    * cheap way is this: ask which groups the row is *out* of, and note that a row
    * out of two or more counts nowhere at all, a row out of exactly one counts
    * only towards that one, and a row out of none is a match and counts towards
@@ -846,7 +905,7 @@ export const GET: APIRoute = ({ url }) => {
    * are now about the answer rather than about the deploy. It is the option list
    * of the scope with this request's tallies written into it — the list itself
    * is still the cached, per-scope one, so what is being paid for per request is
-   * six maps and the JSON, not a second count of who exists. */
+   * seven maps and the JSON, not a second count of who exists. */
   if (wantFacets) {
     body.facets = dress(q.scope ? scoped(q.scope).shape : SHAPE, counts);
   }
