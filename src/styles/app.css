@@ -1375,6 +1375,16 @@ a.brand { text-decoration: none; }
 }
 .tip:hover, .tip:focus-visible { border-color: var(--ink-dim); color: var(--ink-dim); }
 
+/* The citation beside a carrier's name on /carry-on/. Quiet, because it is not
+   where most readers are going — the name beside it is — but present, because
+   the one reader arguing with a gate agent needs the airline's own page and
+   not ours. */
+.srclink {
+  margin-left: 7px; font-size: 9.5px; letter-spacing: .06em;
+  color: var(--ink-mute); white-space: nowrap;
+}
+.srclink:hover { color: var(--accent); }
+
 /* The other capacities a model is sold in — see `siblings` in
    pages/bags/[brand]/[model].astro. Directly under the Volume figure and above
    the buy button, because it answers a question about the number it sits

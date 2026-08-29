@@ -123,9 +123,20 @@ const breadcrumbs = {
           <tbody>
             {group.map(({ airline, fits, personal }) => (
               <tr>
+                {/* Two links, and they answer different questions. The name
+                    goes to our page for the carrier — the bags that fit it.
+                    "policy" goes to the page the numbers were read off, which
+                    is the airline's own and the only citation that settles an
+                    argument at a gate. It has been in the data as `source`
+                    since the table was first built and was never once shown. */}
                 <td>
                   <a href={airlineHref(airline)}>{airline.name}</a>
                   {airline.carry_on_note && <i class="prov">{airline.carry_on_note}</i>}
+                  {airline.source && (
+                    <a class="srclink" href={airline.source} target="_blank"
+                       rel="noopener nofollow"
+                       title={`${airline.name}'s own baggage policy`}>policy ↗</a>
+                  )}
                 </td>
                 <td>{fmtLimit(airline) ?? '—'}</td>
                 <td>{fits}</td>

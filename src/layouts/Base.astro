@@ -159,7 +159,14 @@ const isHome = Astro.url.pathname === '/';
     <div class="stats"></div>
     <div class="spacer"></div>
     <nav class="hbtns">
-      <a class="hbtn" href="/">Browse</a>
+      {/* Carry-on takes Browse's place rather than joining it. Browse was a
+          second link to "/" on a header whose wordmark already goes there, and
+          /carry-on/ was reachable only from the footer — which, under an
+          infinite scroll, is a place you cannot get to. Two of the site's four
+          real sections were behind a scroll that does not end. A swap rather
+          than an addition because this nav is already three rows on a small
+          phone and a seventh item would make it four. */}
+      <a class="hbtn" href="/carry-on/">Carry-on</a>
       {/* The hubs were reachable only from the footer, which is the right
           place for a link graph and the wrong one for a reader: someone on
           /daypacks/ had nothing above the fold telling them travel backpacks

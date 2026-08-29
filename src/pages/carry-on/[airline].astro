@@ -183,8 +183,12 @@ const breadcrumbs = {
         </tbody>
       </table>
       <p class="note">
-        Read off {airline.name}'s published policy on {airline.checked},
-        reviewed across all {airlines.length} carriers on {airlinesUpdated}.
+        Read off {airline.name}'s
+        {airline.source
+          ? <Fragment>{' '}<a href={airline.source} target="_blank"
+              rel="noopener nofollow">published policy ↗</a></Fragment>
+          : ' published policy'} on {airline.checked}, reviewed across all
+        {' '}{airlines.length} carriers on {airlinesUpdated}.
       </p>
     </section>
 

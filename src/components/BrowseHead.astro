@@ -40,6 +40,10 @@ import ThemeToggle from './ThemeToggle.astro';
         {hubs.map((hub) => <a href={hub.href}>{hub.title}</a>)}
       </div>
     </details>
+    {/* Same reason as the swap in Base.astro: the footer is not a place you
+        can reach on a page that keeps loading. This header has no Browse to
+        trade for it — you are already browsing — so it is an addition. */}
+    <a class="hbtn" href="/carry-on/">Carry-on</a>
     <a class="hbtn" href="/sale/">Sale</a>
     <a class="hbtn" href="/brands/">Brands</a>
     <ThemeToggle />

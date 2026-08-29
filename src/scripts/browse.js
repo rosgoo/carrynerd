@@ -274,15 +274,26 @@ let PAGED = 0;
  * several of them — a scroll that keeps the bottom of the document permanently
  * five hundred pixels away is not a convenience, it is a trap.
  *
- * Five pages — three hundred bags — from each start the reader asked for, then
- * the observer retires and a Load more button stands where the sentinel was.
- * A button from the very first page was the other obvious fix and it charges
- * everybody four presses to get anywhere; moving the footer's links into the
- * rail was the third, and it answers the symptom while leaving the document
- * bottomless. This keeps the scrolling effortless for anyone browsing and still
- * guarantees the page comes to rest.
+ * Three pages — a hundred and eighty bags — from each start the reader asked
+ * for, then the observer retires and a Load more button stands where the
+ * sentinel was. A button from the very first page was the other obvious fix
+ * and it charges everybody a press to get anywhere; this keeps the scrolling
+ * effortless for someone browsing and still guarantees the page comes to rest.
+ *
+ * Five to begin with, and three after somebody said the footer was still out
+ * of reach — three hundred cards is a long way to scroll before the first stop
+ * and the trap was still a trap, just a shorter one. Three is roughly a
+ * screenful on a desk and several on a phone, which is enough to be browsing
+ * rather than clicking.
+ *
+ * The number is only half the answer, and the smaller half. A footer is a bad
+ * place to keep the only route to a section of the site whatever the scroll
+ * does, so /carry-on/ is in the header now — see the note in layouts/Base.astro
+ * — and this stopped being the thing standing between a reader and half the
+ * catalogue. It is a reachable bottom of a document, which is all it should
+ * ever have been.
  */
-const BURST = 5;
+const BURST = 3;
 let burst = 0;      // pages loaded on the scroll's own initiative since then
 
 async function ask(page, boot = false) {
