@@ -1,5 +1,5 @@
 ---
-/* A length, shown in whichever unit the reader picked.
+/* A measurement, shown in whichever system the reader picked.
  *
  * Both renderings ship in the HTML and CSS reveals one, keyed off the
  * `data-units` attribute the header toggle writes on <html>. That is why this
@@ -7,14 +7,25 @@
  * units cannot flash the wrong number: the attribute is restored in <head>
  * before first paint, same as the theme.
  *
- * `value` is what fmtDims()/fmtLinear() return — { cm, in } — or null.
+ * `value` is what fmtDims()/fmtLinear() return — { cm, in } — or what
+ * fmtWeightBoth() returns — { metric, imperial } — or null. Two spellings,
+ * because a length's two halves are each exactly one unit and can honestly be
+ * named after it, while a weight's are two apiece: grams or kilograms against
+ * ounces or pounds. Calling that pair cm/in would be a small lie told in the
+ * one file whose entire subject is units, so this reads either rather than
+ * making a caller pretend. The class names stay .u-cm/.u-in regardless — they
+ * are the names of the two slots the toggle switches between, and renaming
+ * them would mean touching every length on the site to fix a weight.
  */
 const { value, fallback = '—' } = Astro.props;
+
+const metric = value ? value.cm ?? value.metric : null;
+const imperial = value ? value.in ?? value.imperial : null;
 ---
 {
   value ? (
     <>
-      <span class="u-cm">{value.cm}</span><span class="u-in">{value.in}</span>
+      <span class="u-cm">{metric}</span><span class="u-in">{imperial}</span>
     </>
   ) : (
     fallback

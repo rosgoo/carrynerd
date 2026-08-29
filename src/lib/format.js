@@ -27,10 +27,46 @@ export const fmtPriceRange = (min, max, currency = 'USD') =>
   : max == null || max === min ? fmtPrice(min, currency)
   : `${fmtPrice(min, currency)} – ${fmtPrice(max, currency)}`;
 
+/* Metric only, and deliberately kept alongside the pair below rather than
+   folded into it. What is left calling it is the crawler-facing copy — the meta
+   description on a model page and on a size band — where there is no reader
+   with a toggle to honour, only a string baked at build time, and where "820 g
+   / 29 oz" would be noise in a search result. The same call the dimensions
+   already make there, taking .cm off the pair and leaving the inches. Anything
+   a reader looks at on the page itself goes through fmtWeightBoth(). */
 export const fmtWeight = (g) =>
   g == null ? null : g >= 1000 ? `${(g / 1000).toFixed(2)} kg` : `${g} g`;
 
 export const CM_PER_IN = 2.54;
+export const G_PER_LB = 453.59237;
+export const G_PER_OZ = 28.349523;
+
+/* Weight formats to *both* unit systems at once, exactly as the lengths below
+   do and for the same reason — see the note above fmtDims.
+
+   That it did not was a plain bug: the toggle writes data-units="in" and every
+   length on the page obeys, while the weight beside them stayed in grams. The
+   button says "in" and means imperial; a reader who pressed it and was still
+   told a bag weighs 1.42 kg was reading half a translation.
+
+   Imperial changes unit where metric does — ounces under a pound, pounds over
+   it — mirroring the g→kg step above. Holding to one unit either way was the
+   alternative and it reads badly at both ends: 0.4 lb for a sling, 52 oz for a
+   travel pack.
+
+   The two halves are named for the systems rather than for the units, because
+   unlike a length neither half here *has* one unit: it is g or kg against oz or
+   lb. <Measure /> takes that spelling as well as the cm/in one. */
+export const fmtWeightBoth = (g) =>
+  g == null
+    ? null
+    : {
+        metric: fmtWeight(g),
+        imperial:
+          g >= G_PER_LB
+            ? `${(g / G_PER_LB).toFixed(1)} lb`
+            : `${Math.round(g / G_PER_OZ)} oz`,
+      };
 
 /* Lengths format to *both* units at once, and the caller renders both.
    These pages are static HTML with no island on them, so a unit preference

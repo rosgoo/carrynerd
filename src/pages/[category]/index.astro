@@ -15,13 +15,14 @@
  */
 import Base from '../../layouts/Base.astro';
 import BagTable from '../../components/BagTable.astro';
+import Measure from '../../components/Measure.astro';
 import {
   hubs, byDensity, rankable, COMMON_CARRYON_CM, MIN_FACET, MIN_PLAUSIBLE_GPL,
 } from '../../lib/hubs.js';
 import { bagHref } from '../../lib/catalog.js';
 import { airlines } from '../../lib/carryon.js';
 import { SITE_NAME, SITE_NAME_DISPLAY } from '../../lib/brand.js';
-import { fmtPrice, fmtVolume, fmtWeight, pricePerLitre } from '../../lib/format.js';
+import { fmtPrice, fmtVolume, fmtWeightBoth, pricePerLitre } from '../../lib/format.js';
 
 export function getStaticPaths() {
   return hubs.map((hub) => ({ params: { category: hub.slug }, props: { hub } }));
@@ -139,7 +140,7 @@ const breadcrumbs = {
       carry specs complete enough to compare, and those are the ones on this page.
       {s.medianVolume != null && s.medianWeight != null && (
         <Fragment>
-          {' '}The median is {fmtVolume(s.medianVolume)} and {fmtWeight(s.medianWeight)}
+          {' '}The median is {fmtVolume(s.medianVolume)} and <Measure value={fmtWeightBoth(s.medianWeight)} />
           {s.medianGpl != null && <Fragment>, or {s.medianGpl.toFixed(0)} g per litre</Fragment>}.
         </Fragment>
       )}

@@ -314,6 +314,15 @@ const unlock = scope?.unlock ?? null;
       </div>
     </details>
 
+    {/* Grams, in both units, and deliberately so. Every weight the reader is
+        shown now follows the unit toggle — a card, a table cell, the comparison
+        sheet — but these two numbers are not shown, they are typed, and what is
+        typed here is spelled straight into the query string and into whatever
+        saved filters this browser is keeping. Converting them would silently
+        re-point every link anyone has already shared and every filter they have
+        already saved at a different set of bags. That is a migration, not a
+        formatting change, and it is not this one. The heading says grams so
+        that the one control still in metric says which metric it means. */}
     <details class="fgroup">
       <summary>Weight — grams</summary>
       <div class="fbody">
@@ -379,9 +388,22 @@ const unlock = scope?.unlock ?? null;
         <button class="tbtn" id="viewgrid" aria-pressed="true">Grid</button>
         <button class="tbtn" id="viewtable" aria-pressed="false">Table</button>
       </div>
-      <button class="tbtn units" id="units" title="Show lengths in centimetres or inches">
-        <span class="u-cm">cm</span><span class="u-in">in</span>
-      </button>
+      {/* The same control as Grid/Table above it, deliberately: both units on
+          screen, the live one lit, pressing the other selects it. It used to be
+          one button printing the unit you were already in, which read as the
+          opposite of the theme toggle beside it — that one shows where you are
+          going. Two small buttons an inch apart disagreeing about their own
+          grammar is a thing a reader can only settle by pressing one, and this
+          removes the question rather than answering it. The layout's markup
+          carries the long version of this note. */}
+      <div class="units" id="units" role="group" aria-label="Measurement units">
+        <button class="tbtn" type="button" data-unit="cm" aria-pressed="true"
+                title="Show measurements in centimetres and grams"
+                aria-label="Show measurements in centimetres and grams">cm</button>
+        <button class="tbtn" type="button" data-unit="in" aria-pressed="false"
+                title="Show measurements in inches and pounds"
+                aria-label="Show measurements in inches and pounds">in</button>
+      </div>
     </div>
     <div id="results">
       <slot />

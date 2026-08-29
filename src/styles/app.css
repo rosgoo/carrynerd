@@ -23,7 +23,26 @@
    "dark"]) guard never passed and a reader whose system asked for light was
    served dark regardless. The attribute is out of the markup — see
    layouts/Base.astro, where the head script writes it only once the reader has
-   actually chosen. */
+   actually chosen.
+
+   ---------- the ink ramp ----------
+
+   --ink, --ink-dim and --ink-mute are three steps of quiet, and every one of
+   them now clears WCAG AA — 4.5:1 — against all three surfaces it can land on:
+   --bg, --panel and --raised. It did not. --ink-mute was #8e938f on light and
+   #6b7472 on dark, which is 2.8:1 on the page and 2.9:1 on a raised card, so
+   the quietest text on the site — a spec label, a provenance note, the
+   struck-through price a sale is measured against — was also the text hardest
+   to read. Quiet is meant to be a rank, not a licence to disappear.
+
+   --ink-dim moves too, and it has to. Lifting --ink-mute on its own to clear
+   the floor walks it straight into --ink-dim: the two would land about 1.1:1
+   apart, which is not a step, and the ramp would read as two tokens with a
+   third going spare. So the whole ramp was re-solved rather than patched —
+   roughly 1.55:1 between dim and mute, enough to tell them apart at a glance,
+   with the floor held at 4.5:1 rather than the 3:1 large-text allowance,
+   because nearly everything wearing these tokens is set between 9.5 and 12px.
+   The accent, --ok and --warn are untouched: they were not the failure. */
 
 :root {
   --bg:      #f4f3f0;
@@ -32,8 +51,8 @@
   --line:    #d9d6cf;
   --line-2:  #bcb8ae;
   --ink:     #16181a;
-  --ink-dim: #5e6360;
-  --ink-mute:#8e938f;
+  --ink-dim: #4e5350;
+  --ink-mute:#6b706c;
   --accent:  #e8430a;
   --accent-ink: #ffffff;
   --ok:      #17804a;
@@ -63,7 +82,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg:#191c1d; --panel:#202425; --raised:#282d2e; --line:#343a3b;
-    --line-2:#474e4f; --ink:#e8eae8; --ink-dim:#949c9a; --ink-mute:#6b7472;
+    --line-2:#474e4f; --ink:#e8eae8; --ink-dim:#b2bab8; --ink-mute:#8c9593;
     --accent:#ff5a1f; --accent-ink:#141617; --ok:#5fd38d; --warn:#ffc046;
     --grid:rgba(255,255,255,.032);
   }
@@ -78,8 +97,8 @@
   --line:    #343a3b;
   --line-2:  #474e4f;
   --ink:     #e8eae8;
-  --ink-dim: #949c9a;
-  --ink-mute:#6b7472;
+  --ink-dim: #b2bab8;
+  --ink-mute:#8c9593;
   --accent:  #ff5a1f;
   --accent-ink: #141617;
   --ok:      #5fd38d;
@@ -546,6 +565,17 @@ header .spacer { flex: 1; }
 }
 .check b { margin-left: auto; color: var(--ink-mute); font-weight: 400; font-size: 9.5px; }
 
+/* An option nothing in the current results has. The counts move with the filter
+   now — see paintFacetCounts() in browse.js — so options do fall to zero, and a
+   zero is shown rather than removed: a list that drops rows as you type changes
+   height under the reader, and an option that is simply gone is one they go
+   looking for. Dimmed and inert says the same thing without moving anything.
+   Never applied to a ticked option, which has to stay pressable however far its
+   count has fallen — it is the only way back off itself. */
+.check[disabled], .chip[disabled] { opacity: .38; cursor: default; }
+.check[disabled]:hover { color: var(--ink-dim); }
+.chip[disabled]:hover { color: var(--ink-dim); border-color: var(--line-2); }
+
 .cov { display: flex; flex-direction: column; gap: 7px; }
 .covrow { display: grid; grid-template-columns: 62px 1fr 28px; gap: 7px; align-items: center; }
 .covrow em { font-style: normal; font-size: 9.5px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: .06em; }
@@ -599,9 +629,40 @@ main { flex: 1; min-width: 0; }
 
 /* Grid and Table are one control with two positions, not two controls, so they
    share a border and sit tight against each other — the toolbar's 12px gap
-   between them would read as an unrelated pair. */
-.views { display: flex; }
-.views .tbtn + .tbtn { border-left: none; }
+   between them would read as an unrelated pair.
+
+   cm and in are now the same control in the same shape, and that is the point
+   of them: the two pairs sit a few pixels apart on the same bar, so a reader
+   who has worked out one has worked out the other. The unit control used to be
+   a single button printing the unit it was already in, which nothing else on
+   the bar did. */
+.views, .units { display: flex; }
+.views .tbtn + .tbtn,
+.units .tbtn + .tbtn { border-left: none; }
+/* In the header the pair is built from .hbtn instead — the nav's full-height
+   cell rather than the toolbar's outlined box. The divider between the two
+   halves goes for the reason it goes above: they are one thing, and the nav's
+   hairlines are for separating things that are not. */
+.units .hbtn + .hbtn { border-left: none; }
+
+/* Which half is lit, decided by the attribute on <html> rather than by
+   aria-pressed.
+
+   The state has to be right at first paint and on a model page there is nothing
+   running that could have set an attribute on a button — the same problem the
+   theme icon has, solved the same way: CSS reads what the head script already
+   restored, so switching units cannot flash the unit you just left. The layout
+   script sets aria-pressed to match once it loads, for the readers who cannot
+   see a stylesheet; the two agree, so nothing moves when it lands.
+
+   Heavier than the :hover rules on both button classes on purpose — the id in
+   the selector is what buys that — because a lit half that goes grey under the
+   pointer is a control reporting the wrong state at the exact moment somebody
+   is looking at it. */
+html:not([data-units="in"]) #units [data-unit="cm"],
+html[data-units="in"] #units [data-unit="in"] {
+  background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
+}
 
 .grid {
   display: grid; gap: 10px; padding: 14px 16px 120px;
@@ -644,6 +705,29 @@ main { flex: 1; min-width: 0; }
    chunk of results as this approaches the viewport. It needs to be a real box
    with real height to be observable at all. */
 #sentinel { height: 1px; }
+
+/* What stands where the sentinel was once the automatic burst is spent — see
+   BURST in scripts/browse.js. Ghost rather than the filled .btn: it is the
+   quiet end of a list, not the page's call to action, and there is already
+   exactly one accent-filled control on this screen. Full width because it is
+   the whole width of the grid that has just stopped, and because at that size
+   nobody has to aim at it.
+
+   Written as .btn.loadmore rather than .loadmore alone, and that matters: .btn
+   is declared a couple of hundred lines below this and sets a padding of its
+   own, so a single class here would lose the tie on source order and the button
+   would come out the size of the Compare one. */
+.btn.loadmore {
+  display: block; width: calc(100% - 32px); margin: 0 16px 120px;
+  padding: 12px;
+}
+/* The grid holds 120px of empty under its last row so the fixed comparison
+   tray never lands on a card. With a button down there the reserve has to move
+   below the button instead, or the tray would cover the one control this whole
+   change exists to make reachable. Direct children only: the favourites strip
+   contains a .grid of its own and has nothing under it to clear. */
+#results:has(> .loadmore) > .grid,
+#results:has(> .loadmore) > .tablewrap { padding-bottom: 18px; }
 .card:hover { border-color: var(--line-2); }
 .card.sel { border-color: var(--accent); }
 
@@ -1208,8 +1292,16 @@ a.brand { text-decoration: none; }
   font-family: var(--mono); font-size: 24px; font-weight: 600;
   color: var(--accent); font-variant-numeric: tabular-nums;
 }
+/* --ink-dim, not the --ink-mute the rest of the quiet text wears. This is the
+   old price, which is the number a shopper is being asked to compare the new
+   one against — and it is the worst-case combination on the page: 12px, with a
+   rule drawn straight through every glyph. A line-through eats legibility that
+   a contrast ratio does not account for, so the measurement clearing AA is not
+   on its own the answer here. Ranking it one step up is: the figure the whole
+   claim rests on should not also be the faintest thing in the card. Size and
+   the strike stay — struck-through is what says "was". */
 .pricebox .was {
-  font-family: var(--mono); font-size: 12px; color: var(--ink-mute);
+  font-family: var(--mono); font-size: 12px; color: var(--ink-dim);
   text-decoration: line-through;
 }
 .tag.lowest { border-color: var(--ok); color: var(--ok); }

@@ -303,51 +303,107 @@ const ORDERS: Record<string, Row[]> = Object.fromEntries(
 
 /* ---------- facets ---------- */
 
-/* Counted over the rows the page is about rather than over the current match
- * set, the same way the rail has always been built: a facet count that moved as
- * filters were applied would say how many bags are left, when the question it
- * is answering is how many exist. Static per deploy, so it is built once per
- * scope and only shipped on the boot request. */
+/* Counted against the filter the reader has set, not against the catalogue.
+ *
+ * This reverses what stood here. The rail used to be counted over the rows the
+ * page is about and nothing else — static per deploy, built once per scope,
+ * shipped only on the boot request — on the argument that a count beside an
+ * option answers how many bags exist with that property rather than how many
+ * are left. The argument is coherent and it lost anyway: filtering to tomtoc
+ * left a grid of 173 bags beside a Colour group offering nine hundred black
+ * ones, and every reader who met that read it as the rail being broken rather
+ * than as the rail answering a different question. A number printed next to a
+ * control is read as a prediction of what pressing it does. Ours was not one.
+ *
+ * So the counts move with the filter, under the rule that keeps a multi-select
+ * rail usable: each group is counted over the rows matching every *other*
+ * active filter, with its own selection lifted. Counted against a match set
+ * that already includes its own selection, ticking black would drop every other
+ * colour to zero and a second colour could never be added — the rail becomes a
+ * door that locks behind you. Lifted, "Blue — 412" goes on meaning "412 more if
+ * you add blue".
+ *
+ * Lifted for the groups that read as any-of, that is. Features and airlines are
+ * every-of — two ticked means a bag with both, not either — so lifting their
+ * own selection would print the pool the group is choosing from instead of what
+ * another tick would do, and with one carrier ticked the airline group would
+ * sit there showing precisely the catalogue-wide numbers this change exists to
+ * remove. Those two are counted over the match set itself, where "Ryanair — 40"
+ * means forty of the bags on screen also clear Ryanair. Which of the two a
+ * group gets is `lift` in GROUPS, down in the query section beside the matcher
+ * it is a decomposition of.
+ *
+ * What does not move is which options are printed and the order they come in.
+ * That is still settled once per scope, from the scope's own rows — re-ordering
+ * by the live count would shuffle the list under the cursor on every keystroke,
+ * and dropping the options that fell to zero would make the rail change height
+ * while it is being read. A zero ships as a zero and the client dims it; see
+ * paintFacetCounts() in scripts/browse.js. */
 const tally = (rows: Row[], of: (r: Row) => Iterable<string>) => {
   const m = new Map<string, number>();
   for (const r of rows) for (const v of of(r)) m.set(v, (m.get(v) ?? 0) + 1);
   return [...m.entries()].sort((a, b) => b[1] - a[1]);
 };
 
-const facetsOf = (rows: Row[]) => ({
-  categories: tally(rows, (r) => (r.category ? [r.category] : [])),
-  features: tally(rows, (r) => r.features),
-  /* Slug, name, count — the same shape as brands, and for the same reason: the
+/* Which options a scope prints and the order it prints them in — everything
+ * about the rail that a request cannot change. The numbers that ride beside
+ * them are counted per request and married back on by dress() below; what is
+ * kept here is only the ordering the scope-wide count produced, so that the
+ * most common option stays at the top of its group however far the filter has
+ * narrowed things. */
+const shapeOf = (rows: Row[]) => ({
+  categories: tally(rows, (r) => (r.category ? [r.category] : [])).map(([v]) => v),
+  features: tally(rows, (r) => r.features).map(([v]) => v),
+  /* Slug and name — the same shape as brands, and for the same reason: the
    * rail prints the carrier's name and would otherwise have to reconstruct it
    * from the slug.
    *
    * Filed alphabetically rather than by count. Thirty-four carriers is a list
    * you scan for the one you are flying on Thursday, and ordering it by how
    * generous each one is would bury Ryanair — the carrier most worth checking
-   * — at the bottom. Counted the same way every other facet is: over the rows
-   * the page is about, so a brand page's rail says how many of that brand's
-   * bags clear each limit. */
+   * — at the bottom. Listed the same way every other facet is: over the rows
+   * the page is about, so a brand page's rail offers the carriers that brand's
+   * bags have anything to say about. */
   airlines: (() => {
     const counted = new Map(tally(rows, (r) => r.airlines));
     return CARRIERS.filter((c) => counted.has(c.slug))
       .sort((a, b) => byLabel(a.name, b.name))
-      .map((c) => [c.slug, c.name, counted.get(c.slug)!] as const);
+      .map((c) => [c.slug, c.name] as const);
   })(),
-  materials: tally(rows, (r) => r.materials),
-  colors: tally(rows, (r) => r.colours),
-  /* Slug, display name, count — the rail prints the name and files by it, and
+  materials: tally(rows, (r) => r.materials).map(([v]) => v),
+  colors: tally(rows, (r) => r.colours).map(([v]) => v),
+  /* Slug and display name — the rail prints the name and files by it, and
    * without the name here it would have to guess one from the slug. */
   brands: (() => {
-    const m = new Map<string, { name: string; n: number }>();
-    for (const r of rows) {
-      const e = m.get(r.brand_slug) ?? { name: r.brand, n: 0 };
-      e.n++;
-      m.set(r.brand_slug, e);
-    }
-    return [...m.entries()]
-      .sort((a, b) => byLabel(a[1].name, b[1].name))
-      .map(([slug, e]) => [slug, e.name, e.n] as const);
+    const m = new Map<string, string>();
+    for (const r of rows) if (!m.has(r.brand_slug)) m.set(r.brand_slug, r.brand);
+    return [...m.entries()].sort((a, b) => byLabel(a[1], b[1]));
   })(),
+});
+
+type Shape = ReturnType<typeof shapeOf>;
+
+/** One tally per group, keyed the way the wire is. Handed to the request loop
+ *  empty and filled as it goes — see the single pass in GET. */
+type Counts = Record<keyof Shape, Map<string, number>>;
+
+const noCounts = (): Counts => ({
+  categories: new Map(), features: new Map(), airlines: new Map(),
+  materials: new Map(), colors: new Map(), brands: new Map(),
+});
+
+/** The scope's option list with this request's numbers written into it. The
+ *  arrays are the ones the rail has always been drawn from — value and count,
+ *  or slug, name and count where the rail prints a name — so nothing about the
+ *  wire changed except how often it is sent and what the last column means. An
+ *  option nothing matched is kept and sent as a zero rather than dropped. */
+const dress = (shape: Shape, c: Counts) => ({
+  categories: shape.categories.map((v) => [v, c.categories.get(v) ?? 0]),
+  features: shape.features.map((v) => [v, c.features.get(v) ?? 0]),
+  airlines: shape.airlines.map(([slug, name]) => [slug, name, c.airlines.get(slug) ?? 0]),
+  materials: shape.materials.map((v) => [v, c.materials.get(v) ?? 0]),
+  colors: shape.colors.map((v) => [v, c.colors.get(v) ?? 0]),
+  brands: shape.brands.map(([slug, name]) => [slug, name, c.brands.get(slug) ?? 0]),
 });
 
 /* What the slider tracks span. Taken from the data rather than from constants
@@ -379,7 +435,7 @@ const statsOf = (rows: Row[]) => ({
   skus: rows.reduce((n, r) => n + r.variant_count, 0),
 });
 
-const FACETS = facetsOf(ROWS);
+const SHAPE = shapeOf(ROWS);
 const BOUNDS = boundsOf(ROWS);
 const COVERAGE = meta.coverage ?? {};
 
@@ -412,11 +468,19 @@ const STATS = {
  * `sale=1` — which is what the "compare against everything" link in the rail
  * does with them.
  *
- * Everything a scope needs is fixed for the life of a deploy, so it is built on
+ * What a scope settles is fixed for the life of a deploy, so it is built on
  * first sight and kept. Bounded by the number of brands plus one, and only the
- * scopes anyone actually opens are ever built. */
+ * scopes anyone actually opens are ever built. The facet counts left this cache
+ * when they started moving with the filter — see the facets section — but the
+ * scope is still what decides the universe they are counted inside, which is
+ * the load-bearing half: a brand page's rail counts within that brand's shelf
+ * whatever the reader has ticked on top of it. */
 type Boot = {
-  facets: ReturnType<typeof facetsOf>;
+  /* Not the counts — those move with the filter now and are taken per request.
+   * What a scope still settles for the life of the deploy is which options its
+   * rail offers at all, which is the half of the rail that never had to be
+   * recomputed and still does not. */
+  shape: Shape;
   bounds: ReturnType<typeof boundsOf>;
   coverage: Record<string, unknown>;
   stats: Record<string, number | null>;
@@ -432,7 +496,7 @@ function scoped(scope: Scope): Boot {
   if (!hit) {
     const rows = ROWS.filter(scope.test);
     hit = {
-      facets: facetsOf(rows),
+      shape: shapeOf(rows),
       bounds: boundsOf(rows),
       coverage: coverageOf(rows),
       stats: statsOf(rows),
@@ -545,11 +609,21 @@ const isFiltered = (q: Query) =>
   RANGES.some((k) => q[k] != null) ||
   q.carryon || q.underseat || q.stock || q.sale || q.favOnly;
 
-/* A line-for-line port of matches() in browse.js, down to the order of the
- * tests. Ranges use `!(x >= min)` rather than `x < min` so that a null fails
- * every comparison: a bag with no measured volume cannot be asserted to sit
- * inside a volume window, and reading it as zero would be an assertion. */
-function matches(r: Row, q: Query) {
+/* matches(), split where the rail needs it split.
+ *
+ * It used to be one function; it is now this half plus the table below, because
+ * a facet count has to be able to ask what a row would do if one group of the
+ * filter were lifted — see the facets section. Which bags match did not change
+ * and must not: the two halves together are still the line-for-line port of
+ * matches() in browse.js, with the order of the tests preserved within each and
+ * every test an and, so where the seam falls cannot move an answer.
+ *
+ * This half is the part no count is ever allowed to lift: the search box, the
+ * two toggles, the ranges and the presets. Ranges use `!(x >= min)` rather than
+ * `x < min` so that a null fails every comparison — a bag with no measured
+ * volume cannot be asserted to sit inside a volume window, and reading it as
+ * zero would be an assertion. */
+function matchesFixed(r: Row, q: Query) {
   // The scope is deliberately not tested here — it is not a filter, and the
   // loop below applies it first so that a bag belonging to another page cannot
   // be counted as one this page's filters excluded. See the caveat counters.
@@ -558,18 +632,6 @@ function matches(r: Row, q: Query) {
   // "favourites only" is at most sixty bags out of eight thousand.
   if (q.favOnly && !q.favs.has(r.id)) return false;
   for (const t of q.terms) if (!r.hay.includes(t)) return false;
-  if (q.cats.size && !q.cats.has(r.category)) return false;
-  if (q.brands.size && !q.brands.has(r.brand_slug)) return false;
-  if (q.feats.length && !q.feats.every((f) => r.features.has(f))) return false;
-  if (q.mats.length && !q.mats.some((m) => r.materials.has(m))) return false;
-  // Any-of, like materials: picking black and green means "comes in either".
-  if (q.colours.length && !q.colours.some((c) => r.colours.has(c))) return false;
-  /* Every-of, like features: a bag has to clear every carrier named, because an
-   * itinerary is an and. A bag stating fewer than three axes has an empty set
-   * and fails here — it is not being judged against the gauge and cannot be
-   * offered as clearing it; how many were set aside that way is counted below
-   * and printed above the grid. */
-  if (q.airlines.length && !q.airlines.every((a) => r.airlines.has(a))) return false;
   if (q.stock && !r.in_stock) return false;
   if (q.sale && !r.on_sale) return false;
   if (q.volMin != null && !(r.volume_l! >= q.volMin)) return false;
@@ -589,6 +651,57 @@ function matches(r: Row, q: Query) {
   if (q.underseat && !r.underseat) return false;
   return true;
 }
+
+/* The other half: the six groups the rail draws as lists of options, each as
+ * the two things a per-request count needs of it — the test its own selection
+ * applies, and what to add to its tally off a row that got that far.
+ *
+ * `lift` is the reading of the group, and it decides which rows its tally sees.
+ * A lifted group is any-of — one row has one category and one brand, and
+ * materials and colours are `some`, so ticking a second option can only widen
+ * the answer — and it is counted with its own selection set aside, which is
+ * what makes "Blue — 412" a promise about adding blue rather than a zero.
+ * Features and airlines are every-of: a second tick narrows, so the honest
+ * number beside an option is how many of the bags already on screen also have
+ * it, and their tallies see only rows that matched outright. The facets section
+ * argues both at length.
+ *
+ * A bag stating fewer than three axes has an empty airline set and fails any
+ * carrier named — it is not being judged against the gauge and cannot be
+ * offered as clearing it; how many were set aside that way is counted in the
+ * loop below and printed above the grid. */
+type Group = {
+  key: keyof Shape;
+  lift: boolean;
+  ok: (r: Row, q: Query) => boolean;
+  count: (r: Row, m: Map<string, number>) => void;
+};
+
+const bump = (m: Map<string, number>, v: string) => m.set(v, (m.get(v) ?? 0) + 1);
+
+const GROUPS: Group[] = [
+  { key: 'categories', lift: true,
+    ok: (r, q) => !q.cats.size || q.cats.has(r.category),
+    count: (r, m) => { if (r.category) bump(m, r.category); } },
+  { key: 'brands', lift: true,
+    ok: (r, q) => !q.brands.size || q.brands.has(r.brand_slug),
+    count: (r, m) => bump(m, r.brand_slug) },
+  { key: 'features', lift: false,
+    ok: (r, q) => q.feats.every((f) => r.features.has(f)),
+    count: (r, m) => { for (const v of r.features) bump(m, v); } },
+  { key: 'materials', lift: true,
+    ok: (r, q) => !q.mats.length || q.mats.some((v) => r.materials.has(v)),
+    count: (r, m) => { for (const v of r.materials) bump(m, v); } },
+  // Any-of, like materials: picking black and green means "comes in either".
+  { key: 'colors', lift: true,
+    ok: (r, q) => !q.colours.length || q.colours.some((v) => r.colours.has(v)),
+    count: (r, m) => { for (const v of r.colours) bump(m, v); } },
+  // Every-of, like features: a bag has to clear every carrier named, because an
+  // itinerary is an and.
+  { key: 'airlines', lift: false,
+    ok: (r, q) => q.airlines.every((a) => r.airlines.has(a)),
+    count: (r, m) => { for (const v of r.airlines) bump(m, v); } },
+];
 
 export const GET: APIRoute = ({ url }) => {
   const p = url.searchParams;
@@ -611,11 +724,20 @@ export const GET: APIRoute = ({ url }) => {
   const from = page * per;
   const to = from + per;
 
-  /* One pass, not four. The page, the totals and both caveat counts are all
-   * decided by the same per-bag verdict, so they are all taken from it — and
-   * only the rows inside the requested window are ever held, which is what
-   * keeps a query matching the whole catalogue from building an 8,000-element
-   * array to send sixty of them.
+  /* One pass, still. The page, the totals, both caveat counts and now all six
+   * facet tallies are decided by the same per-bag verdict, so they are all taken
+   * from it — and only the rows inside the requested window are ever held, which
+   * is what keeps a query matching the whole catalogue from building an
+   * 8,000-element array to send sixty of them.
+   *
+   * The rail is what that verdict grew. Counting six groups each with its own
+   * selection lifted is six questions per row, not one, and the obvious way to
+   * answer them is six passes with a different filter dropped each time. The
+   * cheap way is this: ask which groups the row is *out* of, and note that a row
+   * out of two or more counts nowhere at all, a row out of exactly one counts
+   * only towards that one, and a row out of none is a match and counts towards
+   * every group. So the test stops as soon as a second group rejects, and the
+   * common case — a rail with nothing ticked — never rejects at all.
    *
    * A matching favourite leaves through a different door. It is sent ahead of
    * the page, whole, and taken out of the pagination entirely — which is what
@@ -635,6 +757,13 @@ export const GET: APIRoute = ({ url }) => {
   const wantColour = q.colours.length > 0;
   const wantDims = q.airlines.length > 0 || statedFeats.length !== q.feats.length;
   const wantFavs = q.favs.size > 0;
+  /* The rail is painted from the answer to page 0 and from nothing else — a
+   * scroll page appends cards below a panel that is already drawn — so the
+   * tallies are only worth keeping on the request that will be read. It also
+   * buys back the early exit: with nothing to count, the group tests can stop
+   * at the first rejection the way the undivided matches() did. */
+  const wantFacets = page === 0;
+  const counts = noCounts();
   const brandSet = new Set<string>();
   const pageRows: Row[] = [];
   const favRows: Row[] = [];
@@ -647,7 +776,28 @@ export const GET: APIRoute = ({ url }) => {
      * caveat below read "excluded 6,016" on a page holding 1,184 bags. It is
      * also the most selective test here by a wide margin. */
     if (q.scope && !q.scope.test(r)) continue;
-    if (matches(r, q)) {
+
+    /* How many of the rail's groups rejected this row, and — while that is
+     * exactly one — which. Two is the ceiling and means "more than one": past
+     * it there is nothing left to learn, since the row is neither a match nor
+     * anything's near miss. A row failing the fixed half, or an every-of group
+     * that is never lifted, is out of everything by the same reckoning. */
+    let out = 0;
+    let only = -1;
+    if (!matchesFixed(r, q)) {
+      out = 2;
+    } else {
+      for (let i = 0; i < GROUPS.length; i++) {
+        const g = GROUPS[i]!;
+        if (g.ok(r, q)) continue;
+        if (!g.lift || !wantFacets) { out = 2; break; }
+        only = i;
+        if (++out > 1) break;
+      }
+    }
+
+    if (out === 0) {
+      if (wantFacets) for (const g of GROUPS) g.count(r, counts[g.key]);
       total++;
       brandSet.add(r.brand_slug);
       skus += r.variant_count;
@@ -661,6 +811,10 @@ export const GET: APIRoute = ({ url }) => {
       if (paged >= from && paged < to) pageRows.push(r);
       paged++;
     } else {
+      /* Out of one group and one group only: not a match, but the row every
+       * option in that group is counting — it is what ticking a second colour
+       * would let back in. */
+      if (out === 1) { const g = GROUPS[only]!; g.count(r, counts[g.key]); }
       // Say so when a filter is dropping bags we simply have not established a
       // value for, rather than silently returning a shorter list.
       if (wantFeature && r.featuresUnknown) noFeature++;
@@ -688,16 +842,27 @@ export const GET: APIRoute = ({ url }) => {
     stats: q.scope ? scoped(q.scope).stats : STATS,
   };
 
-  /* The rail, the slider tracks and the coverage meter are the same on every
-   * response, so they ship exactly once — on the boot request, which is the
-   * unfiltered first page or anything asking for it by name. Folding them into
-   * that request rather than giving them their own keeps the island's first
-   * paint at one round trip. */
+  /* The rail rides on every answer that repaints the grid, because its numbers
+   * are now about the answer rather than about the deploy. It is the option list
+   * of the scope with this request's tallies written into it — the list itself
+   * is still the cached, per-scope one, so what is being paid for per request is
+   * six maps and the JSON, not a second count of who exists. */
+  if (wantFacets) {
+    body.facets = dress(q.scope ? scoped(q.scope).shape : SHAPE, counts);
+  }
+
+  /* The slider tracks and the coverage meter did not join them, and should not:
+   * the largest volume in the catalogue and the share of bags stating a weight
+   * are facts about the shelf, not about the filter, and a track that rescaled
+   * itself as you dragged a handle would be a track you could not aim. So they
+   * still ship exactly once — on the boot request, which is the unfiltered first
+   * page or anything asking for it by name. Folding them into that request
+   * rather than giving them their own keeps the island's first paint at one
+   * round trip. */
   if (p.get('boot') === '1' || (page === 0 && !isFiltered(q))) {
     const boot = q.scope
       ? scoped(q.scope)
-      : { facets: FACETS, bounds: BOUNDS, coverage: COVERAGE };
-    body.facets = boot.facets;
+      : { bounds: BOUNDS, coverage: COVERAGE };
     body.bounds = boot.bounds;
     body.coverage = boot.coverage;
   }

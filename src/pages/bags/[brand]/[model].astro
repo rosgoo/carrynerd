@@ -10,7 +10,7 @@ import { hubByCategory } from '../../../lib/hubs.js';
 import { catLabel, featureLabel, sourceLabel } from '../../../lib/labels.js';
 import { SITE_NAME_DISPLAY } from '../../../lib/brand.js';
 import {
-  fmtPrice, fmtPriceRange, fmtWeight, fmtDims, fmtVolume, fmtLaptop,
+  fmtPrice, fmtPriceRange, fmtWeight, fmtWeightBoth, fmtDims, fmtVolume, fmtLaptop,
   fmtLinear, gramsPerLitre, pricePerLitre, currencySymbol,
 } from '../../../lib/format.js';
 import type { Bag } from '../../../lib/types.d.ts';
@@ -75,7 +75,7 @@ const specs = [
   ['Volume', fmtVolume(bag.volume_l), bag.volume_source],
   ['Dimensions', fmtDims(bag.dims_cm), bag.dims_source],
   ['Linear (h+w+d)', fmtLinear(bag.linear_cm), bag.dims_source],
-  ['Weight', fmtWeight(bag.weight_g), bag.weight_source],
+  ['Weight', fmtWeightBoth(bag.weight_g), bag.weight_source],
   ['Grams per litre', density ? density.toFixed(0) : null, null],
   ['Price per litre', perLitre ? `${currencySymbol(bag.currency)}${perLitre.toFixed(2)}` : null, null],
   ['Laptop', fmtLaptop(bag.laptop_in), null],
@@ -211,7 +211,7 @@ const description =
         <dl class="keyspecs">
           {[
             ['Volume', fmtVolume(bag.volume_l)],
-            ['Weight', fmtWeight(bag.weight_g)],
+            ['Weight', fmtWeightBoth(bag.weight_g)],
             ['H×W×D', fmtDims(bag.dims_cm)],
             ['Laptop', fmtLaptop(bag.laptop_in)],
           ].map(([label, value]) => (

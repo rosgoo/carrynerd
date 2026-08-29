@@ -20,11 +20,14 @@
  *
  * Drawing the answer is still the expensive half, so it is still bounded by the
  * viewport: a render paints a page and an IntersectionObserver asks for the
- * next one as the sentinel comes into reach. Cards that scroll out of view stay
- * in the DOM rather than being recycled — `content-visibility` on .card in
- * app.css is what stops them costing layout — because the alternative loses
- * find-in-page, native scroll restoration and the link targets that make a card
- * a card. This is progressive rendering, not virtualisation.
+ * next one as the sentinel comes into reach — for five pages at a stretch,
+ * after which it retires and a button takes its place, because a scroll that
+ * never ends is a scroll that never reaches the footer. See BURST below. Cards
+ * that scroll out of view stay in the DOM rather than being recycled —
+ * `content-visibility` on .card in app.css is what stops them costing layout —
+ * because the alternative loses find-in-page, native scroll restoration and the
+ * link targets that make a card a card. This is progressive rendering, not
+ * virtualisation.
  */
 
 import { CAT_LABELS, FEATURE_LABELS, COLOUR_LABELS, COLOUR_SWATCH,
@@ -141,16 +144,26 @@ const S = {
 
 /* ---------- units ---------- */
 
-/* Lengths render in both units at once and CSS reveals one, keyed off
- * data-units on <html>. Same mechanism the static pages use, and for the same
- * reason: switching units then costs no re-render and cannot flash the wrong
- * number.
+/* Lengths and weights render in both units at once and CSS reveals one, keyed
+ * off data-units on <html>. Same mechanism the static pages use, and for the
+ * same reason: switching units then costs no re-render and cannot flash the
+ * wrong number.
+ *
+ * Weight was not in that sentence until now, and its absence was a bug rather
+ * than a decision: the toggle wrote "in", every length obeyed, and the grams
+ * beside them sat there unconverted. It is the same construction as the lengths
+ * because it is the same problem — nothing here converts on the fly, both
+ * spellings ship and the attribute decides which one is displayed.
  *
  * Everything in S stays metric. The filter arithmetic, the shareable URL and
- * the catalog all speak centimetres; inches exist only at the point a number
- * meets an eye. A link someone sends means the same bags whichever unit either
- * end happens to be reading in. */
+ * the catalog all speak centimetres and grams; inches and pounds exist only at
+ * the point a number meets an eye. A link someone sends means the same bags
+ * whichever unit either end happens to be reading in — which is also why the
+ * weight range in the rail is still spelled in grams; see the note on that
+ * group in components/BrowseShell.astro. */
 const CM_PER_IN = 2.54;
+const G_PER_LB = 453.59237;
+const G_PER_OZ = 28.349523;
 const inches = () => document.documentElement.getAttribute("data-units") === "in";
 const toIn = cm => cm / CM_PER_IN;
 const dual = (cm, inch) =>
@@ -164,13 +177,32 @@ const dualDims = (d, { sep = "×", digits = 0, suffix = false } = {}) => !d ? nu
   : dual(d.map(n => n.toFixed(digits)).join(sep) + (suffix ? " cm" : ""),
          d.map(n => toIn(n).toFixed(digits)).join(sep) + (suffix ? " in" : ""));
 
+/* Both halves change unit partway up the scale — grams to kilograms at a kilo,
+ * ounces to pounds at a pound — so this is a figure and its unit rather than a
+ * figure with a unit known in advance, which is what the callers below need it
+ * split into. Mirrors fmtWeightBoth() in lib/format.js; the static pages and
+ * the island have to round a bag's weight to the same string or the same bag
+ * reads differently on its model page and in the grid. */
+const weightPair = g => [
+  g >= 1000 ? [(g / 1000).toFixed(2), "kg"] : [String(g), "g"],
+  g >= G_PER_LB ? [(g / G_PER_LB).toFixed(1), "lb"]
+                : [String(Math.round(g / G_PER_OZ)), "oz"],
+];
+
+/* `unit` is how the suffix is drawn, because the cards set it eight pixels tall
+ * against the figure and everywhere else it is simply the next word. */
+const dualWeight = (g, unit = u => ` ${u}`) => {
+  if (!g) return null;
+  const [metric, imperial] = weightPair(g);
+  return dual(metric[0] + unit(metric[1]), imperial[0] + unit(imperial[1]));
+};
+
 /* ---------- formatting ---------- */
 
 const nil = '<b class="nil">—</b>';
 const fmtVol    = b => b.volume_l ? `${b.volume_l}<em style="font-size:8px">L</em>` : null;
-const fmtWeight = b => b.weight_g ? (b.weight_g >= 1000
-  ? `${(b.weight_g / 1000).toFixed(2)}<em style="font-size:8px">kg</em>`
-  : `${b.weight_g}<em style="font-size:8px">g</em>`) : null;
+const fmtWeight = b =>
+  dualWeight(b.weight_g, u => `<em style="font-size:8px">${u}</em>`);
 const fmtDims   = b => dualDims(b.dims_cm);
 const fmtLap    = b => b.laptop_in ? `${b.laptop_in}″` : null;
 /* Prices are never converted, so every one has to carry its own symbol.
@@ -223,6 +255,28 @@ let PAGE = 0;       // the last page painted
  * grid — which answers "how many match" — and not towards this, which is what
  * the scroll asks whether there is another page of. */
 let PAGED = 0;
+
+/* How many pages the scroll is allowed to add on its own before it stops and
+ * asks.
+ *
+ * It used to page forever, and on the front page that meant the footer could
+ * not be reached at all: 7,639 bags at sixty a page is a hundred and twenty-
+ * seven pages, and every one of them arrived while the reader was still on
+ * their way to the bottom of the one before. The footer carries the category
+ * hubs, About and Privacy, and on the front page it is the only route to
+ * several of them — a scroll that keeps the bottom of the document permanently
+ * five hundred pixels away is not a convenience, it is a trap.
+ *
+ * Five pages — three hundred bags — from each start the reader asked for, then
+ * the observer retires and a Load more button stands where the sentinel was.
+ * A button from the very first page was the other obvious fix and it charges
+ * everybody four presses to get anywhere; moving the footer's links into the
+ * rail was the third, and it answers the symptom while leaving the document
+ * bottomless. This keeps the scrolling effortless for anyone browsing and still
+ * guarantees the page comes to rest.
+ */
+const BURST = 5;
+let burst = 0;      // pages loaded on the scroll's own initiative since then
 
 async function ask(page, boot = false) {
   const p = stateParams();
@@ -364,7 +418,15 @@ function cssColor(name) {
 // One list, so the skeleton's column count and the real table's cannot drift
 // apart — a column added here used to mean remembering a magic 12 two
 // functions down.
-const HEAD = ["★", "Brand", "Model", "Category", "Vol L", "Weight g",
+//
+// Weight's unit went down into the cells, where the dimensions' stays up here.
+// That is not an inconsistency: H×W×D is centimetres for every row or inches
+// for every row, so a heading can say which, while a weight column is grams and
+// kilograms against ounces and pounds and no heading is true of all of it.
+// g/L keeps its heading and stays metric in every unit — it is a density this
+// audience reads as a unit in its own right, the way a fabric's denier is one,
+// and "oz per US quart" would be a conversion nobody asked for.
+const HEAD = ["★", "Brand", "Model", "Category", "Vol L", "Weight",
               `H×W×D ${dual("cm", "in")}`,
               `Linear ${dual("cm", "in")}`,
               "Laptop", "Price", "g/L", "Price/L", "Colours"];
@@ -385,7 +447,7 @@ function row(b) {
     <td>${esc(b.brand)}</td>
     <td class="name"><a href="${esc(bagHref(b))}">${esc(b.name)}</a></td>
     <td>${esc(CAT_LABELS[b.category] || b.category)}</td>
-    ${td(b.volume_l)}${td(b.weight_g)}
+    ${td(b.volume_l)}${td(dualWeight(b.weight_g))}
     ${td(dualDims(b.dims_cm))}
     ${td(dualLen(b.linear_cm))}
     ${td(b.laptop_in ? b.laptop_in + "″" : null)}
@@ -440,6 +502,13 @@ function skeletonPage() {
  * as of the paint, and is the reason a round trip per filter is affordable at
  * all. */
 let sentinelIO = null;
+
+/* The two things that can sit under the last page painted, written down once
+ * because paintPage builds one of them into a string and loadMore swaps them
+ * over as nodes. Only ever one of the two is in the document. */
+const SENTINEL = '<div id="sentinel" aria-hidden="true"></div>';
+const LOADMORE = '<button class="btn ghost loadmore" id="loadmore" type="button"' +
+  ' data-more>Load more</button>';
 
 /* Direct children of #results, because the favourites strip contains a grid —
  * or a table — of exactly the same shape, and a descendant selector would
@@ -511,7 +580,7 @@ function paintPage(list, fresh, favs) {
     }
     out.innerHTML = pinned
       + (VIEW === "grid" ? '<div class="grid"></div>' : tableShell())
-      + '<div id="sentinel" aria-hidden="true"></div>';
+      + SENTINEL;
   }
   const host = paintHost();
   if (!host) return;
@@ -533,11 +602,19 @@ function paintPage(list, fresh, favs) {
   }
 }
 
-/** The sentinel has a job only while there is a page after this one. */
+/** What sits under the last page painted, in its three states: the sentinel,
+ *  while there is another page and this burst still has budget to spend on it;
+ *  the button, when there is another page and the budget is gone; and nothing
+ *  at all once the answer is complete, which is the state that lets the scroll
+ *  end and the footer arrive. */
 function retireSentinel() {
-  if ((PAGE + 1) * PER < PAGED) return;
+  const more = (PAGE + 1) * PER < PAGED;
+  if (more && burst < BURST) return;
   sentinelIO?.disconnect();
-  $("#sentinel")?.remove();
+  const el = $("#sentinel");
+  if (!el) return;
+  if (more) el.insertAdjacentHTML("afterend", LOADMORE);
+  el.remove();
 }
 
 /** The next page, appended. Resolves false when there was nothing to add —
@@ -564,21 +641,47 @@ async function nextPage() {
   }
 }
 
-/* Keep asking while the sentinel is still within reach of the viewport.
+/* Keep asking while the sentinel is still within reach of the viewport, and
+ * while this burst has pages left in it.
  *
  * The observer only fires on a *change* of intersection, so a page that fails
  * to push the sentinel off screen — a tall window, a short last page, a filter
  * that leaves eighty results — would otherwise stall with the observer
  * satisfied and the page half-drawn. Bounded by the viewport rather than by the
  * result count: this asks for one more page than it needs, never for all of
- * them. */
+ * them.
+ *
+ * The burst is the second bound and it is the one that ends the scroll. It is
+ * counted here rather than in nextPage() because this is the only caller that
+ * is the scroll acting on its own; a press of the button is the reader asking,
+ * and what a press does is set the count back to nothing. */
 async function fill() {
   const reach = () => {
     const el = $("#sentinel");
     return Boolean(el) && el.getBoundingClientRect().top < innerHeight + 800;
   };
-  while (reach() && await nextPage());
+  while (burst < BURST && reach() && await nextPage()) burst++;
   retireSentinel();
+}
+
+/** Another burst, starting with the page this press is asking for. The sentinel
+ *  goes back exactly where it stood and the observer is handed the scroll again;
+ *  fill() takes the first page immediately, because the button the reader just
+ *  pressed was by definition within reach of the viewport. */
+async function loadMore() {
+  const btn = $("#loadmore");
+  if (!btn) return;
+  burst = 0;
+  btn.insertAdjacentHTML("beforebegin", SENTINEL);
+  btn.remove();
+  observeSentinel();
+  await fill();
+  // If the budget ran out again inside that fill — a short answer, a tall
+  // window — the button is back where it stood, and somebody who pressed it
+  // from the keyboard has just had the element under their focus deleted out
+  // from under them. Handing it back is the difference between carrying on and
+  // tabbing from the wordmark again.
+  $("#loadmore")?.focus();
 }
 
 function observeSentinel() {
@@ -684,10 +787,19 @@ async function render({ boot = false } = {}) {
 
   out.removeAttribute("aria-busy");
   PAGE = 0;
+  // A different question gets a fresh budget. Every filter, search and sort
+  // change comes through here, which is what makes this the one place the burst
+  // has to be reset — a reader who has just narrowed the list is starting the
+  // scroll again, not continuing the one they spent on the answer before it.
+  burst = 0;
   // Absent for a reader with nothing saved, in which case every match is
   // paged and the two numbers are the same.
   PAGED = data.paged ?? data.total;
   countLine(data);
+  // On the boot answer this finds an empty rail and does nothing — the options
+  // it would write into are built from this same response a moment later, by
+  // init(), which paints the counts itself once they exist.
+  paintFacetCounts(data.facets);
   paintPage(data.bags, true, data.favs);
   renderTray();
   return data;
@@ -952,42 +1064,50 @@ function mountSaveForm() {
 
 /* ---------- facets ---------- */
 
-/* Counted over the whole catalog, not over the current results, and therefore
- * fixed for the life of a deploy — which is why the server counts them once and
- * ships them with the boot response rather than with every answer. A count
- * beside a facet says how many bags exist with that property; a count that
- * moved as filters were applied would be answering a different question, and
- * one the grid already answers. */
+/* The rail's options, drawn once. Which options exist and the order they come
+ * in is fixed for the life of a deploy — see shapeOf() in api/browse.ts — so
+ * this runs on the boot answer and never again; only the numbers beside them
+ * move, and paintFacetCounts() below writes those into the markup this leaves
+ * behind.
+ *
+ * That split is the whole reason the rail can be recounted at all without
+ * coming apart. Rebuilding these lists per answer would reset the scroll inside
+ * every group deep enough to scroll, throw away whatever a group's own search
+ * box was hiding, and hand mountFacetSearch()'s closure a set of nodes that are
+ * no longer in the document. */
 function buildFacets({ facets, coverage, stats }) {
   $("#f-cat").innerHTML = facets.categories
     .map(([v, n]) => `<button class="chip" data-f="cat" data-v="${esc(v)}" aria-pressed="false">${
-      esc(CAT_LABELS[v] || v)}<span>${n}</span></button>`).join("");
+      esc(CAT_LABELS[v] || v)}<span class="n">${n}</span></button>`).join("");
 
   $("#f-feat").innerHTML = facets.features
     .map(([v, n]) => `<button class="check" data-f="feat" data-v="${esc(v)}" aria-pressed="false"><i></i>${
-      esc(FEATURE_LABELS[v] || v)}<b>${n}</b></button>`).join("");
+      esc(FEATURE_LABELS[v] || v)}<b class="n">${n}</b></button>`).join("");
 
   // Colours keep the printed order rather than the counted one: a swatch list
   // reads as a spectrum, and sorting it by popularity puts black next to beige.
   const colorCounts = new Map(facets.colors);
   $("#f-color").innerHTML = COLOUR_ORDER.filter(f => colorCounts.has(f))
     .map(f => `<button class="check" data-f="color" data-v="${esc(f)}" aria-pressed="false"><i></i><span class="sw" style="background:${
-      COLOUR_SWATCH[f]}"></span>${esc(COLOUR_LABELS[f])}<b>${colorCounts.get(f)}</b></button>`).join("");
+      COLOUR_SWATCH[f]}"></span>${esc(COLOUR_LABELS[f])}<b class="n">${colorCounts.get(f)}</b></button>`).join("");
 
   $("#f-mat").innerHTML = facets.materials
     .map(([v, n]) => `<button class="check" data-f="mat" data-v="${esc(v)}" aria-pressed="false"><i></i>${
-      esc(v)}<b>${n}</b></button>`).join("");
+      esc(v)}<b class="n">${n}</b></button>`).join("");
 
-  /* One carrier per row, with the number of bags in this page's scope that
-     clear its published carry-on limit. Every-of, like features: two ticked
-     means a bag that fits both, because an itinerary is an and.
+  /* One carrier per row, with the number of bags matching the rest of the
+     filter that clear its published carry-on limit. Every-of, like features:
+     two ticked means a bag that fits both, because an itinerary is an and — and
+     because it is an and, this group is counted over the results themselves
+     rather than with its own ticks lifted, so the number beside a carrier is
+     how many of the bags on screen would survive adding it.
      The count is over bags stating all three of their dimensions — the rest
      cannot be measured against a gauge and are neither passed nor failed, which
      is what the caveat above the grid owns up to when this filter is on. */
   const airlineBox = $("#f-airline");
   if (airlineBox) airlineBox.innerHTML = (facets.airlines || [])
     .map(([slug, name, n]) => `<button class="check" data-f="airline" data-v="${esc(slug)}" aria-pressed="false"><i></i>${
-      esc(name)}<b>${n}</b></button>`).join("");
+      esc(name)}<b class="n">${n}</b></button>`).join("");
 
   // For describeState(), which would otherwise name a saved filter after a
   // slug — the same reason the brand names are kept below.
@@ -1003,7 +1123,7 @@ function buildFacets({ facets, coverage, stats }) {
   const brandBox = $("#f-brand");
   if (brandBox) brandBox.innerHTML = facets.brands
     .map(([slug, name, n]) => `<button class="check" data-f="brand" data-v="${esc(slug)}" aria-pressed="false"><i></i>${
-      esc(name)}<b>${n}</b></button>`).join("");
+      esc(name)}<b class="n">${n}</b></button>`).join("");
 
   ["#f-brand", "#f-color", "#f-feat", "#f-mat", "#f-airline"].forEach(mountFacetSearch);
 
@@ -1032,6 +1152,52 @@ function buildFacets({ facets, coverage, stats }) {
     `<span><b>${stats.bags ?? "—"}</b> BAGS</span>` +
     (ONE_BRAND ? "" : `<span><b>${stats.brands ?? "—"}</b> BRANDS</span>`) +
     `<span><b>${stats.skus ?? "—"}</b> SKUS</span>`;
+}
+
+/* The numbers beside the options, from this answer rather than from boot.
+ *
+ * They used to be catalogue-wide and permanent, which put a Colour group
+ * offering nine hundred black bags next to a grid of a hundred and seventy —
+ * the count was answering how many exist while the reader was reading it as how
+ * many are left. The server now counts each group against the rest of the
+ * filter; see the facets section of api/browse.ts for what "the rest" means and
+ * why a group is not counted against its own ticks.
+ *
+ * Written into the markup in place rather than rendered again. Every option
+ * already carries the two attributes that name it, so the numbers can be
+ * changed under a rail that is mid-scroll, half-searched and holding focus,
+ * without any of that moving — which is the difference between a rail that
+ * keeps up with the grid and one that fights the reader for it. */
+function paintFacetCounts(facets) {
+  if (!facets) return;
+  // Keyed by data-f, the same names facetSets() files them under.
+  const num = {
+    cat: new Map(facets.categories),
+    feat: new Map(facets.features),
+    mat: new Map(facets.materials),
+    color: new Map(facets.colors),
+    // Slug, name, count — the name is already in the markup and only the last
+    // column is being replaced.
+    airline: new Map((facets.airlines || []).map(([slug, , n]) => [slug, n])),
+    brand: new Map((facets.brands || []).map(([slug, , n]) => [slug, n])),
+  };
+
+  for (const el of $$("[data-f]")) {
+    const n = num[el.dataset.f]?.get(el.dataset.v);
+    if (n === undefined) continue;
+    const box = $(".n", el);
+    if (box) box.textContent = n;
+    /* Nothing left to add, so the option is dimmed and stops answering rather
+     * than being taken out of the list: an option that vanishes is one the
+     * reader goes looking for, and a list that loses rows changes height while
+     * it is being read.
+     *
+     * Except when it is ticked. A ticked option is the one number here that can
+     * honestly read zero while the control is still doing something — it is
+     * what emptied the grid — and it has to stay pressable, or there is no way
+     * back off it. */
+    el.disabled = n === 0 && el.getAttribute("aria-pressed") !== "true";
+  }
 }
 
 /* A list long enough to scroll inside its own panel is a list you scan rather
@@ -1156,7 +1322,7 @@ function renderCompare() {
     ["Category",   b => esc(CAT_LABELS[b.category] || b.category), null],
     ["Price",      b => fmtPrice(b.price_min, b.currency), b => b.price_min, "min"],
     ["Volume",     b => b.volume_l ? b.volume_l + " L" : null, b => b.volume_l, "max"],
-    ["Weight",     b => b.weight_g ? b.weight_g + " g" : null, b => b.weight_g, "min"],
+    ["Weight",     b => dualWeight(b.weight_g), b => b.weight_g, "min"],
     ["Dimensions", b => dualDims(b.dims_cm, { sep: " × ", suffix: true }), null],
     ["Linear",     b => dualLen(b.linear_cm, true), b => b.linear_cm, "min"],
     ["Grams / L",  b => gpl(b) ? gpl(b).toFixed(0) : null, b => gpl(b), "min"],
@@ -1291,7 +1457,7 @@ async function openDetail(id) {
     ${row("Volume", b.volume_l ? b.volume_l + " L" : null, b.volume_source)}
     ${row("Dimensions", dualDims(b.dims_cm, { sep: " × ", digits: 1, suffix: true }), b.dims_source)}
     ${row("Linear", dualLen(b.linear_cm, true))}
-    ${row("Weight", b.weight_g ? b.weight_g + " g" : null, b.weight_source)}
+    ${row("Weight", dualWeight(b.weight_g), b.weight_source)}
     ${row("Grams / litre", gpl(b) ? gpl(b).toFixed(0) : null)}
     ${row("Laptop", b.laptop_in ? b.laptop_in + "″" : null)}
     ${row("Colourways", (b.colors || []).length || null)}
@@ -1672,6 +1838,11 @@ function wire() {
       return syncSelection(drop.dataset.drop);
     }
 
+    // Delegated like everything else here, because the button is drawn and
+    // taken away again by retireSentinel() as the burst runs out and is
+    // refilled — there is nothing stable to bind a listener to.
+    if (e.target.closest("[data-more]")) return loadMore();
+
     const det = e.target.closest("[data-detail]");
     if (det) return openDetail(det.closest("[data-id]").dataset.id);
 
@@ -1710,8 +1881,11 @@ function wire() {
     askLinear();
   });
 
-  // Only the length inputs need touching: every other length on the page ships
-  // in both units already and CSS is doing the switching.
+  // Only the length inputs need touching. Every other measurement on the page —
+  // the dimensions, the linear total, and now the weights — ships in both units
+  // already and CSS is doing the switching, so a unit flip repaints the whole
+  // grid without a single card being redrawn. An input is the one thing a
+  // stylesheet cannot rewrite, which is the entire reason this listener exists.
   document.addEventListener("unitchange", syncUnits);
 
   const toggle = (id, key) => $(id)?.addEventListener("click", e => {
@@ -1785,4 +1959,9 @@ function wire() {
   if (data.facets) buildFacets(data);
   initSliders(data.bounds);
   syncFacetButtons();
+  // After the buttons know which of them are pressed, because that is what
+  // decides whether an option counting zero is dimmed or left alone — arriving
+  // on a shared link means arriving with ticks already set and a rail already
+  // counted against them.
+  paintFacetCounts(data.facets);
 })();

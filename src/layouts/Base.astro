@@ -181,10 +181,30 @@ const isHome = Astro.url.pathname === '/';
           fall back to this header have no toolbar to put it in: their lengths
           are spread across a model's spec grid or several comparison tables at
           once, so the header is the only place that governs all of them. Those
-          pages render the other header, never both, so the id stays unique. */}
-      <button class="hbtn units" id="units" title="Show lengths in centimetres or inches">
-        <span class="u-cm">cm</span><span class="u-in">in</span>
-      </button>
+          pages render the other header, never both, so the id stays unique.
+
+          A pair now, not one button that cycles. It used to print the unit you
+          were already in — "cm" while you were reading centimetres — which is
+          the opposite grammar to the theme toggle sitting immediately right of
+          it, where the moon is where you are going rather than where you are.
+          Two adjacent controls disagreeing about whether they report or offer
+          is a question a reader can only settle by pressing one and watching
+          what happens; both units on screen with the live one lit settles it by
+          never asking. That also makes it the same control as Grid/Table on the
+          browse toolbar, which is where the shape is borrowed from.
+
+          aria-pressed ships saying cm because <html> ships saying cm. The head
+          script may have moved the attribute since, so the script at the foot
+          of this file puts the two back in step on load — CSS has the paint
+          covered before then. */}
+      <div class="units" id="units" role="group" aria-label="Measurement units">
+        <button class="hbtn" type="button" data-unit="cm" aria-pressed="true"
+                title="Show measurements in centimetres and grams"
+                aria-label="Show measurements in centimetres and grams">cm</button>
+        <button class="hbtn" type="button" data-unit="in" aria-pressed="false"
+                title="Show measurements in inches and pounds"
+                aria-label="Show measurements in inches and pounds">in</button>
+      </div>
       <ThemeToggle />
     </nav>
   </header>
@@ -228,14 +248,20 @@ const isHome = Astro.url.pathname === '/';
   // attribute on <html> that CSS reads, so neither needs the page re-rendered
   // — which is what lets them work on the static model pages, where no island
   // is mounted at all.
-  // `event` is optional: the theme toggle is pure CSS and has nobody to tell.
-  // `current` is optional too, and only theme passes one — see below.
+  //
+  // They are wired separately now, and only because the two controls are
+  // shaped differently: the theme is one button that cycles, so it asks what
+  // it is not; the units are a pair, so each half simply states the value it
+  // selects and has nothing to work out. `swap` is what is left of the shared
+  // half, and with units gone the theme is its only caller — hence no event
+  // parameter any more, the theme being pure CSS with nobody to tell.
+  // `current` stays optional to keep the resolver below out of the signature's
+  // way for anything that does not need one.
   const swap = (
     id: string,
     attr: string,
     key: string,
     values: [string, string],
-    event?: string,
     current?: () => string,
   ) =>
     document.getElementById(id)?.addEventListener('click', () => {
@@ -246,7 +272,6 @@ const isHome = Astro.url.pathname === '/';
       try {
         localStorage.setItem(key, next);
       } catch {}
-      if (event) document.dispatchEvent(new CustomEvent(event, { detail: next }));
     });
 
   // Keys are brand-neutral on purpose — see the migration note in <head>.
@@ -258,11 +283,47 @@ const isHome = Astro.url.pathname === '/';
   // already looking at dark. One press that visibly did nothing. The media
   // query is the only other thing that decides the answer, so asking it is what
   // closes the gap.
-  swap('theme', 'data-theme', 'theme', ['dark', 'light'], undefined,
+  swap('theme', 'data-theme', 'theme', ['dark', 'light'],
        () => (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
-  // The browse island keeps two lengths in <input>s, which CSS cannot rewrite.
-  // It listens for this and converts them.
-  swap('units', 'data-units', 'units', ['cm', 'in'], 'unitchange');
+
+  /* The unit pair — see the note on its markup above for why it is a pair.
+   *
+   * Which half looks lit is CSS's answer, keyed off the same data-units the
+   * head script has already restored, because at first paint nothing down here
+   * has run yet and a control that reports the wrong state until the bundle
+   * lands is exactly the flash the rest of this file exists to avoid. What this
+   * adds is aria-pressed, which a screen reader needs and a stylesheet has no
+   * way to give it. The two say the same thing, so nothing moves when it lands.
+   *
+   * The attribute, the localStorage key and the unitchange event are all
+   * unchanged: every .u-cm/.u-in span on the site, the browse island's inputs
+   * and the saved preference are built on those three and none of them care how
+   * many buttons write them. */
+  const unitBtns =
+    document.querySelectorAll<HTMLButtonElement>('#units [data-unit]');
+  const paintUnits = () => {
+    const now = document.documentElement.getAttribute('data-units') ?? 'cm';
+    unitBtns.forEach((b) =>
+      b.setAttribute('aria-pressed', String(b.dataset.unit === now)));
+  };
+  unitBtns.forEach((b) =>
+    b.addEventListener('click', () => {
+      const root = document.documentElement;
+      const next = b.dataset.unit;
+      // Pressing the half you are already in is a no-op rather than a toggle:
+      // that was the old button's grammar, and half the point of the pair is
+      // that "cm" means centimetres rather than "not what you have now".
+      if (!next || next === root.getAttribute('data-units')) return;
+      root.setAttribute('data-units', next);
+      try {
+        localStorage.setItem('units', next);
+      } catch {}
+      paintUnits();
+      // The browse island keeps two lengths in <input>s, which CSS cannot
+      // rewrite. It listens for this and converts them.
+      document.dispatchEvent(new CustomEvent('unitchange', { detail: next }));
+    }));
+  paintUnits();
 
   // The categories menu opens and closes on its own — it is a <details>, which
   // is the whole reason it can be the one navigation affordance on pages that

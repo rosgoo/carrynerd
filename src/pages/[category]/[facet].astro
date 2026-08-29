@@ -12,10 +12,11 @@
  */
 import Base from '../../layouts/Base.astro';
 import BagTable from '../../components/BagTable.astro';
+import Measure from '../../components/Measure.astro';
 import { hubs, byDensity, COMMON_CARRYON_CM } from '../../lib/hubs.js';
 import { bagHref } from '../../lib/catalog.js';
 import { SITE_NAME, SITE_NAME_DISPLAY } from '../../lib/brand.js';
-import { fmtPrice, fmtVolume, fmtWeight } from '../../lib/format.js';
+import { fmtPrice, fmtVolume, fmtWeight, fmtWeightBoth } from '../../lib/format.js';
 
 export function getStaticPaths() {
   return hubs.flatMap((hub) =>
@@ -123,7 +124,7 @@ const breadcrumbs = {
         : ' in this size band'}.
       {s.medianWeight != null && (
         <Fragment>
-          {' '}The median weighs {fmtWeight(s.medianWeight)}
+          {' '}The median weighs <Measure value={fmtWeightBoth(s.medianWeight)} />
           {s.medianVolume != null && <Fragment> at {fmtVolume(s.medianVolume)}</Fragment>}
           {s.medianGpl != null && <Fragment>, or {s.medianGpl.toFixed(0)} g per litre</Fragment>}.
         </Fragment>
