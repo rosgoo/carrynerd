@@ -48,9 +48,24 @@ const { units = false } = Astro.props;
     <span class="mwide">Categories</span><span class="mnarrow">Menu</span>
   </summary>
   <div class="hmenupanel">
-    <div class="mgrid">
-      {hubs.map((hub) => <a href={hub.href}>{hub.title}</a>)}
-    </div>
+    {/* A disclosure of its own below the breakpoint, where the panel is the
+        whole navigation and Categories is one item in it beside Sale, Brands
+        and Carry-on. Flat, it was fourteen links deep before the reader
+        reached the six that are single links everywhere else, which made the
+        one branching item the least branch-like thing in the list.
+
+        Ships open, and the layout closes it on a narrow screen. That way round
+        because of what each failure looks like with no script: open is today's
+        behaviour and is what the panel means at desk widths, where this
+        summary is hidden and the dropdown is already called Categories. Nobody
+        sees either state until the outer menu is open, so there is nothing to
+        flash. */}
+    <details class="msub" open>
+      <summary class="msubhead">Categories</summary>
+      <div class="mgrid">
+        {hubs.map((hub) => <a href={hub.href}>{hub.title}</a>)}
+      </div>
+    </details>
     {/* Hidden above the breakpoint, where every one of these is either a button
         in the header already or a link in a footer the reader can reach. It is
         in the markup at every width rather than being built conditionally so

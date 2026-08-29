@@ -307,6 +307,27 @@ const isHome = Astro.url.pathname === '/';
    * for a bundle because getting them wrong for one frame is a visible flash;
    * --head positions things that are sticky, which is a scroll-time concern, so
    * being right shortly after load is being right. */
+  /* Categories starts closed on a narrow screen and open on a wide one.
+   *
+   * It ships open, because that is what it means at desk widths — up there the
+   * panel is the categories dropdown, its own summary is hidden by CSS, and an
+   * `open` attribute is the only way a <details> shows its contents. Below the
+   * breakpoint the panel is the whole navigation instead, Categories is one
+   * item in it beside Sale and Brands, and fourteen links unrolled ahead of
+   * those six is the branching item behaving least like one.
+   *
+   * CSS cannot do this: `open` is an attribute, and there is no property that
+   * unsets it. So it is three lines here, on the media query the stylesheet
+   * already breaks at. With no script the panel stays as it ships — flat, the
+   * way it was yesterday — which is why open is the direction to fail in. */
+  const sub = document.querySelector<HTMLDetailsElement>('.msub');
+  if (sub) {
+    const narrow = matchMedia('(max-width: 760px)');
+    const syncSub = () => { sub.open = !narrow.matches; };
+    syncSub();
+    narrow.addEventListener('change', syncSub);
+  }
+
   const header = document.querySelector('header');
   if (header) {
     const setHead = () => {

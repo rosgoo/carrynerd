@@ -287,6 +287,14 @@ header .spacer { flex: 1; }
    as a row rather than inheriting .mgrid's two columns: it is one control with
    two halves, not two links, and the shared border that says so is the same
    one the pair wears everywhere else. */
+/* The Categories disclosure inside the panel.
+   Its summary is hidden above the breakpoint: up there the panel *is* the
+   categories dropdown and the button that opened it already says so, and a
+   second "Categories" inside one would be the word twice on one control. The
+   <details> stays open there, so hiding the summary hides nothing else. */
+.msub > summary { display: none; list-style: none; }
+.msub > summary::-webkit-details-marker { display: none; }
+
 /* Scoped to the panel, and it has to be: this element carries .units as well,
    and `.views, .units { display: flex }` further down the file is the same
    specificity and later, so a bare .munits rule lost and the pair showed on
@@ -1215,6 +1223,26 @@ td.nil, .nil { color: var(--ink-mute); }
      page. */
   .hbtns > .units { display: none; }
   .hmenupanel .munits { display: flex; }
+  /* Shown here, and drawn as a row rather than as a link: it is the one item
+     in this list that opens instead of going somewhere, and the chevron is the
+     same one the header's own summary wears, borrowed for the same reason. */
+  .msub > summary {
+    display: flex; align-items: center; gap: 6px; cursor: pointer;
+    padding: 9px 15px; font-size: 11.5px; color: var(--ink-dim);
+    border-bottom: 1px solid var(--line);
+  }
+  .msub > summary:hover { color: var(--ink); background: var(--raised); }
+  .msub > summary::after {
+    content: ""; width: 5px; height: 5px; margin-left: auto;
+    border-right: 1px solid currentColor; border-bottom: 1px solid currentColor;
+    transform: translateY(-2px) rotate(45deg);
+  }
+  .msub[open] > summary { color: var(--ink); }
+  .msub[open] > summary::after { transform: translateY(1px) rotate(225deg); }
+  /* No tint on the open list: --bg is what marks the site half off from the
+     categories, and using it here too would make the two halves the same
+     colour and the distinction nothing. The summary row and its rule are
+     already saying what belongs to what. */
   /* Last on the row, with the theme immediately left of it. The menu is the
      way into everything else on the site now, so it is the one control here
      that should always be in the same place — the far end, under the thumb. */
