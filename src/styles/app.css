@@ -782,11 +782,19 @@ html[data-units="in"] #units [data-unit="in"] {
  * Only the grid. The model page's shot is server-rendered and in the document
  * from the start, and fading it in would be an animation on a page load rather
  * than a repair to one. */
-.grid .shot img { opacity: 0; transition: opacity .18s ease-out; }
-.grid .shot img.in { opacity: 1; }
+/* Scoped to #results, which is the island's grid and nothing else.
+   It was scoped to .grid, and .grid is now also the hub, facet and airline
+   pages' card grid — which runs no script, so nothing was ever going to add
+   the class that turns the photo back on, and every image on those pages was
+   invisible. The comment above already had the answer and it was not read: a
+   static page has its photos from the start, and fading them in would be an
+   animation on a page load rather than a repair to one. There is no repair to
+   make there, so there is no rule to apply. */
+#results .shot img { opacity: 0; transition: opacity .18s ease-out; }
+#results .shot img.in { opacity: 1; }
 /* Anyone who has asked for less motion gets the photo, just not the fade. */
 @media (prefers-reduced-motion: reduce) {
-  .grid .shot img { transition: none; }
+  #results .shot img { transition: none; }
 }
 .shot .none { color: var(--shot-ink); font-size: 10px; letter-spacing: .1em; }
 

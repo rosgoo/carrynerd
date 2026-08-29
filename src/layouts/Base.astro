@@ -286,6 +286,35 @@ const isHome = Astro.url.pathname === '/';
   swap('theme', 'data-theme', 'theme', ['dark', 'light'],
        () => (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
 
+  /* --head, measured rather than declared.
+   *
+   * --head is what the rail, the toolbar and the sticky table head hang off,
+   * and it was a constant per breakpoint: 52 at desk widths, 48 below 760. The
+   * header stopped being one row at those widths a while ago — the nav stays in
+   * it now instead of folding into the drawer — so at 760 it is two rows and
+   * 98px against a token saying 48, and the toolbar sticks fifty pixels up
+   * underneath it. Narrower still it is three rows and the gap is a hundred.
+   *
+   * The comment on the token has been wrong twice for the same reason: the
+   * height depends on where a nav of six items happens to wrap, which depends
+   * on the font, the locale and how many items there are that week, and no
+   * constant is going to keep up with that. So it is measured.
+   *
+   * Script is affordable here and nowhere near it. Theme and units cannot wait
+   * for a bundle because getting them wrong for one frame is a visible flash;
+   * --head positions things that are sticky, which is a scroll-time concern, so
+   * being right shortly after load is being right. */
+  const header = document.querySelector('header');
+  if (header) {
+    const setHead = () => {
+      const h = Math.round(header.getBoundingClientRect().height);
+      if (h) document.documentElement.style.setProperty('--head', h + 'px');
+    };
+    setHead();
+    if ('ResizeObserver' in window) new ResizeObserver(setHead).observe(header);
+    else addEventListener('resize', setHead);
+  }
+
   /* The unit pair — see the note on its markup above for why it is a pair.
    *
    * Which half looks lit is CSS's answer, keyed off the same data-units the
