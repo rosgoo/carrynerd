@@ -3,10 +3,12 @@
  *
  * Everything below the header that browse.js draws into or reads out of. It was
  * the front page's markup and it is now shared, because a brand page is the
- * same instrument pointed at one shelf and /sale/ is the same instrument
- * pointed at everything discounted — see the `brand` and `sale` props. Keeping
- * one copy is what stops them drifting into a rail that has a control on one
- * page and not the others, which the island would find out about at runtime.
+ * same instrument pointed at one shelf, /sale/ is the same instrument pointed
+ * at everything discounted, and an airline page is the same instrument pointed
+ * at everything that clears one carrier's gauge — see the `brand`, `sale` and
+ * `airline` props. Keeping one copy is what stops them drifting into a rail
+ * that has a control on one page and not the others, which the island would
+ * find out about at runtime.
  *
  * The default slot goes inside #results and is the answer for a reader with no
  * JavaScript: the island replaces it on load. It is not a placeholder — it is
@@ -24,6 +26,16 @@ interface Props {
    *  path. The rail loses its On sale check for the same reason a brand page
    *  loses its Brand group: it is the page, not a filter on it. */
   sale?: boolean;
+  /** The carrier this page is about, if it is one. Present, the island scopes
+   *  every request and every count to the bags whose stated dimensions clear
+   *  that carrier's published limit.
+   *
+   *  The Airline group stays in the rail, unlike the two above, because the
+   *  airline filter is every-of: a second carrier ticked on top of this one is
+   *  an itinerary, which is a question worth asking here more than anywhere.
+   *  Only the page's own carrier is dropped, and that happens in the client
+   *  where the group is drawn — see paintFacets() in scripts/browse.js. */
+  airline?: { slug: string; name: string } | null;
   /** Currencies other than USD in whatever the page is showing. The price
    *  slider compares figures across them without converting, which is worth
    *  saying under the slider rather than leaving a reader to spot a £. */
@@ -38,7 +50,8 @@ interface Props {
 }
 
 const {
-  brand = null, sale = false, otherCurrencies = [], sort = 'brand',
+  brand = null, sale = false, airline = null, otherCurrencies = [],
+  sort = 'brand',
   placeholder = 'search brand, model, material, feature…',
 } = Astro.props;
 
@@ -65,7 +78,20 @@ const scope = brand
         value: 'On sale',
         out: 'Compare against everything →',
       }
-    : null;
+    : airline
+      ? {
+          lock: `scope=airline:${airline.slug}`,
+          unlock: new URLSearchParams({ airline: airline.slug }).toString(),
+          label: 'Airline',
+          value: airline.name,
+          /* Worded as /sale/'s is rather than as the brand page's, because what
+             the link offers is not other carriers — the group below still
+             offers those, and adding one here means a bag that clears both.
+             It is the way to take this carrier *off*, which cannot be done on
+             a page that is it. */
+          out: 'Compare against everything →',
+        }
+      : null;
 
 const lock = scope?.lock ?? null;
 const unlock = scope?.unlock ?? null;

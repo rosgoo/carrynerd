@@ -498,17 +498,43 @@ const STATS = {
  * /sale/ is the second one, and the reason this is a kind rather than a brand
  * slug: it is the same instrument with `on_sale` already settled, and its rail
  * has to count against the bags actually on sale for exactly the same reason.
- * Both spell out as an ordinary filter when you leave the page — `brand=` and
- * `sale=1` — which is what the "compare against everything" link in the rail
- * does with them.
+ *
+ * /carry-on/ryanair/ is the third, and the first whose scope is a measurement
+ * rather than a field: its rows are the bags whose stated dimensions clear that
+ * carrier's published frame. The counting argument is the same one and the
+ * numbers are starker than on any shelf. The catalogue's price track runs to
+ * $10,999 and the dearest bag clearing Ryanair's gauge is $1,999, so five
+ * sixths of an unscoped slider is cases the page cannot show; the Category
+ * group says 583 daypacks rather than 2,708; and the coverage meter reads 100%
+ * on dimensions, because a bag stating fewer than three axes is not on this
+ * page at all.
+ *
+ * It parts company with the other two in one place. A brand page drops its
+ * Brand group because a second brand ticked under it can only empty the grid;
+ * the airline group stays, because the airline filter is every-of and a second
+ * carrier ticked on top of this one is an itinerary rather than a
+ * contradiction. Only the page's own carrier goes, and it goes where the rail
+ * is drawn — see paintFacets() in scripts/browse.js. Hand-write it back into
+ * the query string and nothing moves either way: `.every` over a set the row
+ * has already cleared is idempotent, which is why the scope and the ordinary
+ * filter naming the same carrier cannot disagree.
+ *
+ * All three spell out as an ordinary filter when you leave the page — `brand=`,
+ * `sale=1`, `airline=` — which is what the "compare against everything" link in
+ * the rail does with them.
  *
  * What a scope settles is fixed for the life of a deploy, so it is built on
- * first sight and kept. Bounded by the number of brands plus one, and only the
- * scopes anyone actually opens are ever built. The facet counts left this cache
- * when they started moving with the filter — see the facets section — but the
- * scope is still what decides the universe they are counted inside, which is
- * the load-bearing half: a brand page's rail counts within that brand's shelf
- * whatever the reader has ticked on top of it. */
+ * first sight and kept. Bounded by the vocabulary the site links to — a brand
+ * apiece, a carrier apiece, and the sale — and only the scopes anyone actually
+ * opens are ever built. The 34 carriers are the expensive ones to hold and
+ * still cost little: an entry keeps the option lists and four numbers rather
+ * than the rows they were counted over, so a carrier's boot is a few hundred
+ * brand names and change, not the two thousand bags that cleared its gauge.
+ * The facet counts left this cache when they started moving with the filter —
+ * see the facets section — but the scope is still what decides the universe
+ * they are counted inside, which is the load-bearing half: a brand page's rail
+ * counts within that brand's shelf whatever the reader has ticked on top of
+ * it. */
 type Boot = {
   /* Not the counts — those move with the filter now and are taken per request.
    * What a scope still settles for the life of the deploy is which options its
@@ -540,9 +566,29 @@ function scoped(scope: Scope): Boot {
   return hit;
 }
 
-/** `brand:<slug>` or `sale`, or nothing. An unreadable scope is refused rather
- *  than ignored: dropping it would answer with the whole catalogue on a page
- *  whose heading promises one brand, which is the one wrong answer available. */
+/** `brand:<slug>`, `airline:<slug>` or `sale`, or nothing. An unreadable scope
+ *  is refused rather than ignored: dropping it would answer with the whole
+ *  catalogue on a page whose heading promises one brand, which is the one wrong
+ *  answer available. */
+/* The two vocabularies a scope may name, built once from the rows and the
+ * carrier table.
+ *
+ * SCOPES is a cache keyed by the scope string, and until now nothing checked
+ * that the string named anything: `scope=brand:qqq1` minted an entry, built it
+ * over zero rows and kept it, and so did qqq2. Each one is small — option
+ * lists, bounds, coverage and four numbers, never rows — but the count had no
+ * ceiling, and this endpoint is crawled hard enough that a firewall rule was
+ * written for it. Two sets and a membership test turn an unbounded map into
+ * one bounded by what exists: the brands in the index, the carriers in the
+ * table, and sale.
+ *
+ * The check belongs here rather than in scoped() because an unknown slug is a
+ * bad request and not an empty page — 400 already says so and the caller
+ * already has the branch. A brand leaving the catalogue stops being a valid
+ * scope on the next deploy, which is the same moment its page stops existing. */
+const BRAND_SLUGS = new Set(ROWS.map((r) => r.brand_slug));
+const AIRLINE_SLUGS = new Set(CARRIERS.map((c) => c.slug));
+
 function readScope(raw: string | null) {
   if (!raw) return { ok: true as const, scope: null };
   if (raw === 'sale') {
@@ -551,11 +597,28 @@ function readScope(raw: string | null) {
   const at = raw.indexOf(':');
   const kind = at < 0 ? raw : raw.slice(0, at);
   const value = at < 0 ? '' : raw.slice(at + 1);
-  if (kind !== 'brand' || !value) return { ok: false as const, scope: null };
-  return {
-    ok: true as const,
-    scope: { key: raw, test: (r: Row) => r.brand_slug === value },
-  };
+  if (!value) return { ok: false as const, scope: null };
+  if (kind === 'brand') {
+    if (!BRAND_SLUGS.has(value)) return { ok: false as const, scope: null };
+    return {
+      ok: true as const,
+      scope: { key: raw, test: (r: Row) => r.brand_slug === value },
+    };
+  }
+  /* The same membership test the airline filter runs, off the same set, which
+   * is what keeps /carry-on/ryanair/ and `?airline=ryanair` describing one list
+   * of bags rather than two that nearly agree. A bag stating fewer than three
+   * axes is in no carrier's set at all — see NO_FIT — so it is absent from
+   * every airline page rather than failing one, which is the abstention the
+   * whole carry-on half of this site is built on. */
+  if (kind === 'airline') {
+    if (!AIRLINE_SLUGS.has(value)) return { ok: false as const, scope: null };
+    return {
+      ok: true as const,
+      scope: { key: raw, test: (r: Row) => r.airlines.has(value) },
+    };
+  }
+  return { ok: false as const, scope: null };
 }
 
 /* ---------- the query ---------- */
@@ -774,7 +837,7 @@ export const GET: APIRoute = ({ url }) => {
 
   const scope = readScope(p.get('scope'));
   if (!scope.ok) {
-    return json({ error: 'scope must be brand:<slug> or sale' }, 400);
+    return json({ error: 'scope must be brand:<slug>, airline:<slug> or sale' }, 400);
   }
 
   const q = parse(p, scope.scope);

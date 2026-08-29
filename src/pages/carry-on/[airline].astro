@@ -1,19 +1,41 @@
 ---
-/* One airline: its published limits, and the bags in the index that meet them.
+/* One airline: its published limits, and the browse instrument pointed at the
+ * bags that clear them.
  *
  * Curated airline size tables are a solved problem — several sites keep good
  * ones. What makes this page worth existing is the second half of the
  * sentence: "…and here are the bags that fit", which requires a normalised
  * index of external dimensions on the other side of the join.
  *
- * The section that could not be written anywhere else is "fits most airlines,
- * but not this one". It is a statement about this carrier measured against the
- * other thirty-odd, and it is the question a reader actually arrives with:
- * not what fits, but what they have got away with before that will not work
- * here.
+ * That half used to be three hand-built lists — the hundred largest that fit, a
+ * personal-item list, and the bags that clear most other carriers — which is
+ * three answers to questions the reader was not asked. They arrive with a
+ * fourth: under two kilos, under two hundred dollars, a 16-inch sleeve, and in
+ * black. So the middle of the page is now the same island the front page and
+ * every brand page run, with the carrier settled by the path rather than ticked
+ * in the rail. That is a scope rather than a filter: it does not appear in the
+ * address bar, Clear does not empty it, and the whole rail counts inside this
+ * carrier's gauge — a price track that stops where the bags that fit do, and a
+ * Category group saying how many daypacks clear this frame rather than how many
+ * exist. See the scope section in pages/api/browse.ts and the `airline` prop of
+ * BrowseShell.
+ *
+ * What stayed, and where. Above the island, because an infinite scroll has no
+ * reliable "below": the published policy, which is what a search result is
+ * actually landing on here, and the one sentence about how fit is computed.
+ * Under the island: the one list the island cannot express — "fits most
+ * airlines, but not this one" is a bag clearing 60% of the *other* carriers and
+ * failing this one, a statement about this carrier measured against the other
+ * thirty-odd rather than any filter that could be set — and the category and
+ * sibling-carrier links that keep this page part of a graph instead of a leaf.
+ *
+ * The personal-item list is the one that went. It was the same cards under a
+ * smaller gauge, and what it was actually saying survives in the table and the
+ * line beside it: the published limit, and how many bags in the index clear it.
  */
 import Base from '../../layouts/Base.astro';
-import BagCard from '../../components/BagCard.astro';
+import BrowseHead from '../../components/BrowseHead.astro';
+import BrowseShell from '../../components/BrowseShell.astro';
 import Measure from '../../components/Measure.astro';
 import {
   airlines, airlinesUpdated, airlinesByRegion, airlineSlug, airlineHref, fmtLimit,
@@ -26,7 +48,7 @@ import { hubByCategory } from '../../lib/hubs.js';
 import { bagHref } from '../../lib/catalog.js';
 import { catLabel } from '../../lib/labels.js';
 import { SITE_NAME, SITE_NAME_DISPLAY } from '../../lib/brand.js';
-import { fmtVolume, fmtDims, fmtLinear } from '../../lib/format.js';
+import { fmtVolume, fmtDims, fmtLinear, fmtWeightBoth } from '../../lib/format.js';
 import type { Bag } from '../../lib/types.d.ts';
 
 export function getStaticPaths() {
@@ -41,17 +63,20 @@ const { airline } = Astro.props;
 const measuredCount = measured.length;
 const fits = fittingCarryOn(airline);
 /* Bound once so the template can rely on it: not every carrier publishes a
- * personal-item size, and the ones that do not get no section rather than an
- * empty one. */
+ * personal-item size, and the ones that do not get a dash in the table rather
+ * than a claim. */
 const personalLimit = airline.personal_cm ?? null;
 const personal = personalLimit ? fittingPersonal(airline) : [];
 const misses = justMisses(airline);
 
 const byVolumeDesc = (a: Bag, b: Bag) => (b.volume_l ?? 0) - (a.volume_l ?? 0);
 
-/* The largest thing that still fits is the question. Sorted by volume rather
- * than by density here — on an airline page the reader is buying capacity
- * against a fixed frame, which is the one context where bigger is the answer. */
+/* The largest thing that still fits is the question, which is why the island
+ * opens on volume descending rather than on brand A–Z — on an airline page the
+ * reader is buying capacity against a fixed frame, the one context where bigger
+ * is the answer. The cap is the crawler's copy below, not the reader's: the
+ * grid pages through every bag that fits.
+ */
 const LARGEST = 100;
 const largest = fits.filter((bag) => bag.volume_l != null).sort(byVolumeDesc);
 const largestRows = largest.slice(0, LARGEST);
@@ -59,15 +84,11 @@ const largestRows = largest.slice(0, LARGEST);
 const MISSES_SHOWN = 40;
 const missRows = misses.slice(0, MISSES_SHOWN);
 
-const PERSONAL_SHOWN = 40;
-const personalRows = personal
-  .filter((bag) => bag.volume_l != null)
-  .sort(byVolumeDesc)
-  .slice(0, PERSONAL_SHOWN);
-
-/* Where the fitting bags are, by category — a set of links out to the hubs,
- * and a genuinely useful shape of the answer: "42 of the travel backpacks we
- * hold fit" is more actionable than one number for the whole index. */
+/* Where the fitting bags are, by category — a set of links out to the hubs, and
+ * the one thing the rail's Category group beside it cannot do. That group
+ * narrows this page; these leave it for the cross-carrier hub, which is a
+ * different destination and the reason this row is worth keeping under a rail
+ * that prints the same numbers. */
 const byCategory = [
   ...fits
     .reduce((by, bag) => by.set(bag.category, (by.get(bag.category) ?? 0) + 1), new Map())
@@ -75,6 +96,13 @@ const byCategory = [
 ]
   .map(([key, n]) => ({ key, n, hub: hubByCategory.get(key) }))
   .sort((a, b) => b.n - a.n);
+
+/* The same note the front page's price slider carries, asked of the bags that
+ * clear this gauge. See the brand pages, where it is computed the same way and
+ * usually says nothing. */
+const otherCurrencies = [
+  ...new Set(fits.map((bag) => bag.currency).filter((c) => c && c !== 'USD')),
+].sort();
 
 const limit = fmtLimit(airline);
 const others = airlinesByRegion.map(({ key, label }) => ({
@@ -97,6 +125,11 @@ const jsonLd = {
   url: new URL(airlineHref(airline), Astro.site).href,
   isPartOf: { '@type': 'WebSite', name: SITE_NAME, url: new URL('/', Astro.site).href },
   about: { '@type': 'Airline', name: airline.name, iataCode: airline.iata },
+  /* Still the hundred largest, because that is still what is in the markup: the
+   * table inside #results is what a crawler and a reader with no JavaScript
+   * get, and the island only replaces it once it has something to replace it
+   * with. A list describing the grid's full contents would be describing
+   * something no fetch of this URL returns. */
   mainEntity: {
     '@type': 'ItemList',
     name: `Bags that fit the carry-on limit at ${airline.name}`,
@@ -128,113 +161,141 @@ const breadcrumbs = {
     <script type="application/ld+json" is:inline set:html={JSON.stringify(breadcrumbs)} />
   </Fragment>
 
-  <div class="page">
+  <BrowseHead slot="header" />
+
+  {/* The shared scope bar, in the slot it holds on a brand page and on /sale/:
+      above the shell, spanning the rail as well as the grid, holding what the
+      grid underneath cannot say. Here that is the policy itself — the two
+      halves of the row are what the carrier publishes and what the index found
+      when it was held up to it. */}
+  <section class="scopebar">
     <nav class="crumbs" aria-label="Breadcrumb">
       <a href="/">Bags</a> <span>/</span>
       <a href="/carry-on/">Carry-on</a> <span>/</span>
       <b>{airline.name}</b>
     </nav>
 
-    <h1>{airline.name} carry-on size</h1>
-    <p class="lead">
-      {airline.name} publishes a carry-on limit of {limit ?? 'no stated size'}{personalLimit && (
-        <Fragment> and a personal item of {personalLimit.join(' × ')} cm</Fragment>
-      )}{airline.weight_kg != null && (
-        <Fragment>, with a {airline.weight_kg} kg cap on the packed bag</Fragment>
-      )}.
-      {' '}<b>{fits.length}</b> of the {measuredCount} bags in this index that
-      state all three of their dimensions fit it{personalLimit && (
-        <Fragment>; {personal.length} fit the personal item</Fragment>
-      )}.
-    </p>
+    <div class="scopemain">
+      <div class="scopeid">
+        <h1>{airline.name} carry-on size</h1>
+        {/* The index's half of the row, against the carrier's half beside it.
+            Deliberately not "the largest bag that fits", which is the sort the
+            grid opens on and would be a headline number read straight off the
+            volume field: a 120-litre bag protector that packs to nothing is
+            first in that order, which is fine as the top card of a list sorted
+            by volume and wrong as a claim about what this frame takes. */}
+        <p class="scopefacts">
+          {fits.length} of {measuredCount} bags stating all three dimensions fit
+          {personalLimit && ` · ${personal.length} fit the personal item`}
+        </p>
+      </div>
 
-    <section>
-      <h2>The limit</h2>
-      <table class="spectable">
+      {/* The published policy, in the slot the alert form takes on a brand
+          page. It was a full-width section under a <h2> reading "The limit",
+          which is a heading for a table that already labels every row it has —
+          and it sat where the reader's answer now begins. */}
+      <div class="policy">
+        <table class="spectable">
+          <tbody>
+            <tr>
+              <th scope="row">Carry-on</th>
+              <td>
+                {airline.carry_on_cm
+                  ? <Measure value={fmtDims(airline.carry_on_cm)} />
+                  : limit ?? '—'}
+                {airline.carry_on_note && <i class="prov">{airline.carry_on_note}</i>}
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">Personal item</th>
+              <td class={personalLimit ? '' : 'nil'}>
+                {personalLimit ? <Measure value={fmtDims(personalLimit)} /> : 'not published as a size'}
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">Weight cap</th>
+              <td class={airline.weight_kg == null ? 'nil' : ''}>
+                {airline.weight_kg != null ? `${airline.weight_kg} kg` : 'none published'}
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">Published at</th>
+              <td>
+                <a href={airline.source} target="_blank" rel="noopener nofollow">{airline.name} baggage policy ↗</a>
+              </td>
+            </tr>
+            <tr><th scope="row">Last checked</th><td>{airline.checked}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {/* The method, and the provenance, above the grid rather than under it: on
+        a page that pages forever, anything below the results is somewhere
+        nobody arrives, and this is the sentence that qualifies every number on
+        the page. */}
+    <p class="note">
+      Fit is computed from stated dimensions, largest axis first, for the
+      {' '}{measuredCount} bags stating all three. Soft bags compress; we do not
+      estimate that. Read off {airline.name}'s published policy on
+      {' '}{airline.checked}, reviewed across all {airlines.length} carriers on
+      {' '}{airlinesUpdated}. Check {airline.name} before you fly.
+    </p>
+  </section>
+
+  {/* Volume descending, not brand A–Z: see LARGEST above. A default and not a
+      lock — the sort control still works. */}
+  <BrowseShell airline={{ slug: airlineSlug(airline), name: airline.name }}
+               sort="vol-desc"
+               otherCurrencies={otherCurrencies}
+               placeholder={`search the bags that fit ${airline.name}…`}>
+    {/* Inside #results, which browse.js overwrites wholesale on load: the
+        crawler's copy of this page and the answer for anyone with no
+        JavaScript. Capped like /sale/'s rather than exhaustive like a brand
+        page's — a carrier's list runs to thousands of bags and nothing is
+        orphaned by the cap, since every model here is on its brand's page and
+        in the sitemap. Largest first, which is the order the island opens on,
+        so the fallback and the grid agree about what the top of this page
+        is. */}
+    <div class="xscroll">
+      <table class="spectable brandtable">
+        <thead>
+          <tr><th>Model</th><th>Category</th><th>Volume</th><th>Weight</th><th>H×W×D</th><th>Linear</th></tr>
+        </thead>
         <tbody>
-          <tr>
-            <th scope="row">Carry-on</th>
-            <td>
-              {airline.carry_on_cm
-                ? <Measure value={fmtDims(airline.carry_on_cm)} />
-                : limit ?? '—'}
-              {airline.carry_on_note && <i class="prov">{airline.carry_on_note}</i>}
-            </td>
-          </tr>
-          <tr>
-            <th scope="row">Personal item</th>
-            <td class={personalLimit ? '' : 'nil'}>
-              {personalLimit ? <Measure value={fmtDims(personalLimit)} /> : 'not published as a size'}
-            </td>
-          </tr>
-          <tr>
-            <th scope="row">Weight cap</th>
-            <td class={airline.weight_kg == null ? 'nil' : ''}>
-              {airline.weight_kg != null ? `${airline.weight_kg} kg` : 'none published'}
-            </td>
-          </tr>
-          <tr>
-            <th scope="row">Published at</th>
-            <td>
-              <a href={airline.source} target="_blank" rel="noopener nofollow">{airline.name} baggage policy ↗</a>
-            </td>
-          </tr>
-          <tr><th scope="row">Last checked</th><td>{airline.checked}</td></tr>
+          {largestRows.map((bag) => (
+            <tr>
+              <td><a href={bagHref(bag)}><b class="bmaker">{bag.brand}</b> {bag.name}</a></td>
+              <td>{catLabel(bag.category)}</td>
+              <td>{fmtVolume(bag.volume_l)}</td>
+              <td class={bag.weight_g == null ? 'nil' : ''}><Measure value={fmtWeightBoth(bag.weight_g)} /></td>
+              <td><Measure value={fmtDims(bag.dims_cm)} /></td>
+              <td><Measure value={fmtLinear(bag.linear_cm)} /></td>
+            </tr>
+          ))}
         </tbody>
       </table>
-      <p class="note">
-        Read off {airline.name}'s
-        {airline.source
-          ? <Fragment>{' '}<a href={airline.source} target="_blank"
-              rel="noopener nofollow">published policy ↗</a></Fragment>
-          : ' published policy'} on {airline.checked}, reviewed across all
-        {' '}{airlines.length} carriers on {airlinesUpdated}.
-      </p>
-    </section>
+    </div>
+    <p class="note">
+      The {largestRows.length} largest of the {fits.length} that fit
+      {' '}{airline.name} and state a volume. The filters and the rest of the
+      list need JavaScript.
+    </p>
+  </BrowseShell>
 
-    {byCategory.length > 0 && (
-      <section>
-        <h2>What fits, by category</h2>
-        <div class="chiprow">
-          <div class="chips">
-            {byCategory.map(({ key, n, hub }) => (
-              hub
-                ? <a class="chip" href={hub.href}>{hub.title}<span>{n}</span></a>
-                : <span class="chip">{catLabel(key)}<span>{n}</span></span>
-            ))}
-          </div>
-        </div>
-      </section>
-    )}
-
-    {largestRows.length > 0 && (
-      <section>
-        <h2>The largest bags that fit</h2>
-        <p class="note">
-          Sorted by stated volume, biggest first.
-          {largest.length > largestRows.length
-            ? ` Showing ${largestRows.length} of ${largest.length} that fit and state a volume; the rest are reachable from their brand pages and the category hubs above.`
-            : ` All ${largestRows.length} of the bags that fit and state a volume.`}
-        </p>
-        <div class="grid pagegrid">
-          {largestRows.map((bag) => <BagCard bag={bag} metric="linear" />)}
-        </div>
-        {/* The way past the hundred cards above. The browse rail carries the
-            same comparison as a filter — one carrier per row under "Airline —
-            carry-on fit" — so this hands the reader the whole set with the
-            volume, weight and price controls on top of it, which is the next
-            question after "what fits". */}
-        <p class="note">
-          <a href={`/?airline=${airlineSlug(airline)}`}>
-            All {fits.length} that fit {airline.name}, with the filters on →
-          </a>
-        </p>
-      </section>
-    )}
-
+  {/* Under the grid, which is where everything that is not the answer belongs
+      now. .page is the column the rest of the site's reading pages use, minus
+      its full-screen floor: this is a tail, not a page. */}
+  <div class="page scopetail">
     {missRows.length > 0 && (
       <section>
         <h2>Fits most airlines, but not this one</h2>
+        {/* The one list above the rail cannot reproduce: it is defined by a bag
+            clearing 60% of the *other* carriers and failing this one, which is
+            a comparison across the airline table rather than a filter over the
+            catalogue. Kept static, and kept here, because it answers the
+            question a reader arrives with second — not "what fits" but "what
+            have I got away with before that will not work here". */}
         <p class="note">
           Bags that clear at least 60% of the {carryOnAirlineCount} carriers
           tracked and fail here.
@@ -257,17 +318,17 @@ const breadcrumbs = {
       </section>
     )}
 
-    {personalLimit && personalRows.length > 0 && (
+    {byCategory.length > 0 && (
       <section>
-        <h2>Bags that fit the personal item</h2>
-        <p class="note">
-          Under the seat in front, at {personalLimit.join(' × ')} cm.
-          {personal.length > personalRows.length
-            ? ` The ${personalRows.length} largest of ${personal.length} that fit.`
-            : ` All ${personalRows.length} that fit and state a volume.`}
-        </p>
-        <div class="grid pagegrid">
-          {personalRows.map((bag) => <BagCard bag={bag} metric="linear" />)}
+        <h2>What fits, by category</h2>
+        <div class="chiprow">
+          <div class="chips">
+            {byCategory.map(({ key, n, hub }) => (
+              hub
+                ? <a class="chip" href={hub.href}>{hub.title}<span>{n}</span></a>
+                : <span class="chip">{catLabel(key)}<span>{n}</span></span>
+            ))}
+          </div>
         </div>
       </section>
     )}
@@ -285,14 +346,9 @@ const breadcrumbs = {
         </div>
       ))}
     </section>
-
-    {/* See the note in components/BrowseShell.astro. measuredCount stays: it
-        is the denominator for this page's own list, not a restatement of the
-        method. */}
-    <p class="note foot">
-      Fit is computed from stated dimensions, largest axis first, for the
-      {' '}{measuredCount} bags stating all three. Soft bags compress; we do not
-      estimate that. Check {airline.name} before you fly.
-    </p>
   </div>
+
+  <script>
+    import '../../scripts/browse.js';
+  </script>
 </Base>

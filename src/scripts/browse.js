@@ -138,6 +138,19 @@ const UNLOCK = shell?.dataset.unlock || "";
  * brand page that count is always 1 and both leave it out. Not "is this page
  * scoped at all" — on /sale/ it is 75 brands and worth printing. */
 const ONE_BRAND = (LOCK.get("scope") || "").startsWith("brand:");
+/* The carrier an airline page is, where that is what this page is. Read out of
+ * the same lock rather than given a data attribute of its own: the scope is
+ * already spelled there, and a second spelling of one fact is a second thing
+ * that can be wrong.
+ *
+ * The Airline group survives on that page — every-of, so a second carrier is an
+ * itinerary rather than a contradiction — but this row does not: it is the
+ * page, so pressing it changes nothing and unpressing it is not on offer, and a
+ * control that answers neither way is worse than one that is not there. The
+ * scope panel at the top of the rail is what says it is on. */
+const SCOPE_AIRLINE = (LOCK.get("scope") || "").startsWith("airline:")
+  ? LOCK.get("scope").slice("airline:".length)
+  : "";
 const DEFAULT_SORT = shell?.dataset.sort || "brand";
 
 const S = {
@@ -1053,9 +1066,12 @@ function buildFacets({ facets, coverage, stats }) {
      how many of the bags on screen would survive adding it.
      The count is over bags stating all three of their dimensions — the rest
      cannot be measured against a gauge and are neither passed nor failed, which
-     is what the caveat above the grid owns up to when this filter is on. */
+     is what the caveat above the grid owns up to when this filter is on.
+     Minus the carrier an airline page already is, where this is one: see
+     SCOPE_AIRLINE. */
   const airlineBox = $("#f-airline");
   if (airlineBox) airlineBox.innerHTML = (facets.airlines || [])
+    .filter(([slug]) => slug !== SCOPE_AIRLINE)
     .map(([slug, name, n]) => `<button class="check" data-f="airline" data-v="${esc(slug)}" aria-pressed="false"><i></i>${
       esc(name)}<b class="n">${n}</b></button>`).join("");
 

@@ -1960,10 +1960,35 @@ a.cbrand:hover { color: var(--accent); text-decoration: underline; text-underlin
 .scopebar .watch h3 { padding-top: 0; }
 .scopebar .watch > p { font-size: 10px; padding-bottom: 8px; }
 
+/* An airline's published limits, in the same slot and the same box as the alert
+   form above — the strip holds two things, what the page is and the one fact
+   the grid cannot state, and on that page the second is a table of five
+   numbers. It was a full-width section of its own directly under the heading,
+   which is now where the results start.
+   The last row loses its rule: inside a box the row borders and the box's own
+   edge land on top of each other, which reads as a heavier line under the last
+   figure than under the others. */
+.scopebar .policy {
+  flex: 1 1 340px; max-width: 560px; border: 1px solid var(--line);
+  background: var(--bg);
+}
+.scopebar .policy tr:last-child th, .scopebar .policy tr:last-child td {
+  border-bottom: none;
+}
+.scopebar .policy a { color: var(--accent); text-decoration: none; }
+.scopebar .policy a:hover { text-decoration: underline; text-underline-offset: 2px; }
+
 @media (max-width: 560px) {
   .scopeid h1 { font-size: 21px; }
   .scopemain { gap: 14px; padding: 11px 14px 13px; }
 }
+
+/* The tail of a scoped page: what a reader who has scrolled past the grid is
+   handed. The reading column every other page uses, minus its full-screen floor
+   — .page holds a screenful open so a short article still fills the window, and
+   under an infinite scroll that is a screenful of nothing between the last card
+   and the links. */
+.scopetail { min-height: 0; }
 
 /* ---------- category, facet and airline pages ---------- */
 
