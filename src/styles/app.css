@@ -172,6 +172,16 @@ header {
    so --head and --bar are the same number and the sticky things that hang off
    --head — the rail, the toolbar, the table head — sit that much higher. */
 .browsehead { height: var(--bar); }
+/* The nav is pinned to the right edge on both headers, at every width.
+   It used to be pushed there by a spacer, and only one header had one: the
+   browse header packed brand, stats and nav left, so the nav sat wherever the
+   stats happened to end — and the stats are written by the island, so it
+   started somewhere and then jumped right when the numbers landed. The other
+   header had the spacer and an empty stats cell, so its nav was pinned but the
+   numbers were missing. Same intent, two mechanisms, neither working
+   everywhere. `margin-left: auto` on the nav is the one that needs nothing
+   before it in the markup to work. */
+.hbtns { margin-left: auto; }
 header .spacer { flex: 1; }
 
 .brand {

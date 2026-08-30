@@ -8,6 +8,7 @@ import HeaderMenu from '../components/HeaderMenu.astro';
 import { SITE_NAME_DISPLAY, SITE_DESCRIPTION, TAGLINE } from '../lib/brand.js';
 import { siteGraph } from '../lib/schema.js';
 import { hubs } from '../lib/hubs.js';
+import { meta } from '../lib/catalog.js';
 
 interface Props {
   title: string;
@@ -157,8 +158,16 @@ const isHome = Astro.url.pathname === '/';
 <slot name="header">
   <header>
     <a class="brand" href="/"><Logo size={17} />{SITE_NAME_DISPLAY}</a>
-    <div class="stats"></div>
-    <div class="spacer"></div>
+    {/* The same three numbers the browse header carries, which this one shipped
+        an empty bordered cell in place of — so a reader moving from the front
+        page to a hub watched the catalogue's size vanish and the nav slide
+        across. Static here rather than written by script, because these pages
+        run no island and the figures are fixed for the life of the deploy. */}
+    <div class="stats">
+      <span><b>{(meta.bag_count ?? 0).toLocaleString('en-US')}</b> BAGS</span>
+      <span><b>{(meta.brand_count ?? 0).toLocaleString('en-US')}</b> BRANDS</span>
+      <span><b>{(meta.sku_count ?? 0).toLocaleString('en-US')}</b> SKUS</span>
+    </div>
     <nav class="hbtns">
       {/* Carry-on takes Browse's place rather than joining it. Browse was a
           second link to "/" on a header whose wordmark already goes there, and

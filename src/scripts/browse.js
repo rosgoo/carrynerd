@@ -231,6 +231,15 @@ const dualWeight = (g, unit = u => ` ${u}`) => {
  * on /about, and the coverage panel still says it once in prose. */
 const NIL_TITLE = 'Not established — never estimated';
 const nil = `<b class="nil" title="${NIL_TITLE}">—</b>`;
+
+/* Thousands separators on the counts.
+ *
+ * The island wrote these raw — "33414 SKUs" — while the static pages' header
+ * printed the same three numbers through toLocaleString, so the front page and
+ * a hub page disagreed about how to spell the size of the same catalogue. Five
+ * figures is where a separator stops being decoration and starts being how you
+ * read the number at a glance, which is the whole job of that line. */
+const num = n => (n == null ? "—" : Number(n).toLocaleString("en-US"));
 const fmtVol    = b => b.volume_l ? `${b.volume_l}<em style="font-size:8px">L</em>` : null;
 const fmtWeight = b =>
   dualWeight(b.weight_g, u => `<em style="font-size:8px">${u}</em>`);
@@ -692,9 +701,9 @@ function countLine({ total, counts, stats }) {
 
   // "· 1 brands" is not a finding about a brand page, and the heading above it
   // has already said whose shelf this is.
-  const brands = ONE_BRAND ? "" : ` · ${counts.brands} brands`;
-  $("#count").innerHTML = `<b>${total}</b> of ${(stats || STATS).bags} bags` +
-    `${brands} · ${counts.skus} SKUs` + caveat;
+  const brands = ONE_BRAND ? "" : ` · ${num(counts.brands)} brands`;
+  $("#count").innerHTML = `<b>${num(total)}</b> of ${num((stats || STATS).bags)} bags` +
+    `${brands} · ${num(counts.skus)} SKUs` + caveat;
 }
 
 /* Ask the current state what it matches, and draw the first page of the answer.
@@ -1131,9 +1140,9 @@ function buildFacets({ facets, coverage, stats }) {
   // Scoped, these are the scope's own three numbers — and on a brand page the
   // middle one is then always 1, so it goes.
   $("#stats").innerHTML =
-    `<span><b>${stats.bags ?? "—"}</b> BAGS</span>` +
-    (ONE_BRAND ? "" : `<span><b>${stats.brands ?? "—"}</b> BRANDS</span>`) +
-    `<span><b>${stats.skus ?? "—"}</b> SKUS</span>`;
+    `<span><b>${num(stats.bags)}</b> BAGS</span>` +
+    (ONE_BRAND ? "" : `<span><b>${num(stats.brands)}</b> BRANDS</span>`) +
+    `<span><b>${num(stats.skus)}</b> SKUS</span>`;
 }
 
 /* The numbers beside the options, from this answer rather than from boot.

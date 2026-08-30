@@ -301,6 +301,11 @@ const catalogStamp = meta.generated_at ?? null;
       <span>·</span> <a href="/internal/domains/">Domains</a>
       <span>·</span> <a href="/internal/requests/">Requests</a>
       <span>·</span> <a href="/internal/email/">Email</a>
+      {/* Referrals was the one internal page nothing linked to. It is reachable
+          from /internal/email/ and /internal/requests/ and from neither of the
+          other two, which made the dashboard the only page that could not
+          reach the number the whole index is trying to earn. */}
+      <span>·</span> <a href="/internal/referrals/">Referrals</a>
     </nav>
     <h1>Coverage audit</h1>
     <p class="note">
