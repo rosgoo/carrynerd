@@ -804,7 +804,8 @@
     "slug": "remote-equipment",
     "name": "Remote Equipment",
     "domain": "remoteeq.com",
-    "platform": "custom"
+    "platform": "walled",
+    "note": "Walled 2026-08-30, after a reader requested it. remoteeq.com sits behind a Cloudflare managed challenge — /robots.txt itself answers with the interactive JS-and-cookies page, so there is no feed to write an adapter against and no polite way to reach one. `custom` was the wrong label: it read as an adapter nobody had written yet. The way in is the brand offering a feed, not code."
   },
   {
     "slug": "rework-gear",
