@@ -1497,12 +1497,54 @@ async function openDetail(id) {
   const star = $("#detfav");
   star.dataset.id = b.id;
   paintFav(star, FAV.has(b.id));
-  $("#detoverlay").classList.add("on");
+  openOverlay($("#detoverlay"));
   // The drawer is the other place a bag gets looked at and bought from, and the
   // only one that never loads a model page. Without this the clicks it produces
   // would have no views to divide by. See scripts/analytics.js.
   trackProductView(b, "browse_overlay");
 }
+
+
+/* Back closes the drawer, which is the one thing it did not do.
+ *
+ * The bag drawer and the comparison sheet are full-screen on a phone, so they
+ * read as pages — and neither was in the history, so the gesture everybody
+ * tries on a page took the reader off the site instead of back to the grid
+ * they were halfway down. On Android that is the system back button; on iOS it
+ * is the edge swipe. Both meant "leave".
+ *
+ * An entry with the same URL, so the address bar does not move: this is not a
+ * link, nobody should be able to paste it, and giving it a real URL means
+ * fighting the filter round-trip in syncURL() for a feature nobody asked for.
+ * What it buys is one entry to go back to.
+ *
+ * Closing from the UI spends that entry rather than leaving it, which is what
+ * `history.back()` is doing in a close handler. Without it, dismissing the
+ * drawer with Escape and then pressing back would appear to do nothing the
+ * first time — the reader would be popping the entry the drawer left behind.
+ * The flag is what keeps the two paths from fighting: a close that came *from*
+ * popstate must not push, and must not pop again. */
+let overlayEntry = false;
+
+function openOverlay(el) {
+  el.classList.add("on");
+  if (!overlayEntry) {
+    history.pushState({ ...(history.state || {}), cnOverlay: true }, "");
+    overlayEntry = true;
+  }
+}
+
+function closeOverlays(fromPop = false) {
+  const wasOpen = $$(".overlay.on").length > 0;
+  $$(".overlay").forEach(o => o.classList.remove("on"));
+  if (!wasOpen) return;
+  if (fromPop) { overlayEntry = false; return; }
+  if (overlayEntry) { overlayEntry = false; history.back(); }
+}
+
+addEventListener("popstate", () => {
+  if ($$(".overlay.on").length) closeOverlays(true);
+});
 
 /* ---------- URL state ---------- */
 
@@ -1851,7 +1893,7 @@ function wire() {
     if (det) return openDetail(det.closest("[data-id]").dataset.id);
 
     if (e.target.closest("[data-close]") || e.target.classList.contains("overlay")) {
-      $$(".overlay").forEach(o => o.classList.remove("on"));
+      closeOverlays();
     }
   });
 
@@ -1905,7 +1947,7 @@ function wire() {
 
   $("#cmpopen").addEventListener("click", () => {
     renderCompare();
-    $("#cmpoverlay").classList.add("on");
+    openOverlay($("#cmpoverlay"));
   });
   $("#cmpclear").addEventListener("click", () => {
     const ids = [...compare];
@@ -1919,7 +1961,7 @@ function wire() {
   // here as well would bind it twice and cancel itself out.
 
   document.addEventListener("keydown", e => {
-    if (e.key === "Escape") $$(".overlay").forEach(o => o.classList.remove("on"));
+    if (e.key === "Escape") closeOverlays();
     if (e.key === "/" && document.activeElement !== $("#q")) {
       e.preventDefault(); $("#q").focus();
     }
