@@ -487,7 +487,16 @@ FEATURES = [
     ("molle",            r"\bmolle\b|\bpals\b"),
     ("compression",      r"\bcompression strap\b"),
     ("shoe_compartment", r"\bshoe (?:compartment|pocket|garage)\b"),
-    ("water_resistant",  r"\bwater[- ]?(?:resistant|repellent|proof)\b|\bdwr\b"),
+    # The noun and the misspelling are the same claim as the adjective, and the
+    # adjective is the only form this matched. "X-Pac ... due to its durability,
+    # waterproofness" is how Evergoods describe half their line, and it read as
+    # a bag making no water claim at all. `repellant` is not a word and the
+    # corpus spells it that way too. The suffixes stay on this broad flag and off
+    # `waterproof` below, because fabric marketing reaches for the noun much
+    # more readily than for the claim, and the narrow tier is the one that has
+    # to keep meaning a sealed bag.
+    ("water_resistant",  r"\bwater[- ]?(?:resistan(?:t|ce)|repell[ae]n(?:t|ce|cy)|"
+                         r"proof(?:ing|ness)?)\b|\bdwr\b"),
     # The tiers above that baseline. `water_resistant` stays the broad flag and
     # keeps its meaning — it is spelled in shared URLs and saved filters, and it
     # is the honest reading of a page that claims only "water-repellent". But it
