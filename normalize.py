@@ -3335,11 +3335,52 @@ def main():
             slug = f"{slug}-{used[key]}"
         bag["slug"] = slug
 
+    # A dollar figure beside a foreign price, for sorting and for a reader's
+    # sense of scale. Not the price: `price_min` stays what the seller charges
+    # and is what the ledger, the alerts and the model page's Price row use.
+    # See fx.py for why the two are kept apart, and why the rate has a date on
+    # it rather than being fetched live.
+    #
+    # Only where there is nothing better. A brand with a US market gets real
+    # dollars from the seller instead -- see the `country` rung in
+    # observed_currency() -- and this is for the six brands that have no US
+    # market to ask.
+    fx = {}
+    try:
+        with open(os.path.join(HERE, "data", "fx.json")) as f:
+            fx = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        # The index is still correct without it: every price keeps its own
+        # currency and its own label, and the sort goes back to being wrong
+        # across currencies the way it was before. Worth a line on stderr and
+        # not worth failing a build over.
+        sys.stderr.write("normalize: no data/fx.json — foreign prices will "
+                         "carry no dollar estimate and will sort by their "
+                         "face value. Run fx.py.\n")
+    rates = (fx.get("rates") or {}) if isinstance(fx, dict) else {}
+    approx = 0
+    for bag in bags:
+        cur = bag.get("currency") or "USD"
+        rate = rates.get(cur)
+        if cur == "USD" or not rate or not bag.get("price_min"):
+            continue
+        bag["price_usd_approx"] = round(bag["price_min"] / rate, 2)
+        approx += 1
+    if approx:
+        print(f"  fx: {approx} bags in {len({b.get('currency') for b in bags if b.get('price_usd_approx')})} "
+              f"foreign currencies carry a dollar estimate at ECB {fx.get('date')}",
+              flush=True)
+
     def coverage(field):
         n = sum(1 for b in bags if b.get(field) is not None)
         return {"have": n, "pct": round(100.0 * n / len(bags)) if bags else 0}
 
     meta = {
+        # Carried into the catalogue so every published build records the rate
+        # it reckoned with, and so the site can name it on the page rather than
+        # asking the reader to take a dollar figure on trust.
+        "fx": {k: fx[k] for k in ("source", "url", "date", "base", "rates")
+               if k in fx} or None,
         "generated_from": "public storefront sources: Shopify products.json, "
                           "WooCommerce Store API, Magento storefront GraphQL, "
                           "the Bellroy products API, and published product pages",

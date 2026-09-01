@@ -252,7 +252,40 @@ const CUR_SYMBOLS = { USD: "$", GBP: "£", EUR: "€", CAD: "CA$", AUD: "AU$", J
 const cur = c => CUR_SYMBOLS[(c || "USD").toUpperCase()] ?? `${(c || "").toUpperCase()} `;
 const fmtPrice  = (n, c) => n == null ? "—" : cur(c) + (Number.isInteger(n) ? n : n.toFixed(2));
 const gpl = b => (b.weight_g && b.volume_l) ? b.weight_g / b.volume_l : null;
-const ppl = b => (b.price_min && b.volume_l) ? b.price_min / b.volume_l : null;
+
+/* The price to reckon with, as opposed to the price to print.
+ *
+ * Eight brands quote something other than dollars. `price_min` is what they
+ * charge and is what the card shows; `price_usd_approx` is normalize.py's
+ * estimate of it in dollars at a dated ECB rate, and it is what anything
+ * comparing two bags has to use or the comparison is between a number of
+ * pounds and a number of dollars. The server sorts and filters on exactly this
+ * — see price_cmp in pages/api/browse.ts — and the table below sorts on it too,
+ * because a column that reorders differently from the control above it reads
+ * as a bug whichever one is right. */
+const cmpPrice = b => b.price_usd_approx ?? b.price_min;
+const ppl = b => (cmpPrice(b) && b.volume_l) ? cmpPrice(b) / b.volume_l : null;
+
+/* "≈ $433", and null on a bag priced in dollars, which is most of them. */
+const approxUsd = b => b.price_usd_approx == null ? null
+  : "≈ $" + (b.price_usd_approx >= 100
+      ? Math.round(b.price_usd_approx).toLocaleString("en-US")
+      : b.price_usd_approx.toFixed(2));
+
+/* Named on the page rather than left implicit: a converted figure with no rate
+ * beside it is a number the reader has to trust. Filled from the boot payload.
+ * See fx.py for why the rate carries a date instead of being live. */
+let FX = null;
+const fxNote = currency => {
+  const rate = FX?.rates?.[(currency || "").toUpperCase()];
+  if (!FX?.date || !rate) return "";
+  const d = new Date(`${FX.date}T00:00:00Z`);
+  const when = isNaN(d) ? FX.date : d.toLocaleDateString("en-GB",
+    { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  return `European Central Bank reference rate, ${when} — 1 USD = `
+       + `${rate < 10 ? rate.toFixed(4) : rate.toFixed(2)} `
+       + `${(currency || "").toUpperCase()}`;
+};
 
 /* ---------- asking the server ---------- */
 
@@ -442,7 +475,8 @@ function card(b) {
     </div>
     <div class="cfoot">
       <div class="price">${fmtPrice(b.price_min, b.currency)}${
-        b.price_max && b.price_max !== b.price_min ? `<s>–${fmtPrice(b.price_max, b.currency)}</s>` : ""}</div>
+        b.price_max && b.price_max !== b.price_min ? `<s>–${fmtPrice(b.price_max, b.currency)}</s>` : ""}</div>${
+        approxUsd(b) ? `<div class="approx" title="${esc(fxNote(b.currency))}">${approxUsd(b)}</div>` : ""}
       <div class="dots">${swatches}${extra}</div>
       ${favBtn(b.id)}
       <button class="cmp" data-cmp aria-pressed="${on}" title="Add to comparison">${on ? "✓" : "+"}</button>
@@ -1314,13 +1348,17 @@ function renderCompare() {
   const rows = [
     ["Brand",      b => esc(b.brand), null],
     ["Category",   b => esc(CAT_LABELS[b.category] || b.category), null],
-    ["Price",      b => fmtPrice(b.price_min, b.currency), b => b.price_min, "min"],
+    ["Price",      b => fmtPrice(b.price_min, b.currency)
+                        + (approxUsd(b) ? ` <em class="approx">${approxUsd(b)}</em>` : ""),
+                   b => cmpPrice(b), "min"],
     ["Volume",     b => b.volume_l ? b.volume_l + " L" : null, b => b.volume_l, "max"],
     ["Weight",     b => dualWeight(b.weight_g), b => b.weight_g, "min"],
     ["Dimensions", b => dualDims(b.dims_cm, { sep: " × ", suffix: true }), null],
     ["Linear",     b => dualLen(b.linear_cm, true), b => b.linear_cm, "min"],
     ["Grams / L",  b => gpl(b) ? gpl(b).toFixed(0) : null, b => gpl(b), "min"],
-    ["Price / L",  b => ppl(b) ? cur(b.currency) + ppl(b).toFixed(1) : null, b => ppl(b), "min"],
+    // Always in dollars, because it is only ever read against the row above
+    // and below it. The Price column keeps the seller's own currency.
+    ["Price / L",  b => ppl(b) ? "$" + ppl(b).toFixed(1) : null, b => ppl(b), "min"],
     ["Laptop",     b => b.laptop_in ? b.laptop_in + "″" : null, null],
     ["Colourways", b => (b.colors || []).length || null, null],
     ["SKUs",       b => b.variant_count || null, null],
@@ -1446,8 +1484,12 @@ async function openDetail(id) {
     </div>
     ${row("Brand", `<a href="/brands/${esc(b.brand_slug)}/">${esc(b.brand)} →</a>`)}
     ${row("Category", esc(CAT_LABELS[b.category] || b.category))}
-    ${row("Price", b.price_min === b.price_max ? fmtPrice(b.price_min, b.currency)
-        : `${fmtPrice(b.price_min, b.currency)} – ${fmtPrice(b.price_max, b.currency)}`)}
+    ${row("Price", (b.price_min === b.price_max ? fmtPrice(b.price_min, b.currency)
+        : `${fmtPrice(b.price_min, b.currency)} – ${fmtPrice(b.price_max, b.currency)}`)
+        + (approxUsd(b)
+            ? ` <em class="approx">${approxUsd(b)}</em>`
+              + `<i class="fxnote">${esc(fxNote(b.currency))}</i>`
+            : ""))}
     ${row("Volume", b.volume_l ? b.volume_l + " L" : null, b.volume_source)}
     ${row("Dimensions", dualDims(b.dims_cm, { sep: " × ", digits: 1, suffix: true }), b.dims_source)}
     ${row("Linear", dualLen(b.linear_cm, true))}
@@ -1989,6 +2031,7 @@ function wire() {
 
   STATS = data.stats;
   if (data.facets) buildFacets(data);
+  FX = data.fx ?? null;
   initSliders(data.bounds);
   syncFacetButtons();
   // After the buttons know which of them are pressed, because that is what

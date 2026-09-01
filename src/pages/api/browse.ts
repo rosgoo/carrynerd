@@ -81,7 +81,7 @@ type Bag = Record<string, any>;
  * text itself never leaves this function. */
 const CARD_FIELDS = [
   'id', 'slug', 'name', 'brand', 'brand_slug', 'category', 'currency',
-  'in_stock', 'on_sale', 'price_min', 'price_max',
+  'in_stock', 'on_sale', 'price_min', 'price_max', 'price_usd_approx',
   'volume_l', 'volume_source', 'dims_cm', 'dims_source', 'linear_cm',
   'weight_g', 'weight_source', 'laptop_in', 'features', 'features_source',
   'materials', 'colors', 'color_families', 'variant_count',
@@ -142,6 +142,7 @@ type Row = {
   discount: number | null;
   volume_l: number | null;
   price_min: number | null;
+  price_cmp: number | null;
   weight_g: number | null;
   linear_cm: number | null;
   laptop_in: number | null;
@@ -209,6 +210,20 @@ function fitsUnderseat(b: Bag) {
 const ROWS: Row[] = (bags as Bag[]).map((b) => {
   const volume_l = num(b.volume_l);
   const price_min = num(b.price_min);
+  /* What a price is worth in dollars, for putting two of them in an order.
+   *
+   * Eight brands quote something other than USD, and every comparison here
+   * was reading the bare number: a GBP 140 Rab pack sorted below a $150 Aer
+   * one and above a $130 one, and price-per-litre divided pounds by litres
+   * and printed the answer beside dollars per litre. The filter had the same
+   * hole -- priceMax=200 kept a EUR 190 bag that costs $220.
+   *
+   * `price_usd_approx` is normalize.py's, from a dated ECB reference rate, and
+   * it exists only for this. `price_min` is untouched and is still what the
+   * card prints, what the ledger records and what an alert fires on. Falls
+   * back to the face value when there is no rate, which is the old behaviour
+   * and no worse than it. */
+  const price_cmp = num(b.price_usd_approx) ?? price_min;
   const weight_g = num(b.weight_g);
   const linear_cm = num(b.linear_cm);
   const laptop_in = num(b.laptop_in);
@@ -246,7 +261,7 @@ const ROWS: Row[] = (bags as Bag[]).map((b) => {
     // through a loose record and the helper is typed against the catalogue's
     // own shape, and it is the same object either way.
     discount: b.on_sale ? saleDiscount(b as CatalogBag) : null,
-    volume_l, price_min, weight_g, linear_cm, laptop_in,
+    volume_l, price_min, price_cmp, weight_g, linear_cm, laptop_in,
     carryon: Boolean(linear_cm && linear_cm <= 115),
     underseat: fitsUnderseat(b),
     airlines: fitting,
@@ -257,7 +272,7 @@ const ROWS: Row[] = (bags as Bag[]).map((b) => {
     brand: b.brand,
     name: b.name,
     gpl: weight_g && volume_l ? weight_g / volume_l : null,
-    ppl: price_min && volume_l ? price_min / volume_l : null,
+    ppl: price_cmp && volume_l ? price_cmp / volume_l : null,
   };
 });
 
@@ -272,8 +287,8 @@ function nullsLast(x: number | null, y: number | null, dir: number) {
 
 const SORTS: Record<string, (a: Row, b: Row) => number> = {
   brand: (a, b) => byLabel(a.brand, b.brand) || byLabel(a.name, b.name),
-  'price-asc': (a, b) => nullsLast(a.price_min, b.price_min, 1),
-  'price-desc': (a, b) => nullsLast(a.price_min, b.price_min, -1),
+  'price-asc': (a, b) => nullsLast(a.price_cmp, b.price_cmp, 1),
+  'price-desc': (a, b) => nullsLast(a.price_cmp, b.price_cmp, -1),
   'vol-asc': (a, b) => nullsLast(a.volume_l, b.volume_l, 1),
   'vol-desc': (a, b) => nullsLast(a.volume_l, b.volume_l, -1),
   'weight-asc': (a, b) => nullsLast(a.weight_g, b.weight_g, 1),
@@ -444,9 +459,22 @@ const dress = (shape: Shape, c: Counts) => ({
  * so a handle parked at either end means "no bound" rather than "a bound that
  * happens to equal the extreme" — which is what keeps an untouched slider out
  * of the URL and out of the filter. */
+/* Lifted out of the catalogue's meta, where normalize.py stamps it. Only the
+ * parts a reader needs: where the rate came from, when, and the multiplier —
+ * the whole thirty-currency table would be shipped to every visitor to name
+ * one of them. */
+const FX = (() => {
+  const fx = (meta as Record<string, any>)?.fx;
+  return fx?.date ? { source: fx.source, url: fx.url, date: fx.date,
+                      rates: fx.rates } : null;
+})();
+
 const boundsOf = (rows: Row[]) => ({
   volume_l: Math.max(0, ...rows.map((r) => r.volume_l ?? 0)),
-  price_min: Math.max(0, ...rows.map((r) => r.price_min ?? 0)),
+  // In the comparison currency, not the face value: the slider's top stop
+  // has to be reachable by the filter it drives, and the filter compares
+  // dollars.
+  price_min: Math.max(0, ...rows.map((r) => r.price_cmp ?? 0)),
   weight_g: Math.max(0, ...rows.map((r) => r.weight_g ?? 0)),
 });
 
@@ -742,8 +770,8 @@ function matchesFixed(r: Row, q: Query) {
   if (q.sale && !r.on_sale) return false;
   if (q.volMin != null && !(r.volume_l! >= q.volMin)) return false;
   if (q.volMax != null && !(r.volume_l! <= q.volMax)) return false;
-  if (q.priceMin != null && !(r.price_min! >= q.priceMin)) return false;
-  if (q.priceMax != null && !(r.price_min! <= q.priceMax)) return false;
+  if (q.priceMin != null && !(r.price_cmp! >= q.priceMin)) return false;
+  if (q.priceMax != null && !(r.price_cmp! <= q.priceMax)) return false;
   if (q.weightMin != null && !(r.weight_g! >= q.weightMin)) return false;
   if (q.weightMax != null && !(r.weight_g! <= q.weightMax)) return false;
   if (q.linearMax != null && !(r.linear_cm! <= q.linearMax)) return false;
@@ -987,6 +1015,11 @@ export const GET: APIRoute = ({ url }) => {
       : { bounds: BOUNDS, coverage: COVERAGE };
     body.bounds = boot.bounds;
     body.coverage = boot.coverage;
+    /* The rate the dollar estimates were struck at, so the island can name it
+     * rather than printing a converted figure the reader has to take on trust.
+     * Boot-only for the same reason as the bounds above: it is a fact about
+     * the catalogue and not about the filter. */
+    body.fx = FX;
   }
 
   return json(body, 200, CACHE);

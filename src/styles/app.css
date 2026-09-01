@@ -926,6 +926,30 @@ html[data-units="in"] .units [data-unit="in"] {
 }
 .price { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .price s { color: var(--ink-mute); font-weight: 400; font-size: 10px; margin-left: 4px; }
+/* The dollar estimate beside a price the seller quotes in something else.
+   Subordinate to the price in every way available -- lighter, smaller, muted
+   -- because it is the derived number and the one above it is the real one.
+   See fx.py. */
+.approx {
+  font-size: 9.5px; font-weight: 400; color: var(--ink-mute);
+  font-variant-numeric: tabular-nums; letter-spacing: .02em;
+}
+/* Inline variants, for the comparison table and the drawer's spec rows, where
+   it sits after the price on the same line rather than under it. */
+em.approx { font-style: normal; margin-left: 5px; }
+/* The rate itself, spelled out where there is room: under the price in the
+   drawer, and under the spec table on a model page. A converted figure with no
+   rate beside it is a number the reader has to take on trust, and this is the
+   whole reason the estimate is allowed on the page at all. */
+.fxnote {
+  display: block; font-style: normal; font-size: 9px; line-height: 1.5;
+  color: var(--ink-mute); letter-spacing: .02em; margin-top: 2px;
+}
+.fxfoot {
+  margin: 10px 0 0; font-size: 10px; line-height: 1.6; color: var(--ink-mute);
+  max-width: 62ch;
+}
+
 .dots { display: flex; gap: 3px; margin-left: auto; }
 .dot { width: 8px; height: 8px; border: 1px solid var(--line-2); }
 .dots em { font-style: normal; font-size: 9px; color: var(--ink-mute); align-self: center; }

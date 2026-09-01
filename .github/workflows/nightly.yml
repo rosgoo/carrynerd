@@ -410,6 +410,16 @@ jobs:
       - name: Merge shard fetch logs
         run: python3 fetch.py --merge-logs
 
+      # Before Normalize, which reads data/fx.json to put a dollar estimate
+      # beside the prices of the brands that quote something else. Never fails
+      # the run: an unreachable ECB leaves the previous rate in place and
+      # normalize.py carries on with it, since a catalogue with a day-old rate
+      # on it is worth a great deal more than no catalogue. The date shown on
+      # the page is the rate's own, so a stale one says so without anyone
+      # maintaining a warning. See fx.py.
+      - name: Exchange rates
+        run: python3 fx.py || true
+
       - name: Normalize
         run: python3 normalize.py
 

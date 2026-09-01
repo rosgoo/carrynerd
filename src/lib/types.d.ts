@@ -64,6 +64,11 @@ export interface Bag {
 
   price_min: number | null;
   price_max: number | null;
+  /** A dollar estimate for a price the seller does not quote in dollars, from
+   *  the dated ECB rate in `meta.fx`. Display and sorting only — `price_min`
+   *  is the price, and is what the ledger and the alerts use. Absent on USD
+   *  bags and on any currency the rate table does not cover. */
+  price_usd_approx?: number | null;
   currency: string;
   currency_source: string;
   on_sale: boolean;
@@ -165,6 +170,18 @@ export interface CatalogMeta {
   image_bg_sampled?: number;
   /** Absent until the pipeline has run since the override files appeared. */
   overrides?: Record<string, OverrideReport>;
+  /** The reference rate the dollar estimates on foreign-priced bags were
+   *  struck at, stamped by normalize.py from data/fx.json so that every
+   *  published build records the rate it reckoned with. `rates` is keyed by
+   *  ISO code and reads "1 USD buys this many". Null when fx.py has not run.
+   *  Display only — see `Bag.price_usd_approx`. */
+  fx?: {
+    source?: string;
+    url?: string;
+    date?: string;
+    base?: string;
+    rates?: Record<string, number>;
+  } | null;
   [key: string]: unknown;
 }
 

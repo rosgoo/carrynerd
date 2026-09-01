@@ -27,6 +27,46 @@ export const fmtPriceRange = (min, max, currency = 'USD') =>
   : max == null || max === min ? fmtPrice(min, currency)
   : `${fmtPrice(min, currency)} – ${fmtPrice(max, currency)}`;
 
+/* The dollar estimate that rides beside a foreign price, and the sentence that
+   says where it came from.
+ *
+ * The comment above still holds and is the reason these are separate
+ * functions rather than a smarter fmtPrice: the price is never converted, and
+ * what fmtPrice returns is the price. This is a second number, and everything
+ * about how it is written is meant to stop it being mistaken for the first —
+ * the tilde, the word "approx" in the field name it comes from, and a note
+ * naming the rate and its date wherever there is room for one.
+ *
+ * The date is the point. A dollar figure with no date is a claim the reader
+ * has to take on trust; "ECB, 31 Aug 2026" is one they can go and check, and
+ * it is also the honest way to admit the number was true on a particular day
+ * and is not being re-derived as they read. */
+export const fmtApproxUsd = (bag) =>
+  bag?.price_usd_approx == null
+    ? null
+    : `≈ $${bag.price_usd_approx >= 100
+        ? Math.round(bag.price_usd_approx).toLocaleString('en-US')
+        : bag.price_usd_approx.toFixed(2)}`;
+
+const FX_DATE = (iso) => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+  });
+};
+
+/* "European Central Bank reference rate, 31 Aug 2026 — 1 USD = 0.7386 GBP".
+   The rate itself and not just its source, because the reader converting in
+   their head wants the multiplier, and because quoting it is what makes the
+   estimate falsifiable. */
+export const fxNote = (fx, currency) => {
+  const rate = fx?.rates?.[(currency || '').toUpperCase()];
+  if (!fx?.date || !rate) return null;
+  return `European Central Bank reference rate, ${FX_DATE(fx.date)}`
+       + ` — 1 USD = ${rate < 10 ? rate.toFixed(4) : rate.toFixed(2)} `
+       + `${(currency || '').toUpperCase()}`;
+};
+
 /* Metric only, and deliberately kept alongside the pair below rather than
    folded into it. What is left calling it is the crawler-facing copy — the meta
    description on a model page and on a size band — where there is no reader

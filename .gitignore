@@ -33,6 +33,12 @@ data/price-events.json
 # This run's crawl facts, handed to the nightly's health check. Same standing:
 # what one run did, not a record of anything.
 data/enrich-run.json
+# Today's reference rates, fetched fresh each night and read once by
+# normalize.py. Not committed and not pushed to the data repo, because it is an
+# input rather than a record: the rate a catalogue was actually built with is
+# stamped into its own meta.fx, so the published artefact carries its own
+# provenance and this file is only ever the scratch copy. See fx.py.
+data/fx.json
 __pycache__/
 *.pyc
 .DS_Store

@@ -5,13 +5,14 @@ import WatchForm from '../../../components/WatchForm.astro';
 import Offers from '../../../components/Offers.astro';
 import Measure from '../../../components/Measure.astro';
 import CarryOn from '../../../components/CarryOn.astro';
-import { bags, bagSlug, bagHref, isIndexable, priceSeries, priceChanges, trackingSince, variantUrls } from '../../../lib/catalog.js';
+import { bags, bagSlug, bagHref, isIndexable, priceSeries, priceChanges, trackingSince, variantUrls, meta } from '../../../lib/catalog.js';
 import { hubByCategory } from '../../../lib/hubs.js';
 import { catLabel, featureLabel, sourceLabel } from '../../../lib/labels.js';
 import { SITE_NAME_DISPLAY } from '../../../lib/brand.js';
 import {
   fmtPrice, fmtPriceRange, fmtWeight, fmtWeightBoth, fmtDims, fmtVolume, fmtLaptop,
   fmtLinear, gramsPerLitre, pricePerLitre, currencySymbol,
+  fmtApproxUsd, fxNote,
 } from '../../../lib/format.js';
 import type { Bag } from '../../../lib/types.d.ts';
 
@@ -70,8 +71,17 @@ const perLitre = pricePerLitre(bag);
  * one value on the table that is a link. */
 const hub = hubByCategory.get(bag.category) ?? null;
 
+/* A dollar estimate, for the few brands that do not quote dollars. It is a
+   row of its own rather than an addition to the Price row above it, because
+   the Price row is what the seller charges and this is not — see fx.py. The
+   rate and its date are spelled out under the table; the provenance chip here
+   is the short form of the same thing. */
+const approxUsd = fmtApproxUsd(bag);
+const fxLine = approxUsd ? fxNote(meta.fx, bag.currency) : null;
+
 const specs = [
   ['Price', fmtPriceRange(bag.price_min, bag.price_max, bag.currency), null],
+  ...(approxUsd ? [['Approx. in USD', approxUsd, `ECB ${meta.fx?.date ?? ''}`]] : []),
   ['Volume', fmtVolume(bag.volume_l), bag.volume_source],
   ['Dimensions', fmtDims(bag.dims_cm), bag.dims_source],
   ['Linear (h+w+d)', fmtLinear(bag.linear_cm), bag.dims_source],
@@ -297,6 +307,12 @@ const description =
           ))}
         </tbody>
       </table>
+      {fxLine && (
+        <p class="fxfoot">
+          {fxLine}. The price above is what {bag.brand} charges, in the currency
+          they charge it in; the estimate is for comparison and is not a quote.
+        </p>
+      )}
     </section>
 
     <PriceHistory series={series} changes={changes} since={trackingSince} currency={bag.currency} />
