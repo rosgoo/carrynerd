@@ -797,6 +797,20 @@ async function render({ boot = false } = {}) {
   }
   if (mine !== gen) return null;
 
+  /* Before anything is painted, because the cards read it.
+   *
+   * This used to be set by boot() from render()'s return value, which is one
+   * line too late: render() paints inside itself, so the first sixty cards on
+   * a foreign-priced brand were built while FX was still null and every one of
+   * them got an empty title where the rate belonged. Only visible on the eight
+   * brands that quote something else, which is why it survived a check that
+   * confirmed the estimate itself was rendering.
+   *
+   * Kept rather than overwritten on later responses: the rate rides on the
+   * boot payload only, so a filter change answering without one must not
+   * clear it. */
+  if (data.fx) FX = data.fx;
+
   out.removeAttribute("aria-busy");
   PAGE = 0;
   // A different question gets a fresh budget. Every filter, search and sort
@@ -2031,7 +2045,6 @@ function wire() {
 
   STATS = data.stats;
   if (data.facets) buildFacets(data);
-  FX = data.fx ?? null;
   initSliders(data.bounds);
   syncFacetButtons();
   // After the buttons know which of them are pressed, because that is what

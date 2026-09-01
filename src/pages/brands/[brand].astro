@@ -28,7 +28,7 @@ import Measure from '../../components/Measure.astro';
 import { brands, bagHref } from '../../lib/catalog.js';
 import { catLabel } from '../../lib/labels.js';
 import { SITE_NAME_DISPLAY } from '../../lib/brand.js';
-import { fmtPrice, fmtVolume, fmtWeightBoth, fmtDims } from '../../lib/format.js';
+import { fmtPrice, fmtVolume, fmtWeightBoth, fmtDims, fmtApproxUsd } from '../../lib/format.js';
 import roster from '../../../brands.json';
 
 export function getStaticPaths() {
@@ -151,7 +151,13 @@ const jsonLd = {
               <td class={bag.volume_l == null ? 'nil' : ''}>{fmtVolume(bag.volume_l) ?? '—'}</td>
               <td class={bag.weight_g == null ? 'nil' : ''}><Measure value={fmtWeightBoth(bag.weight_g)} /></td>
               <td class={bag.dims_cm == null ? 'nil' : ''}><Measure value={fmtDims(bag.dims_cm)} /></td>
-              <td>{fmtPrice(bag.price_min, bag.currency)}</td>
+              {/* This route paints a table rather than cards, so it missed
+                  the estimate the cards carry. A brand page is where a reader
+                  ends up when the whole shelf is priced in one foreign
+                  currency, which makes it the page that needs it most. The
+                  rate itself is named once, in the note above the table. */}
+              <td>{fmtPrice(bag.price_min, bag.currency)}{
+                fmtApproxUsd(bag) && <em class="approx">{fmtApproxUsd(bag)}</em>}</td>
             </tr>
           ))}
         </tbody>
