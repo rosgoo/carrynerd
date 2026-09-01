@@ -129,17 +129,24 @@ def dedupe(items, key):
 # What a product page says that is true of every capacity it describes, and
 # what is true of only one.
 #
-# A page for a model sold in three sizes states one set of dimensions, one
-# weight and one laptop figure, and says nothing about which size they belong
-# to. It also states the fabric and the feature list, which are the same bag
-# whichever size you buy.
+# A page for a model sold in three sizes states one set of dimensions and one
+# weight, and says nothing about which size they belong to. It also states the
+# fabric and the feature list, which are the same bag whichever size you buy.
 #
 # So the second group is applied only to the entry whose volume the page's own
 # stated volume matches, and to no other. Where the page states no volume there
 # is nothing to match on and none of them get it — the dash is the honest
 # answer, and it is a great deal cheaper than the alternative, which is the
 # 20L's measurements sitting in the carry-on tables under the 35L's name.
-SIZED_PAGE_FIELDS = ("dims_cm", "dims_source", "linear_cm", "laptop_in",
+#
+# The laptop figure was in the second group and belongs in the first. A brand
+# that sells one bag in three capacities builds one laptop sleeve and states it
+# once — see the CIVIC Panel Loader note in split_by_size(), where Evergoods
+# state 16in for the 16L and the 24L independently. Treating it as size-bound
+# emptied `laptopMin` of most of the split catalogue: the figure landed on the
+# one child whose volume the page happened to name and every sibling showed a
+# dash, which that filter reads as "does not fit" rather than "not known".
+SIZED_PAGE_FIELDS = ("dims_cm", "dims_source", "linear_cm",
                      "volume_l", "volume_source", "weight_g", "weight_source",
                      "gtin")
 

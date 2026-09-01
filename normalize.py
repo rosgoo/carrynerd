@@ -2811,13 +2811,25 @@ def split_sizes(bags):
     - Two distinct capacities at least, or there is nothing to split.
 
     What a child does *not* inherit is as load-bearing as what it does. The
-    feed states weight per variant, so each size gets its own. Dimensions and
-    laptop capacity are read off one page describing every size, and nothing in
-    that page says which size they belong to — so they are dropped here and
-    handed back by enrich.py to whichever entry the page's own stated volume
-    matches, and to no other. Cloning them across three entries would put the
-    20L's measurements in the carry-on tables under the 35L's name, which is
-    worse than the dash it now shows.
+    feed states weight per variant, so each size gets its own. Dimensions are
+    read off one page describing every size, and nothing in that page says
+    which size they belong to — so they are dropped here and handed back by
+    enrich.py to whichever entry the page's own stated volume matches, and to
+    no other. Cloning them across three entries would put the 20L's
+    measurements in the carry-on tables under the 35L's name, which is worse
+    than the dash it now shows.
+
+    Laptop capacity used to be dropped alongside them and is not any more,
+    because it is not the same kind of fact. Dimensions and weight are true of
+    one size and false of the others; the sleeve is the model's, and a page
+    that states one laptop figure for a line sold in three sizes is describing
+    the line. The CIVIC Panel Loader settles it — Evergoods sell it in three
+    fabrics, the plain page states 16L and the waxed-canvas and X-Pac pages
+    state 24L, and all three say 16in. Withholding it cost more than it
+    protected: every Evergoods bag over 22L had a dash, so `laptopMin` — a
+    filter whose whole reading is "at least this much" — could not return a
+    single one of them, and the ones it was hiding are among the best-known
+    laptop packs in the catalogue.
     """
     out, split = [], 0
     taken = {b["id"] for b in bags}
@@ -2876,7 +2888,7 @@ def split_sizes(bags):
             grams = [v["grams"] for v in kept if v.get("grams")]
             child["weight_g"] = max(grams) if grams else None
             child["weight_source"] = "shopify:grams" if grams else None
-            for field in ("dims_cm", "dims_source", "linear_cm", "laptop_in"):
+            for field in ("dims_cm", "dims_source", "linear_cm"):
                 child[field] = None
 
             # The size's own photography leads; the rest of the gallery follows,
