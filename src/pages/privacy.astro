@@ -7,8 +7,9 @@ import { SITE_NAME, SITE_NAME_DISPLAY, CONTACT } from '../lib/brand.js';
    because a notice nobody reads protects nobody. */
 const title = `Privacy — ${SITE_NAME_DISPLAY}`;
 const description =
-  `What ${SITE_NAME} stores, why, and how to have it deleted. Browsing is anonymous; `
-  + 'the only personal data held is an email address you typed in yourself.';
+  `What ${SITE_NAME} stores, why, and how to have it deleted. Browsing is counted `
+  + 'but never identified; the only personal data held is an email address you '
+  + 'typed in yourself.';
 ---
 <Base title={title} description={description}>
   <div class="page">
@@ -17,17 +18,36 @@ const description =
     </nav>
     <h1>Privacy</h1>
     <p class="note">
-      Short version: browsing is anonymous, and the only personal data held is
-      an email address you typed in yourself — into a price watch, or onto a
-      brand request, where it is optional.
+      Short version: the only personal data held is an email address you typed
+      in yourself — into a price watch, or onto a brand request, where it is
+      optional. Browsing is counted but not identified: what gets read and
+      clicked is recorded as anonymous totals, and nothing ties those to you.
     </p>
 
     <section>
       <h2>Browsing</h2>
       <p class="note">
         The catalog is static files. No account and no login. Your filter
-        selections live in the URL and your theme choice in your own browser's
-        local storage — neither reaches us.
+        selections live in the URL, and your theme, your favourites and any
+        saved filters live in your own browser's local storage — none of that
+        reaches us.
+      </p>
+      <p class="note">
+        Two things are counted, and it is worth being exact about them rather
+        than calling the page anonymous and leaving it there. Vercel records a
+        pageview for each page, without cookies and without an identifier that
+        follows you between them. And we record which bags get looked at and
+        which sellers get clicked through to, as counts: the bag, the seller
+        and the time, and nothing about the person — no address, no IP, no
+        cookie, no session, nothing joining one of those rows to another or to
+        you. It is how we know which parts of the index are worth the work of
+        keeping accurate.
+      </p>
+      <p class="note">
+        That ceiling is deliberate rather than an omission. Counting is enough
+        to tell us what to measure next; knowing who did the counting is not
+        worth asking you for, so we do not collect it and there is nothing
+        held about your browsing for you to ask us to delete.
       </p>
     </section>
 
@@ -69,9 +89,10 @@ const description =
       <p class="note">
         Three processors, each doing one job: <strong>Supabase</strong> hosts the
         database the address sits in, <strong>Resend</strong> delivers the
-        email, and <strong>Vercel</strong> serves the site. Resend keeps its
-        own delivery log containing recipient addresses, as every email
-        provider does — so unsubscribing removes you from our side immediately,
+        email, and <strong>Vercel</strong> serves the site and counts the
+        pageviews described above. Resend keeps its own delivery log containing
+        recipient addresses, as every email provider does — so unsubscribing
+        removes you from our side immediately,
         but their log retains a record of past sends for a period we do not
         control. No data is sold or shared with anyone else.
       </p>

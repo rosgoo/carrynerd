@@ -24,8 +24,23 @@ create table if not exists subscriptions (
   confirm_token text        not null unique,
   -- One-click unsubscribe, no login. Deleting the row is the unsubscribe.
   unsub_token   text        not null unique,
+  -- When the confirmation mail was last *successfully handed to Resend*, which
+  -- is a different fact from when the row appeared and has to be stored
+  -- separately from it. /api/watch suppresses a repeat confirmation inside a
+  -- short window, and it used to read created_at for that — so a row whose
+  -- send then failed was indistinguishable from one whose send had just
+  -- succeeded, and the reader's immediate retry was suppressed by a mail that
+  -- never went. Null means "nothing has been sent for this row yet", which is
+  -- exactly the state a failed send has to leave behind.
+  confirm_sent_at timestamptz,
   created_at    timestamptz not null default now()
 );
+
+-- Existing databases: the table above is only created when absent, so the
+-- column has to be added separately for one that predates it. Null is the
+-- correct value for every existing row — it means the resend window has
+-- lapsed, which for a row created before this column existed it has.
+alter table subscriptions add column if not exists confirm_sent_at timestamptz;
 
 -- One watch per address per criteria. Makes a repeat signup an idempotent
 -- upsert rather than a way to make us mail somebody twice.
@@ -219,8 +234,8 @@ create table if not exists brand_requests (
   -- and it goes through none of the double opt-in machinery above because it
   -- is not a mailing list: see the note in src/pages/api/request-brand.ts.
   email      text,
-  -- sha256 of the UTC date and the requester's IP — see requesterHash() in the
-  -- endpoint. Two jobs, both of which need to tell requesters apart and
+  -- sha256 of the UTC date and the requester's IP — see requesterHash() in
+  -- src/lib/db.ts. Two jobs, both of which need to tell requesters apart and
   -- neither of which needs to know who they are: the daily cap, and the dedupe
   -- index below. Because the date is inside the digest, the value stops
   -- matching the same person at UTC midnight, which is what keeps this from
@@ -239,6 +254,37 @@ create unique index if not exists brand_requests_once
 create index if not exists brand_requests_recent
   on brand_requests (created_at desc);
 
+-- Signup throttle.
+--
+-- /api/watch is the one unauthenticated endpoint that spends money and
+-- reputation on being called: every new watch is a confirmation mail handed to
+-- Resend, and a young sending domain that emits a burst of them to addresses
+-- nobody typed is a domain that gets throttled. Nothing else in the schema
+-- could cap that, because the natural place to count — subscriptions — is
+-- deleted on unsubscribe, so a cap read from it resets for anyone willing to
+-- unsubscribe. This table is never deleted from by the application, which is
+-- the whole reason it is a table of its own and not a column on subscriptions.
+--
+-- It holds no address and no subscription id. Pairing "this requester" with
+-- "this mailbox" is exactly the join this table exists without, so a cap can be
+-- enforced without the throttle becoming a second, undeletable record of who
+-- signed up for what.
+--
+-- ip_hash is the same date-mixed digest brand_requests uses — see
+-- requesterHash() in src/lib/db.ts. Because the UTC date is inside the digest,
+-- yesterday's rows stop matching anybody today, which is both how the window
+-- rolls and why the column cannot follow a person across days.
+create table if not exists watch_requests (
+  id         bigint generated always as identity primary key,
+  ip_hash    text        not null,
+  created_at timestamptz not null default now()
+);
+
+-- The only query: how many has this requester filed today. ip_hash leads
+-- because it is the equality, exactly as in brand_requests_once.
+create index if not exists watch_requests_ip
+  on watch_requests (ip_hash, created_at desc);
+
 -- Belt and braces against the hosted layer. Supabase fronts the public schema
 -- with a REST API whose anon key is designed to be handed to browsers, and
 -- subscriptions is the one table that must never be readable that way. Row
@@ -253,3 +299,4 @@ alter table email_sends     enable row level security;
 alter table email_events    enable row level security;
 alter table suppressions    enable row level security;
 alter table brand_requests  enable row level security;
+alter table watch_requests  enable row level security;
