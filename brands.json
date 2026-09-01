@@ -196,7 +196,9 @@
   {
     "slug": "heimplanet",
     "name": "Heimplanet",
-    "domain": "heimplanet.com"
+    "domain": "heimplanet.com",
+    "currency": "EUR",
+    "note": "Currency declared 2026-08-31 so fetch.py's US market pin cannot reach it: this store prices in EUR, and a ?country=US feed would publish a different market's prices under this brand's name. Product-page evidence, and the declaration changes no published price - observed_currency() still prefers what the source itself says and this only ever acts as the fallback under it."
   },
   {
     "slug": "coteetciel",
@@ -316,7 +318,9 @@
   {
     "slug": "ecohub",
     "name": "Ecohub",
-    "domain": "ecohubtravel.com"
+    "domain": "ecohubtravel.com",
+    "currency": "HKD",
+    "note": "Currency declared 2026-08-31 so fetch.py's US market pin cannot reach it: this store prices in HKD, and a ?country=US feed would publish a different market's prices under this brand's name. Product-page evidence, and the declaration changes no published price - observed_currency() still prefers what the source itself says and this only ever acts as the fallback under it."
   },
   {
     "slug": "greenroom",
@@ -481,7 +485,9 @@
   {
     "slug": "attitude-supply",
     "name": "Attitude Supply",
-    "domain": "attitudesupply.com"
+    "domain": "attitudesupply.com",
+    "currency": "EUR",
+    "note": "Currency declared 2026-08-31 so fetch.py's US market pin cannot reach it: this store prices in EUR, and a ?country=US feed would publish a different market's prices under this brand's name. Product-page evidence, and the declaration changes no published price - observed_currency() still prefers what the source itself says and this only ever acts as the fallback under it."
   },
   {
     "slug": "avio-gear",
@@ -528,7 +534,9 @@
   {
     "slug": "caribee",
     "name": "Caribee",
-    "domain": "caribee.com"
+    "domain": "caribee.com",
+    "currency": "AUD",
+    "note": "Currency declared 2026-08-31 so fetch.py's US market pin cannot reach it: this store prices in AUD, and a ?country=US feed would publish a different market's prices under this brand's name. Product-page evidence, and the declaration changes no published price - observed_currency() still prefers what the source itself says and this only ever acts as the fallback under it."
   },
   {
     "slug": "corsurf",
@@ -566,7 +574,8 @@
       "sitemap": "https://www.deuter.com/de-en/sitemap.xml",
       "product": "/de-en/[^/]+/\\d{8,14}/?$"
     },
-    "note": "Retired 2026-08-02. Measured at 41.7 min a run for 187 models (180 with dimensions) \u2014 see the roster section of the handoff. Too slow for the return, and not a brand this audience is looking for. normalize.py globs raw/ and never reads this file, so the catalogue already fetched stays in the index; only the refetch stops, and validate.py exempts retired entries from the freshness check so it goes stale deliberately rather than by neglect."
+    "note": "Retired 2026-08-02. Measured at 41.7 min a run for 187 models (180 with dimensions) \u2014 see the roster section of the handoff. Too slow for the return, and not a brand this audience is looking for. normalize.py globs raw/ and never reads this file, so the catalogue already fetched stays in the index; only the refetch stops, and validate.py exempts retired entries from the freshness check so it goes stale deliberately rather than by neglect. Currency declared 2026-08-31 so fetch.py's US market pin cannot reach it: this store prices in EUR, and a ?country=US feed would publish a different market's prices under this brand's name. Feed evidence, and the declaration changes no published price - observed_currency() still prefers what the source itself says and this only ever acts as the fallback under it.",
+    "currency": "EUR"
   },
   {
     "slug": "everyman",
@@ -788,7 +797,9 @@
     "slug": "rab",
     "name": "Rab",
     "domain": "rab.equipment",
-    "platform": "magento"
+    "platform": "magento",
+    "currency": "GBP",
+    "note": "Currency declared 2026-08-31 so fetch.py's US market pin cannot reach it: this store prices in GBP, and a ?country=US feed would publish a different market's prices under this brand's name. Feed evidence, and the declaration changes no published price - observed_currency() still prefers what the source itself says and this only ever acts as the fallback under it."
   },
   {
     "slug": "rawrow",
@@ -805,7 +816,7 @@
     "name": "Remote Equipment",
     "domain": "remoteeq.com",
     "platform": "walled",
-    "note": "Walled 2026-08-30, after a reader requested it. remoteeq.com sits behind a Cloudflare managed challenge — /robots.txt itself answers with the interactive JS-and-cookies page, so there is no feed to write an adapter against and no polite way to reach one. `custom` was the wrong label: it read as an adapter nobody had written yet. The way in is the brand offering a feed, not code."
+    "note": "Walled 2026-08-30, after a reader requested it. remoteeq.com sits behind a Cloudflare managed challenge \u2014 /robots.txt itself answers with the interactive JS-and-cookies page, so there is no feed to write an adapter against and no polite way to reach one. `custom` was the wrong label: it read as an adapter nobody had written yet. The way in is the brand offering a feed, not code."
   },
   {
     "slug": "rework-gear",
@@ -858,7 +869,8 @@
       "sitemap": "https://www.tatonka.com/en/sitemap_index.xml",
       "product": "/en/product/[^/]+/$"
     },
-    "note": "Retired 2026-08-02. Measured at 48.8 min a run for 245 models (23 with dimensions) \u2014 see the roster section of the handoff. Too slow for the return, and not a brand this audience is looking for. normalize.py globs raw/ and never reads this file, so the catalogue already fetched stays in the index; only the refetch stops, and validate.py exempts retired entries from the freshness check so it goes stale deliberately rather than by neglect."
+    "note": "Retired 2026-08-02. Measured at 48.8 min a run for 245 models (23 with dimensions) \u2014 see the roster section of the handoff. Too slow for the return, and not a brand this audience is looking for. normalize.py globs raw/ and never reads this file, so the catalogue already fetched stays in the index; only the refetch stops, and validate.py exempts retired entries from the freshness check so it goes stale deliberately rather than by neglect. Currency declared 2026-08-31 so fetch.py's US market pin cannot reach it: this store prices in EUR, and a ?country=US feed would publish a different market's prices under this brand's name. Feed evidence, and the declaration changes no published price - observed_currency() still prefers what the source itself says and this only ever acts as the fallback under it.",
+    "currency": "EUR"
   },
   {
     "slug": "tobiq",
@@ -881,7 +893,8 @@
     "name": "Vaude",
     "domain": "www.vaude.com",
     "platform": "retired",
-    "note": "Retired 2026-08-04. Measured at 40.1 min for 303 products on the 2026-08-03 run \u2014 30% of the entire night's crawl time for one brand, and 7.9 s/product against a feed brand's 0.3. The cost is the Magento GraphQL adapter paging a product at a time, not the pacing, so no DELAY change recovers it. normalize.py globs raw/ and never reads this file, so the 292 models already fetched stay in the index; only the refetch stops, and validate.py exempts retired entries from the freshness check so it goes stale deliberately rather than by neglect. The \"magento\" platform above is what raw/vaude.json still records and what normalize reads; restore it here to turn the crawl back on."
+    "note": "Retired 2026-08-04. Measured at 40.1 min for 303 products on the 2026-08-03 run \u2014 30% of the entire night's crawl time for one brand, and 7.9 s/product against a feed brand's 0.3. The cost is the Magento GraphQL adapter paging a product at a time, not the pacing, so no DELAY change recovers it. normalize.py globs raw/ and never reads this file, so the 292 models already fetched stay in the index; only the refetch stops, and validate.py exempts retired entries from the freshness check so it goes stale deliberately rather than by neglect. The \"magento\" platform above is what raw/vaude.json still records and what normalize reads; restore it here to turn the crawl back on. Currency declared 2026-08-31 so fetch.py's US market pin cannot reach it: this store prices in EUR, and a ?country=US feed would publish a different market's prices under this brand's name. Feed evidence, and the declaration changes no published price - observed_currency() still prefers what the source itself says and this only ever acts as the fallback under it.",
+    "currency": "EUR"
   },
   {
     "slug": "vertx",

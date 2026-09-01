@@ -224,6 +224,38 @@ def fetch_brand(brand, pacer):
     # is what stops a missing or wrong locale publishing quietly.
     locale = (brand.get("locale") or "").strip("/")
     prefix = f"/{locale}" if locale else ""
+
+    # Which market Shopify should quote, stated rather than inferred.
+    #
+    # Shopify Markets picks a market from the requester's IP when the URL names
+    # none, so the price a crawl gets depends on where the crawler happens to
+    # be sitting. On 2026-08-31 the runner drew a Mexican geolocation and three
+    # stores that had just switched Markets on answered in pesos: Boundary at
+    # 18.6x, Chrome at 20.1x, Dagne Dover at 23.8x, the spread being each
+    # store's own per-market price adjustment rather than three currencies.
+    # Confirmed by hand -- ?country=MX reproduces all three multipliers from a
+    # US address, and ?country=US returns the bare price exactly.
+    #
+    # `locale` cannot fix that shape. It needs a market subfolder, and these
+    # stores have none: /en-us, /en-US, /us and /en all 404, so pointing a
+    # locale at them would lose the catalogue outright, which the comment above
+    # is precisely about. ?country= is the other half of the same idea -- it
+    # names the market without needing a URL to exist for it.
+    #
+    # Not sent to a brand that has said what it prices in. A store quoting
+    # pounds or euros on purpose is not a store to ask for dollars: `currency`
+    # means the native price is the true one, and `locale` already pins a
+    # market by prefix. Everyone else is a brand we have been assuming prices
+    # in USD with nothing under the assumption, and this is what puts something
+    # under it.
+    #
+    # Deliberately not read back as evidence of currency. A store without
+    # Markets ignores the parameter, and nothing in the response says whether
+    # it was honoured, so treating the pin as proof of dollars would
+    # manufacture exactly the confidence observed_currency() is careful not to
+    # claim. It makes the prices deterministic; what they are denominated in is
+    # still decided by the evidence.
+    country = "" if (brand.get("currency") or locale) else "US"
     result = {
         "slug": brand["slug"],
         "name": brand["name"],
@@ -235,6 +267,9 @@ def fetch_brand(brand, pacer):
         # Recorded rather than inferred, so the gate can tell "this brand has
         # no locale configured" from "the locale is set and did not help".
         "locale": locale or None,
+        # Same reason as `locale`: the gate can tell a brand that was pinned
+        # from one that was left to whatever the runner's address implied.
+        "country": country or None,
         "products": [],
     }
 
@@ -247,7 +282,9 @@ def fetch_brand(brand, pacer):
 
     products, page = [], 1
     while page <= MAX_PAGES:
-        url = f"https://{domain}{prefix}/products.json?limit={PAGE_LIMIT}&page={page}"
+        url = (f"https://{domain}{prefix}/products.json"
+               f"?limit={PAGE_LIMIT}&page={page}"
+               + (f"&country={country}" if country else ""))
         body = None
         for attempt in range(MAX_RETRIES):
             pacer.wait()
