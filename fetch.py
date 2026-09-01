@@ -255,7 +255,16 @@ def fetch_brand(brand, pacer):
     # manufacture exactly the confidence observed_currency() is careful not to
     # claim. It makes the prices deterministic; what they are denominated in is
     # still decided by the evidence.
-    country = "" if (brand.get("currency") or locale) else "US"
+    # A roster entry may also name the market outright, which is a different
+    # claim from the default above and is treated as one. The default is a
+    # precaution against an address we did not choose; `country` in the roster
+    # is somebody having checked that this store really does sell to the US and
+    # what it charges when it does. normalize.py reads the declared kind as
+    # evidence of currency and the defaulted kind as none -- see the note on
+    # DECLARED_COUNTRY there.
+    country = (brand.get("country") or "").strip().upper()
+    if not country:
+        country = "" if (brand.get("currency") or locale) else "US"
     result = {
         "slug": brand["slug"],
         "name": brand["name"],

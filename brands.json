@@ -197,8 +197,8 @@
     "slug": "heimplanet",
     "name": "Heimplanet",
     "domain": "heimplanet.com",
-    "currency": "EUR",
-    "note": "Currency declared 2026-08-31 so fetch.py's US market pin cannot reach it: this store prices in EUR, and a ?country=US feed would publish a different market's prices under this brand's name. Product-page evidence, and the declaration changes no published price - observed_currency() still prefers what the source itself says and this only ever acts as the fallback under it."
+    "note": "German store with a US market reachable by ?country=US and no /en-us/ prefix: the same first product reads EUR 35 bare and $42 pinned, checked by hand 2026-08-31. Real dollars the seller set, so the index quotes them rather than labelling euros.",
+    "country": "US"
   },
   {
     "slug": "coteetciel",
@@ -486,8 +486,8 @@
     "slug": "attitude-supply",
     "name": "Attitude Supply",
     "domain": "attitudesupply.com",
-    "currency": "EUR",
-    "note": "Currency declared 2026-08-31 so fetch.py's US market pin cannot reach it: this store prices in EUR, and a ?country=US feed would publish a different market's prices under this brand's name. Product-page evidence, and the declaration changes no published price - observed_currency() still prefers what the source itself says and this only ever acts as the fallback under it."
+    "note": "US market reachable by ?country=US and no /en-us/ prefix: the same first product reads EUR 3.50 bare and $5.00 pinned, checked by hand 2026-08-31.",
+    "country": "US"
   },
   {
     "slug": "avio-gear",
@@ -713,8 +713,8 @@
     "slug": "mismo",
     "name": "Mismo",
     "domain": "mismo.dk",
-    "note": "Danish store with no USD market \u2014 /en-us/ does not exist, so there is no locale that fixes this the way Db's did. Labelled instead: the bare feed quotes DKK and that is now what the index says it quotes. Prices are never converted, so kr 5,500 shows as DKK 5,500 rather than as a dollar figure we invented. Was published as $3,600 until 2026-08-04.",
-    "currency": "DKK"
+    "note": "Danish store. /en-us/ does not exist, so there is no locale that fixes this the way Db's did -- but ?country=US does: the same first product reads kr 838 bare and $107 pinned, checked by hand 2026-08-31. That is a price Mismo set for the US market, not a conversion; a straight DKK rate would put it near $131. Superseded the DKK label this brand carried from 2026-08-04, which was correct about locale and did not know about country. Was published as $3,600 before that.",
+    "country": "US"
   },
   {
     "slug": "mixed-works",

@@ -2983,7 +2983,8 @@ def locale_currency(locale):
     return LOCALE_CURRENCY.get(parts[-1]) if len(parts) > 1 else None
 
 
-def observed_currency(payload, slug, page_currencies, declared):
+def observed_currency(payload, slug, page_currencies, declared,
+                      declared_country=None):
     """What currency does this brand actually price in, and how do we know?
 
     Five of the six sources state it outright and we were throwing it away.
@@ -3018,6 +3019,28 @@ def observed_currency(payload, slug, page_currencies, declared):
     from_locale = locale_currency(payload.get("locale"))
     if from_locale:
         return from_locale, "locale"
+
+    # A market named in the roster, which is the same claim `locale` makes by a
+    # different route. Some stores run a US market with no URL to reach it by:
+    # Mismo's /en-us/ 404s and its note said for four weeks that nothing could
+    # fix it, but ?country=US answers kr 838 as $107 -- a price Mismo set, not
+    # a rate applied to a Danish one. fetch.py pulls the feed under that market
+    # and this is what says so.
+    #
+    # Above the page scrape for exactly the reason locale is: the cached pages
+    # for these brands were crawled at the bare URL and still say DKK and EUR,
+    # so a scrape would relabel dollars as kroner and undo the fix in the
+    # quietest possible way.
+    #
+    # Only the *declared* country counts. fetch.py also pins country=US by
+    # default, as a precaution against whatever address a runner draws, and a
+    # store without Markets ignores the parameter with nothing in the response
+    # to say so. Reading that as proof of dollars would manufacture the
+    # confidence this function exists to avoid. A roster entry is somebody
+    # having checked; the default is not.
+    from_country = LOCALE_CURRENCY.get((declared_country or "").lower())
+    if from_country:
+        return from_country, "country"
 
     if page_currencies:
         # Majority across the brand's cached pages. Not unanimity: a single
@@ -3061,6 +3084,7 @@ def main():
     # instead of waiting for the brand's turn in the crawl. It is the *fallback*
     # — see observed_currency(), which prefers what the source itself says.
     declared = {}
+    declared_country = {}
     # Sources whose cached catalogue is not to be read.
     #
     # Distinct from `retired`, and the distinction is the point. `retired` means
@@ -3079,6 +3103,8 @@ def main():
             roster = json.load(f)
         declared = {b["slug"]: (b.get("currency") or "").upper()
                     for b in roster}
+        declared_country = {b["slug"]: (b.get("country") or "").upper()
+                            for b in roster}
         removed = {b["slug"] for b in roster
                    if (b.get("platform") or "") == "removed"}
     except (OSError, json.JSONDecodeError, TypeError, KeyError) as e:
@@ -3135,7 +3161,8 @@ def main():
         code, source = observed_currency(
             payload, payload["slug"],
             page_currencies.get(payload["slug"]),
-            declared.get(payload["slug"]))
+            declared.get(payload["slug"]),
+            declared_country.get(payload["slug"]))
         currency_sources[source] += 1
         brand = {
             "slug": payload["slug"], "name": payload["name"],
