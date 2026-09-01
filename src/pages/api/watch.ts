@@ -32,9 +32,12 @@ const RESEND_AFTER_MINUTES = 15;
  * of unrequested confirmations is a domain that gets throttled, which breaks
  * alerts for everybody long after the burst stops.
  *
- * Set where a real reader will not meet it. Watching ten bags in one sitting
- * is enthusiasm and the cap should not be what ends it; the hundredth in an
- * afternoon from one address is not a reader.
+ * Set where a real reader will not meet it, and no higher than that. Ten
+ * watches in one sitting is already an unusual amount of enthusiasm; the
+ * reader who wants an eleventh today is rarer than the script that wants a
+ * thousand, and tomorrow costs them nothing. The same number as the cap in
+ * /api/request-brand, deliberately — two unauthenticated endpoints with the
+ * same shape of abuse should not need two numbers remembered.
  *
  * What this cannot do is bound the *total*: ten sources at the cap still spend
  * a hundred sends, and the free Resend tier is a hundred a day. It refuses the
@@ -43,7 +46,7 @@ const RESEND_AFTER_MINUTES = 15;
  * Vercel dashboard, where the platform can see a client across requests and
  * this function cannot.
  */
-const DAILY_CAP = 25;
+const DAILY_CAP = 10;
 
 export const POST: APIRoute = async (ctx) => {
   const { request, url } = ctx;
