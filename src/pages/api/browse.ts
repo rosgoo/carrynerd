@@ -292,8 +292,20 @@ const SORTS: Record<string, (a: Row, b: Row) => number> = {
   'vol-asc': (a, b) => nullsLast(a.volume_l, b.volume_l, 1),
   'vol-desc': (a, b) => nullsLast(a.volume_l, b.volume_l, -1),
   'weight-asc': (a, b) => nullsLast(a.weight_g, b.weight_g, 1),
+  'weight-desc': (a, b) => nullsLast(a.weight_g, b.weight_g, -1),
+  /* Both directions, on all four of these. Price and volume have had them from
+   * the start and the rest were offered one way each, which read as an opinion
+   * about which end was worth looking at -- and the opinion was wrong at least
+   * as often as it was right. The heaviest bag in a class is as diagnostic as
+   * the lightest, the worst grams-per-litre is how you find a bag that is all
+   * shell, and the *most* expensive per litre is how you find the one you are
+   * being asked to pay a brand premium for. `gpl` and `ppl` keep their bare
+   * names as the ascending key so that saved filters and shared links written
+   * before this still mean what they meant. */
   gpl: (a, b) => nullsLast(a.gpl, b.gpl, 1),
+  'gpl-desc': (a, b) => nullsLast(a.gpl, b.gpl, -1),
   ppl: (a, b) => nullsLast(a.ppl, b.ppl, 1),
+  'ppl-desc': (a, b) => nullsLast(a.ppl, b.ppl, -1),
   /* Deepest cut first, and the default order of /sale/ — see the scope section
    * below. Everything not on sale has a null discount and sorts last, which is
    * what makes this a sane thing to offer on the front page too rather than a
@@ -303,15 +315,24 @@ const SORTS: Record<string, (a: Row, b: Row) => number> = {
   discount: (a, b) =>
     nullsLast(a.discount, b.discount, -1) ||
     byLabel(a.brand, b.brand) || byLabel(a.name, b.name),
+  /* The shallow end of the same list. Worth having for the reason the deep end
+   * is: a 5% cut on a bag that never discounts is a different fact from a 40%
+   * cut on one that always does. Nulls still sort last -- ascending is about
+   * the bags that *have* a discount, and a bag with none belongs at the bottom
+   * either way rather than at the top of "smallest discount first". */
+  'discount-asc': (a, b) =>
+    nullsLast(a.discount, b.discount, 1) ||
+    byLabel(a.brand, b.brand) || byLabel(a.name, b.name),
 };
 
-/* The catalogue pre-sorted eight ways, once, so a request never sorts anything.
+/* The catalogue pre-sorted twelve ways, once, so a request never sorts anything.
  *
  * Filtering a stably-sorted array leaves the survivors in the order a stable
  * sort of just the survivors would have produced, so this is the same answer
  * the island used to compute — it is only the moment of paying for it that
- * moved. Eight arrays of references cost about half a megabyte and turn every
- * request into one linear pass. */
+ * moved. Twelve arrays of references cost under a megabyte -- they hold the
+ * same rows, not copies of them -- and turn every request into one linear
+ * pass. */
 const ORDERS: Record<string, Row[]> = Object.fromEntries(
   Object.entries(SORTS).map(([key, cmp]) => [key, [...ROWS].sort(cmp)]),
 );

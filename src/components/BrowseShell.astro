@@ -16,6 +16,7 @@
  * request fails.
  */
 import { airlines, carryOnAirlines } from '../lib/carryon.js';
+import { meta } from '../lib/catalog.js';
 
 interface Props {
   /** The brand this page is about, if it is about one. Present, the rail loses
@@ -95,6 +96,18 @@ const scope = brand
 
 const lock = scope?.lock ?? null;
 const unlock = scope?.unlock ?? null;
+/* The date the dollar estimates were struck at, for the price note below.
+   Formatted here rather than in the template so the template stays readable
+   and so an unparseable date falls back to the ISO string rather than to
+   "Invalid Date". */
+const fxDate = (() => {
+  const iso = meta.fx?.date;
+  if (!iso) return null;
+  const d = new Date(`${iso}T00:00:00Z`);
+  return isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-GB',
+    { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+})();
+
 ---
 <div class="shell" id="shell" data-lock={lock} data-unlock={unlock} data-sort={sort}>
   {/* Alphabetical by heading. The old order was the order the facets were
@@ -279,11 +292,25 @@ const unlock = scope?.unlock ?? null;
           <em>—</em>
           <input id="price-max" type="number" placeholder="max" min="0" step="10" />
         </div>
+        {/* This used to end "so this range compares the figures rather than
+            their worth", which was true and is not any more: the range, the
+            price sorts and Price / L all reckon in dollars now. The note stays
+            because the two halves are both still worth saying, and saying only
+            the first would leave a reader to assume a GBP 90 bag is matched on
+            the number 90. Where the rate is missing -- fx.py never ran, or the
+            ECB was unreachable and there is nothing cached -- the old sentence
+            is the accurate one again, so it is what gets printed. */}
         {otherCurrencies.length > 0 && (
           <p class="note" style="padding:10px 0 0;border:none">
-            Mostly USD. {otherCurrencies.join(' and ')} where the brand sells
-            in it — shown as charged, never converted, so this range compares
-            the figures rather than their worth.
+            Mostly USD. {otherCurrencies.join(' and ')} where the brand sells in
+            it. Prices are shown as the seller charges them and are never
+            converted{fxDate
+              ? <>, but this range compares an approximate US figure at the
+                  European&nbsp;Central&nbsp;Bank reference rate of {fxDate} —
+                  so a GBP&nbsp;90 bag is matched on what it is worth rather
+                  than on the number 90.</>
+              : <>, so this range compares the figures rather than their
+                  worth.</>}
           </p>
         )}
       </div>
@@ -396,9 +423,11 @@ const unlock = scope?.unlock ?? null;
         {/* Anything not on sale has no discount to rank and sorts last, so
           this is a real control on every page rather than only on /sale/. */}
         <option value="discount" selected={sort === 'discount'}>Discount ↓</option>
+        <option value="discount-asc" selected={sort === 'discount-asc'}>Discount ↑</option>
         <option value="vol-asc" selected={sort === 'vol-asc'}>Volume ↑</option>
         <option value="vol-desc" selected={sort === 'vol-desc'}>Volume ↓</option>
         <option value="weight-asc" selected={sort === 'weight-asc'}>Weight ↑</option>
+        <option value="weight-desc" selected={sort === 'weight-desc'}>Weight ↓</option>
         {/* Abbreviated, and not for the sake of it: a select is as wide as its
           widest option, so these two were setting the width of the whole
           control and pushing Clear onto a second row of buttons at 390. "G/L"
@@ -406,7 +435,9 @@ const unlock = scope?.unlock ?? null;
           column called it, so the short form is the one a reader has already
           met. */}
         <option value="gpl" selected={sort === 'gpl'}>G / L ↑</option>
+        <option value="gpl-desc" selected={sort === 'gpl-desc'}>G / L ↓</option>
         <option value="ppl" selected={sort === 'ppl'}>Price / L ↑</option>
+        <option value="ppl-desc" selected={sort === 'ppl-desc'}>Price / L ↓</option>
       </select>
       {/* The search field, down from the header. It is the widest thing here
           and the only one that wants every pixel it can get, so it takes what
