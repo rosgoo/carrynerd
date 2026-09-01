@@ -17,7 +17,7 @@
  */
 
 import type { APIRoute } from 'astro';
-import { sql, validEmail } from '../../lib/db.ts';
+import { sql, validEmail, requesterHash } from '../../lib/db.ts';
 
 export const prerender = false;
 
@@ -65,46 +65,6 @@ const storefront = (value: unknown): string | null => {
     return null;
   }
 };
-
-/* Who asked, to the precision the two jobs below actually need and no further.
- *
- * The daily cap and the one-request-per-brand index both need to tell
- * requesters apart. Neither needs to know who they are, and the events table
- * next door makes a point of holding no address at all — so the IP is never
- * stored, only a digest of it with the UTC date mixed in. That date is what
- * keeps this from being a durable identifier: the same person hashes to a
- * different value tomorrow, so the column cannot be used to follow anybody
- * across days even by whoever holds the database.
- *
- * Unsalted beyond the date, for the same reason `suppressions` is unpeppered:
- * anyone who can read this table can already read the plaintext addresses in
- * `subscriptions` beside it, so a shared secret would buy nothing and add one
- * more thing a deployment can lose.
- */
-async function requesterHash(ctx: { request: Request; clientAddress: string }): Promise<string> {
-  // Vercel sets x-forwarded-for; clientAddress is the adapter's reading of the
-  // same thing and is the fallback for running this anywhere else. Neither is
-  // trustworthy on its own — a forged header just splits one requester into
-  // several, which costs the forger nothing and protects nobody else, and that
-  // is the honest ceiling of an unauthenticated endpoint.
-  //
-  // clientAddress is a getter that throws where the adapter cannot supply one
-  // (it is only defined on server-rendered routes), so it is read here inside
-  // the try rather than destructured out of the context at the top of the
-  // handler, where the throw would take the whole request with it.
-  let fallback = '';
-  try {
-    fallback = ctx.clientAddress ?? '';
-  } catch {}
-  const forwarded = ctx.request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
-  const ip = forwarded || fallback || 'unknown';
-  const day = new Date().toISOString().slice(0, 10);
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(`${day}|${ip}`),
-  );
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
 
 export const POST: APIRoute = async (ctx) => {
   const { request } = ctx;

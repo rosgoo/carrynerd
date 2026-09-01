@@ -316,6 +316,21 @@ Schema in `alerts/schema.sql`, matcher in `alerts/match.py`. Needs
 reports what it would have done and exits clean, so the nightly stays green
 before the plane is provisioned.
 
+`/api/watch` is the one unauthenticated endpoint that spends money and sending
+reputation on being called — every new watch is a mail handed to Resend — so it
+carries a per-requester daily cap in `watch_requests`, built the same way as the
+one in `/api/request-brand` and counted against the same date-mixed digest. It
+refuses one source in a loop, which is the version of this a launch attracts. It
+cannot refuse a distributed one: that is a WAF rule, in the Vercel dashboard,
+where the platform can see a client across requests and a function cannot.
+
+The confirmation resend window is measured from `confirm_sent_at` — stamped only
+after Resend has accepted the message — and not from `created_at`. The two differ
+in exactly one case and it is the one that matters: a send that failed leaves a
+row that was created but never mailed, and a window read from `created_at` would
+answer the reader's immediate retry with a suppression rule on behalf of a mail
+that never went.
+
 **Addresses live in Postgres and only there.** Never in the repo — the data plane
 is public and fully version-controlled, and an address committed once is in the
 history forever. Never in logs either; subscription IDs are the identifier
@@ -371,6 +386,39 @@ side; nothing depends on them.
 Append to `brands.json`. Non-Shopify stores are recorded in
 `data/fetch-log.json` as `http_404` and skipped — Bellroy and Tom Bihn are both
 custom platforms and need their own adapters.
+
+## Response headers
+
+`vercel.json` is the only config in the repo that cannot carry a comment, so
+the reasoning lives here.
+
+Six headers, applied to every path. Four are unambiguous and cost nothing:
+`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, a one-year
+`Strict-Transport-Security`, and a `Permissions-Policy` denying features the
+site never asks for. `Referrer-Policy` is `strict-origin-when-cross-origin` —
+the browser default, pinned rather than inherited, and the one to revisit if
+affiliate networks ever land, since some attribute on the referrer.
+
+The CSP is the one with a trade in it. `script-src` carries `'unsafe-inline'`
+and there is no honest way around that today: `Base.astro` and
+`SaleStrip.astro` both ship `is:inline` scripts — the theme applied before
+first paint, which is inline precisely so it runs before the stylesheet — and
+a nonce is not available to a statically generated page with no server in
+front of it. So this CSP is not an XSS control and should not be described as
+one. What it does buy is real and unaffected by that hole: `frame-ancestors`
+and `object-src 'none'` close clickjacking and plugin embedding,
+`base-uri 'self'` stops a `<base>` injection repointing every relative URL,
+and `form-action 'self'` means the `/internal/` login cannot be made to POST
+its password anywhere else. Tightening `script-src` means hashing the two
+inline scripts at build time; it is worth doing and it is not worth doing the
+week of a launch.
+
+`img-src` allows `https:` broadly on purpose. Photography is referenced at
+source across every brand CDN in the catalogue — see `Legal posture` below on
+why images are not rehosted — and that set changes whenever a brand is added,
+so an allowlist here would be a list that silently breaks pages. `connect-src`
+is `'self'`: both the analytics beacon (`/_vercel/insights/event`) and ours
+(`/api/click`) are same-origin in production.
 
 ## Legal posture
 

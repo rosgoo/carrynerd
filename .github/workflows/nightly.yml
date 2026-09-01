@@ -90,6 +90,8 @@ on:
 
 permissions:
   contents: write
+  # For the notify job below, which is the only thing here that writes an issue.
+  issues: write
 
 concurrency:
   # Never let two nights overlap; the second would fight the first for the
@@ -812,3 +814,82 @@ jobs:
           path: crawl-history.db
           retention-days: 14
           if-no-files-found: warn
+
+  # The nightly's own alarm.
+  #
+  # Everything above is careful about failing loudly, and none of it was heard
+  # by anybody: a scheduled workflow that goes red notifies whoever last
+  # touched the cron, by email, and that is a signal which arrives in the same
+  # inbox as everything else and is noticed about as often. The failure that
+  # costs the most is the quiet one — an expired DATA_TOKEN, a brand that moved
+  # its storefront — because the site goes on serving last night's catalogue
+  # perfectly happily while the data behind it stops moving. Nothing about the
+  # published page looks wrong. That is exactly why it needs saying out loud.
+  #
+  # One issue, reopened and commented on rather than one per night: a nightly
+  # that has been broken for a week should be one thread with seven comments,
+  # not seven threads. A run that fails while the issue is already open adds a
+  # line to it and nothing else.
+  #
+  # `history` is deliberately not in `needs`. Its own comment explains why it
+  # must never be able to fail the nightly — a slow signal that can turn a
+  # build red is a slow signal that gets muted — and paging on it here would
+  # reintroduce exactly that through the back door.
+  notify:
+    needs: [fetch, assemble]
+    if: always() && (needs.fetch.result == 'failure' || needs.assemble.result == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const LABEL = 'nightly-failure';
+            const { owner, repo } = context.repo;
+            const run = `https://github.com/${owner}/${repo}/actions/runs/${context.runId}`;
+            const failed = [
+              ['fetch', '${{ needs.fetch.result }}'],
+              ['assemble', '${{ needs.assemble.result }}'],
+            ].filter(([, r]) => r === 'failure').map(([j]) => j).join(', ');
+
+            // Creating an issue with an unknown label is not reliably an
+            // implicit label creation, so make it first and ignore the 422
+            // that means it is already there.
+            try {
+              await github.rest.issues.createLabel({
+                owner, repo, name: LABEL, color: 'b60205',
+                description: 'The nightly crawl failed and the catalogue is not moving',
+              });
+            } catch (e) {
+              if (e.status !== 422) throw e;
+            }
+
+            const open = await github.rest.issues.listForRepo({
+              owner, repo, state: 'open', labels: LABEL, per_page: 1,
+            });
+
+            const body = [
+              `Nightly failed in **${failed}**.`,
+              '',
+              `Run: ${run}`,
+              '',
+              'The site is still serving the last catalogue that passed the gate,',
+              'so nothing looks broken from outside. It stops being true the',
+              'longer this sits: prices drift and the alerts matcher has nothing',
+              'new to match against.',
+              '',
+              'First things to check: has `DATA_TOKEN` expired (the build cannot',
+              'deploy at all if it has, not just the nightly), and did',
+              '`validate.py` gate the publish on purpose?',
+            ].join('\n');
+
+            if (open.data.length) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: open.data[0].number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner, repo, labels: [LABEL],
+                title: 'Nightly crawl is failing', body,
+              });
+            }
