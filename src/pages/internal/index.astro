@@ -822,6 +822,12 @@ const catalogStamp = meta.generated_at ?? null;
     padding: 4px 8px; font-size: 11px;
   }
   .rjbar input:focus { border-color: var(--accent); outline: none; }
+  /* Scoped styles out-specify the global floor in app.css, so this one
+     asks for it again. Same reason: iOS zooms in on a sub-16px input and
+     does not zoom back out. */
+  @media (hover: none) and (pointer: coarse) {
+    .rjbar input { font-size: 16px; }
+  }
 
   /* The reject list is long by design — cap it and scroll, rather than making
      every visit a several-thousand-row page scroll. */

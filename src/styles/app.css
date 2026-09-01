@@ -1659,13 +1659,11 @@ td.instock { color: var(--ok); }
    the address and the threshold sharing the first row with the button stranded
    underneath, left-aligned against nothing. Two deliberate rows instead: the
    address, which is the field that matters, gets the width; the threshold and
-   the button split the row beneath it.
-   16px is not a size choice — iOS zooms the whole page in when you focus an
-   input smaller than that, and it does not zoom back out afterwards, which is
-   what makes the page look broken rather than merely small. */
+   the button split the row beneath it. The 16px floor these fields used to
+   set here is at the bottom of this file now, applied to every input on the
+   site rather than to the two forms that happened to get it first. */
 @media (max-width: 560px) {
   .watchrow { display: grid; grid-template-columns: 1fr auto; align-items: stretch; }
-  .watchrow input { font-size: 16px; }
   .watchrow input[type="email"] { grid-column: 1 / -1; }
   .watchrow input[type="number"] { width: auto; }
   .watchrow .btn { padding: 9px 16px; }
@@ -1808,12 +1806,6 @@ td.instock { color: var(--ok); }
   line-height: 1.6;
 }
 .reqmsg.bad { color: var(--warn); }
-
-/* 16px, for the same reason the watch form's fields take it: below that iOS
-   zooms the page in on focus and does not zoom back out. */
-@media (max-width: 560px) {
-  .reqfield input { font-size: 16px; }
-}
 
 /* Colour-family swatch in the filter rail, next to the checkbox. */
 .check .sw {
@@ -2116,4 +2108,34 @@ a.cbrand:hover { color: var(--accent); text-decoration: underline; text-underlin
 .bmaker {
   font-weight: 400; color: var(--ink-mute); font-size: 9.5px;
   letter-spacing: .1em; text-transform: uppercase;
+}
+
+/* ---------- the iOS focus zoom ---------- */
+
+/* Safari on iOS zooms the page in when you focus an input whose text is
+   smaller than 16px, and it does not zoom back out, which is what makes a page
+   look broken rather than merely small. The rail is dense on purpose and 11px
+   is the size it wants on a desk, so the floor lifts only where the bug is.
+
+   Keyed on the pointer and not on a width, which is what the two earlier
+   copies of this got wrong. The bug belongs to the input device: a phone held
+   sideways is over 900px across and still zooms, and a desktop window dragged
+   narrow is under 560px and never does. `max-width: 560px` therefore both
+   missed cases it was written for and charged a machine that does not have the
+   problem.
+
+   The bare selector is the rule; the list under it is the same rule again for
+   the handful of places whose own font-size out-specifies it. A control added
+   later gets the floor without anyone remembering to ask for it, which is the
+   half that was actually failing — the fix went on the two forms that prompted
+   it in the first place and every box in the filter rail kept zooming. */
+@media (hover: none) and (pointer: coarse) {
+  input, select, textarea { font-size: 16px; }
+  #q,
+  .fsearch,
+  .rangerow input,
+  .savedform input,
+  .brandfind input,
+  .watchrow input,
+  .reqfield input { font-size: 16px; }
 }
