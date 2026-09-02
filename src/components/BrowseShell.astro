@@ -94,12 +94,14 @@ const unlock = scope?.unlock ?? null;
 
 ---
 <div class="shell" id="shell" data-lock={lock} data-unlock={unlock} data-sort={sort}>
-  {/* Alphabetical by heading. The old order was the order the facets were
-      built in, which meant the one people reach for first — Brand — sat
-      ninth, below three collapsed groups. Nothing here ranks above anything
-      else, so the only ordering that a stranger can predict is the alphabet.
-      Data coverage is the exception and stays pinned last: it filters
-      nothing, it is a footnote about the catalog. */}
+  {/* Alphabetical by heading, between two pinned ends. The old order was the
+      order the facets were built in, which meant the one people reach for
+      first — Brand — sat ninth, below three collapsed groups. Nothing in the
+      run between the ends ranks above anything else, so the only ordering a
+      stranger can predict there is the alphabet. Price is pinned first: it is
+      the one filter almost every reader touches, and the alphabet buried it
+      tenth. Data coverage stays pinned last: it filters nothing, it is a
+      footnote about the catalog. */}
   <aside class="rail" id="rail">
     {/* Shown only while the rail is a drawer. */}
     <div class="railhead">
@@ -149,6 +151,31 @@ const unlock = scope?.unlock ?? null;
         <a id="unscope" href={`/?${unlock}`}>{scope.out}</a>
       </section>
     )}
+
+    {/* Pinned above the alphabet, because price is the question nearly
+        everyone brings to a bag first and the one they narrow on before they
+        care whose name is on it. Alphabetically it landed tenth, between Max
+        linear dimension and Volume — three collapsed groups and a scroll
+        below Brand, which is the position the old build order used to give
+        Brand itself and the reason the rail was reordered in the first
+        place. The alphabet still runs everything between here and Data
+        coverage; this is the exception at the near end for the same reason
+        coverage is the one at the far end. */}
+    <details class="fgroup" open>
+      <summary>Price</summary>
+      <div class="fbody">
+        <div class="dual" data-dual="price">
+          <div class="track"><div class="fill"></div></div>
+          <input class="lo" type="range" aria-label="Minimum price" />
+          <input class="hi" type="range" aria-label="Maximum price" />
+        </div>
+        <div class="rangerow">
+          <input id="price-min" type="number" placeholder="min" min="0" step="10" />
+          <em>—</em>
+          <input id="price-max" type="number" placeholder="max" min="0" step="10" />
+        </div>
+      </div>
+    </details>
 
     {/* First in the alphabet, and the only group in the rail that is a
         measurement rather than a field: every carrier's published limit,
@@ -259,22 +286,6 @@ const unlock = scope?.unlock ?? null;
         <div class="checks" style="margin-top:8px">
           <button class="check" data-preset="carryon" aria-pressed="false"><i></i>Fits common carry-on (<span class="u-cm">≤115cm</span><span class="u-in">≤45in</span> linear)</button>
           <button class="check" data-preset="underseat" aria-pressed="false"><i></i>Fits under seat (<span class="u-cm">≤40×30×20</span><span class="u-in">≤16×12×8</span>)</button>
-        </div>
-      </div>
-    </details>
-
-    <details class="fgroup" open>
-      <summary>Price</summary>
-      <div class="fbody">
-        <div class="dual" data-dual="price">
-          <div class="track"><div class="fill"></div></div>
-          <input class="lo" type="range" aria-label="Minimum price" />
-          <input class="hi" type="range" aria-label="Maximum price" />
-        </div>
-        <div class="rangerow">
-          <input id="price-min" type="number" placeholder="min" min="0" step="10" />
-          <em>—</em>
-          <input id="price-max" type="number" placeholder="max" min="0" step="10" />
         </div>
       </div>
     </details>
