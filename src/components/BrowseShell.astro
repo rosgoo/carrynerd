@@ -16,7 +16,6 @@
  * request fails.
  */
 import { airlines, carryOnAirlines } from '../lib/carryon.js';
-import { meta } from '../lib/catalog.js';
 
 interface Props {
   /** The brand this page is about, if it is about one. Present, the rail loses
@@ -37,10 +36,6 @@ interface Props {
    *  Only the page's own carrier is dropped, and that happens in the client
    *  where the group is drawn — see paintFacets() in scripts/browse.js. */
   airline?: { slug: string; name: string } | null;
-  /** Currencies other than USD in whatever the page is showing. The price
-   *  slider compares figures across them without converting, which is worth
-   *  saying under the slider rather than leaving a reader to spot a £. */
-  otherCurrencies?: string[];
   /** The order the page opens on, when brand A–Z is the wrong answer for it.
    *  A default and not a lock — see DEFAULT_SORT in scripts/browse.js. */
   sort?: string;
@@ -51,7 +46,7 @@ interface Props {
 }
 
 const {
-  brand = null, sale = false, airline = null, otherCurrencies = [],
+  brand = null, sale = false, airline = null,
   sort = 'brand',
   placeholder = 'search brand, model, material, feature…',
 } = Astro.props;
@@ -96,17 +91,6 @@ const scope = brand
 
 const lock = scope?.lock ?? null;
 const unlock = scope?.unlock ?? null;
-/* The date the dollar estimates were struck at, for the price note below.
-   Formatted here rather than in the template so the template stays readable
-   and so an unparseable date falls back to the ISO string rather than to
-   "Invalid Date". */
-const fxDate = (() => {
-  const iso = meta.fx?.date;
-  if (!iso) return null;
-  const d = new Date(`${iso}T00:00:00Z`);
-  return isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-GB',
-    { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
-})();
 
 ---
 <div class="shell" id="shell" data-lock={lock} data-unlock={unlock} data-sort={sort}>
@@ -292,27 +276,6 @@ const fxDate = (() => {
           <em>—</em>
           <input id="price-max" type="number" placeholder="max" min="0" step="10" />
         </div>
-        {/* This used to end "so this range compares the figures rather than
-            their worth", which was true and is not any more: the range, the
-            price sorts and Price / L all reckon in dollars now. The note stays
-            because the two halves are both still worth saying, and saying only
-            the first would leave a reader to assume a GBP 90 bag is matched on
-            the number 90. Where the rate is missing -- fx.py never ran, or the
-            ECB was unreachable and there is nothing cached -- the old sentence
-            is the accurate one again, so it is what gets printed. */}
-        {otherCurrencies.length > 0 && (
-          <p class="note" style="padding:10px 0 0;border:none">
-            Mostly USD. {otherCurrencies.join(' and ')} where the brand sells in
-            it. Prices are shown as the seller charges them and are never
-            converted{fxDate
-              ? <>, but this range compares an approximate US figure at the
-                  European&nbsp;Central&nbsp;Bank reference rate of {fxDate} —
-                  so a GBP&nbsp;90 bag is matched on what it is worth rather
-                  than on the number 90.</>
-              : <>, so this range compares the figures rather than their
-                  worth.</>}
-          </p>
-        )}
       </div>
     </details>
 

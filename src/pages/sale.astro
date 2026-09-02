@@ -59,10 +59,6 @@ const deepest = pct(offs[0]);
 const median = pct(offs[Math.floor(offs.length / 2)]);
 const brandCount = new Set(onSale.map((row) => row.bag.brand_slug)).size;
 
-const otherCurrencies = [
-  ...new Set(onSale.map((row) => row.bag.currency).filter((c) => c && c !== 'USD')),
-].sort();
-
 /* The crawler's copy, and the answer for anyone with no JavaScript. Capped,
  * unlike the brand pages: a thousand rows is most of a megabyte of markup on a
  * page whose whole content changes every night, and nothing is orphaned by the
@@ -134,7 +130,7 @@ const breadcrumbs = {
     </div>
   </section>
 
-  <BrowseShell sale sort="discount" otherCurrencies={otherCurrencies}
+  <BrowseShell sale sort="discount"
                placeholder="search the sale — brand, model, material, feature…">
     {/* Inside #results, which browse.js overwrites wholesale on load. The
         deepest sixty, with both ends of each cut, so the fallback is the same

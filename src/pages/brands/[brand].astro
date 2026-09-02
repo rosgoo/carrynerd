@@ -25,10 +25,10 @@ import BrowseHead from '../../components/BrowseHead.astro';
 import BrowseShell from '../../components/BrowseShell.astro';
 import WatchForm from '../../components/WatchForm.astro';
 import Measure from '../../components/Measure.astro';
-import { brands, bagHref } from '../../lib/catalog.js';
+import { brands, bagHref, meta } from '../../lib/catalog.js';
 import { catLabel } from '../../lib/labels.js';
 import { SITE_NAME_DISPLAY } from '../../lib/brand.js';
-import { fmtPrice, fmtVolume, fmtWeightBoth, fmtDims, fmtApproxUsd } from '../../lib/format.js';
+import { fmtPrice, fmtVolume, fmtWeightBoth, fmtDims, fmtApproxUsd, fxNote } from '../../lib/format.js';
 import roster from '../../../brands.json';
 
 export function getStaticPaths() {
@@ -55,13 +55,6 @@ const prices = brand.bags.map((b) => b.price_min).filter((p) => p != null);
 // sourced brands are not in the roster at all.
 const cur = brand.bags[0]?.currency ?? 'USD';
 const cats = [...new Set(brand.bags.map((b) => b.category))].map(catLabel);
-
-// The same note the front page's price slider carries, asked of one shelf. Rare
-// on a brand page — one storefront usually quotes one currency — and computed
-// rather than assumed so it says nothing on the brands where that holds.
-const otherCurrencies = [
-  ...new Set(brand.bags.map((b) => b.currency).filter((c) => c && c !== 'USD')),
-].sort();
 
 const title = `${brand.name} bags — every model, specs & prices | ${SITE_NAME_DISPLAY}`;
 const description =
@@ -132,7 +125,6 @@ const jsonLd = {
   </section>
 
   <BrowseShell brand={{ slug: brand.slug, name: brand.name }}
-               otherCurrencies={otherCurrencies}
                placeholder={`search ${brand.name} — model, material, feature…`}>
     {/* The fallback, and the crawler's copy of this page. Six columns of
         figures do not fit a phone at any padding worth having, so the table
@@ -155,9 +147,16 @@ const jsonLd = {
                   the estimate the cards carry. A brand page is where a reader
                   ends up when the whole shelf is priced in one foreign
                   currency, which makes it the page that needs it most. The
-                  rate itself is named once, in the note above the table. */}
+                  rate rides on the estimate itself, the way it does on a card
+                  — the conversion is only ever spoken about beside the number
+                  it produced, never as a standing note somewhere else on the
+                  page. */}
               <td>{fmtPrice(bag.price_min, bag.currency)}{
-                fmtApproxUsd(bag) && <em class="approx">{fmtApproxUsd(bag)}</em>}</td>
+                fmtApproxUsd(bag) && (
+                  <em class="approx" title={fxNote(meta.fx, bag.currency) ?? undefined}>
+                    {fmtApproxUsd(bag)}
+                  </em>
+                )}</td>
             </tr>
           ))}
         </tbody>

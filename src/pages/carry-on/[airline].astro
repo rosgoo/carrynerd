@@ -97,13 +97,6 @@ const byCategory = [
   .map(([key, n]) => ({ key, n, hub: hubByCategory.get(key) }))
   .sort((a, b) => b.n - a.n);
 
-/* The same note the front page's price slider carries, asked of the bags that
- * clear this gauge. See the brand pages, where it is computed the same way and
- * usually says nothing. */
-const otherCurrencies = [
-  ...new Set(fits.map((bag) => bag.currency).filter((c) => c && c !== 'USD')),
-].sort();
-
 const limit = fmtLimit(airline);
 const others = airlinesByRegion.map(({ key, label }) => ({
   label,
@@ -247,7 +240,6 @@ const breadcrumbs = {
       lock — the sort control still works. */}
   <BrowseShell airline={{ slug: airlineSlug(airline), name: airline.name }}
                sort="vol-desc"
-               otherCurrencies={otherCurrencies}
                placeholder={`search the bags that fit ${airline.name}…`}>
     {/* Inside #results, which browse.js overwrites wholesale on load: the
         crawler's copy of this page and the answer for anyone with no

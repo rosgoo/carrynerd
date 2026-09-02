@@ -52,16 +52,6 @@ const fallbackGroups = hubs.map((hub) => ({
     .slice(0, FALLBACK_PER_HUB),
 })).filter((group) => group.bags.length);
 
-// A few brands sell from storefronts that quote something other than dollars,
-// and nothing here converts them — a rate would be a number we invented, and
-// it would move between crawls independently of any price. The consequence is
-// that the price slider compares figures in different currencies, which is
-// worth saying out loud rather than leaving a reader to notice a £ in the
-// results. Computed rather than hardcoded so the line disappears by itself if
-// the roster ever goes back to being USD-only.
-const otherCurrencies = [
-  ...new Set(bags.map((b) => b.currency).filter((c) => c && c !== 'USD')),
-].sort();
 ---
 {/* The chrome, the rail and the grid are components because the brand pages
     mount the same island — see components/BrowseShell.astro. This page is the
@@ -77,7 +67,7 @@ const otherCurrencies = [
       no drops rather than sitting there empty. */}
   <SaleStrip bags={bags} />
 
-  <BrowseShell otherCurrencies={otherCurrencies}>
+  <BrowseShell>
     {/* Inside #results, which browse.js overwrites wholesale on load — so for
         anyone running scripts this is inert markup the parser skips and the
         island discards, and the grid is reached without it ever existing. */}
